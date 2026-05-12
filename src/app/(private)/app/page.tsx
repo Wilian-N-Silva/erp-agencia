@@ -7,7 +7,7 @@ const summaryItems = [
 
 export default function AppHomePage() {
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <section className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-normal">Dashboard</h1>
         <p className="text-sm text-muted-foreground">Visao operacional</p>

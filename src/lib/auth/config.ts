@@ -6,6 +6,24 @@ function unique(values: string[]) {
   return [...new Set(values)];
 }
 
+function parseBoolean(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return undefined;
+}
+
 export function normalizeEmailDomain(domain?: string) {
   const normalized = domain?.trim().toLowerCase().replace(/^@/, "");
 
@@ -48,6 +66,24 @@ export function getTrustedOrigins() {
   return unique(configuredOrigins.flatMap((origin) => normalizeOrigin(origin)));
 }
 
+export function isEmailPasswordAuthEnabled() {
+  return (
+    parseBoolean(getOptionalEnv("ENABLE_EMAIL_PASSWORD_AUTH")) ??
+    process.env.NODE_ENV !== "production"
+  );
+}
+
+export function isEmailPasswordSignUpEnabled() {
+  if (!isEmailPasswordAuthEnabled()) {
+    return false;
+  }
+
+  return (
+    parseBoolean(getOptionalEnv("ENABLE_EMAIL_PASSWORD_SIGN_UP")) ??
+    process.env.NODE_ENV !== "production"
+  );
+}
+
 function getBuildOnlyAuthSecret() {
   return process.env.npm_lifecycle_event === "build"
     ? "build-time-only-better-auth-secret"
@@ -67,6 +103,10 @@ export function getGoogleAuthConfig() {
     clientSecret,
     hd: getAllowedEmailDomain(),
   };
+}
+
+export function isGoogleAuthConfigured() {
+  return Boolean(getGoogleAuthConfig());
 }
 
 export function parseTrustedOrigins(value?: string) {

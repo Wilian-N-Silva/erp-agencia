@@ -31,14 +31,22 @@ describe("permission-filtered navigation", () => {
     );
   });
 
-  it("shows audit navigation for directors", () => {
+  it("hides routes that are not implemented yet", () => {
     const context = createAccessContext({
       userId: "director_1",
       roles: ["director"],
     });
+    const hrefs = getVisibleNavigationItems(context).map((item) => item.href);
 
-    expect(getVisibleNavigationItems(context).map((item) => item.href)).toContain(
-      "/app/auditoria",
-    );
+    expect(hrefs).toContain("/app");
+    expect(hrefs).toContain("/app/financeiro");
+    expect(hrefs).toContain("/app/clientes");
+    expect(hrefs).not.toContain("/app/auditoria");
+    expect(hrefs).not.toContain("/app/colaboradores");
+    expect(hrefs).not.toContain("/app/reembolsos");
+    expect(hrefs).not.toContain("/app/equipamentos");
+    expect(hrefs).not.toContain("/app/acessos");
+    expect(hrefs).not.toContain("/app/saas");
+    expect(hrefs).not.toContain("/app/configuracoes");
   });
 });

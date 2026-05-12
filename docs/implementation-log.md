@@ -221,3 +221,59 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run lint`
     - `npm.cmd run test`
     - `npm.cmd run build`
+
+## Atualizacao de login local em 2026-05-12
+
+1. Confirmado que o login anterior dependia somente de Google OAuth.
+2. Mantido Google OAuth, mas a pagina agora exibe o botao apenas quando `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` existem.
+3. Habilitado fallback de email e senha para desenvolvimento/local com `ENABLE_EMAIL_PASSWORD_AUTH`.
+4. Habilitado cadastro local controlado por `ENABLE_EMAIL_PASSWORD_SIGN_UP`.
+5. Em producao, email/senha e cadastro ficam desabilitados por padrao quando as variaveis nao forem definidas.
+6. Atualizados `.env.example`, README e testes de configuracao de auth.
+7. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test`
+   - `npm.cmd run lint`
+   - `npm.cmd run build`
+
+## Atualizacao de financeiro e clientes em 2026-05-12
+
+1. Continuada a branch `feature/finance-clients` a partir de `development`.
+2. Criadas regras puras para status financeiro automatico, dinheiro em centavos, previsao de 30 dias e geracao de codigo de cliente.
+3. Criado DAL de leitura para dashboard financeiro, entradas, saidas, provisoes e carteira de clientes com escopo por organizacao.
+4. Criadas rotas privadas `/app/financeiro` e `/app/clientes` com renderizacao dinamica e autorizacao server-side.
+5. Criadas server actions para criar clientes, alterar status de clientes, criar entradas, criar saidas, criar provisoes, marcar recebido/pago, cancelar e inativar.
+6. Todas as mutacoes validam `FormData` com Zod, exigem RBAC server-side, filtram por `organizationId`, revalidam a rota e geram log de auditoria.
+7. A visualizacao de fee mensal de clientes fica oculta para perfis sem `finance.read`.
+8. Adicionados testes para status automatico, calculos financeiros, normalizacao de dinheiro, escopo de clientes e redacao de valores.
+9. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test`
+   - `npm.cmd run lint`
+   - `npm.cmd run build`
+
+## Atualizacao de banco local em 2026-05-12
+
+1. Criado `docker-compose.yml` com Postgres 17 local na porta `55432`.
+2. Criado `.env.docker.example` com variaveis locais para Docker, auth por email/senha e usuario admin de teste.
+3. Atualizado `.env` local para usar `postgres://erp:erp@127.0.0.1:55432/erp_agencia`.
+4. Ajustado runtime do banco para usar Neon HTTP em URLs remotas e `pg`/node-postgres em URLs locais.
+5. Substituido seed scaffold por seed real com organizacao, papeis, permissoes, grants, admin local, colaborador vinculado, clientes e dados financeiros de exemplo.
+6. Executado `docker compose up -d postgres` com sucesso.
+7. Executado `npm.cmd run db:migrate` com sucesso.
+8. Executado `npm.cmd run db:seed` com sucesso.
+9. Validado que `/login` responde em `http://localhost:3000/login`.
+10. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run test`
+    - `npm.cmd run lint`
+11. `npm.cmd run build` compilou, mas falhou na coleta de paginas enquanto o dev server existente estava usando `.next`; nao foi reiniciado nem removido cache para nao interromper a sessao local em `3000`.
+12. Corrigido adapter Better Auth/Drizzle para receber schema singular (`user`, `account`, `session`, `verification`) mapeado para as tabelas Drizzle exportadas em plural.
+13. Validado POST `/api/auth/sign-in/email` com admin local retornando `200`.
+14. Ajustado layout privado para usar toda a largura disponivel do conteudo, evitar overflow de inputs em formularios financeiros/clientes e exibir datas em formato brasileiro (`dd/mm/aaaa`).
+15. Sidebar ajustada para exibir apenas features implementadas: Dashboard, Financeiro, Clientes e Portal.
+16. Adicionados filtros server-side por query string em Financeiro e Clientes, com normalizacao testada, busca textual, filtro de competencia e status.
+17. Adicionada exportacao CSV de Financeiro em `/app/financeiro/exportar`, restrita a `finance.export`, preservando filtros atuais e gerando log de auditoria.
+18. Financeiro ajustado para abrir criacao de entradas, saidas e provisoes em dialogs, com edicao de entradas e saidas tambem em dialogs por linha.
+19. Clientes ajustado para cadastro em `/app/clientes/novo` e detalhe/edicao em `/app/clientes/[id]`.
+20. Detalhe de cliente passou a exibir dados ampliados, acoes de status e historico recente de auditoria quando o perfil pode ler logs.

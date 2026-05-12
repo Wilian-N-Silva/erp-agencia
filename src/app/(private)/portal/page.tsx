@@ -1,6 +1,6 @@
 export default function PortalPage() {
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <section className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-normal">Portal</h1>
         <p className="text-sm text-muted-foreground">Dados e solicitacoes</p>

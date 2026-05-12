@@ -12,10 +12,18 @@ import {
   getGoogleAuthConfig,
   getTrustedOrigins,
   isEmailAllowedForDomain,
+  isEmailPasswordAuthEnabled,
+  isEmailPasswordSignUpEnabled,
 } from "./config";
 
 const allowedEmailDomain = getAllowedEmailDomain();
 const googleAuthConfig = getGoogleAuthConfig();
+const authSchema = {
+  account: schema.accounts,
+  session: schema.sessions,
+  user: schema.users,
+  verification: schema.verifications,
+};
 
 export const auth = betterAuth({
   appName: "Sistema Interno FG",
@@ -25,10 +33,13 @@ export const auth = betterAuth({
   secret: getAuthSecret(),
   database: drizzleAdapter(db, {
     provider: "pg",
-    schema,
+    schema: authSchema,
   }),
   emailAndPassword: {
-    enabled: false,
+    enabled: isEmailPasswordAuthEnabled(),
+    disableSignUp: !isEmailPasswordSignUpEnabled(),
+    minPasswordLength: 8,
+    autoSignIn: true,
   },
   socialProviders: googleAuthConfig
     ? {

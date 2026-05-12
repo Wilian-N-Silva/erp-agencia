@@ -378,6 +378,39 @@ export const clients = pgTable(
   }),
 );
 
+export const clientBillingProfiles = pgTable(
+  "client_billing_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    monthlyFee: numeric("monthly_fee", { precision: 12, scale: 2 }).notNull(),
+    billingDay: integer("billing_day").notNull(),
+    paymentMethod: text("payment_method"),
+    paymentTermsDays: integer("payment_terms_days").notNull().default(0),
+    recurrence: text("recurrence").notNull().default("monthly"),
+    autoGenerateEntries: boolean("auto_generate_entries").notNull().default(false),
+    financialContactName: text("financial_contact_name"),
+    financialEmail: text("financial_email"),
+    financialPhone: text("financial_phone"),
+    billingOwnerEmployeeId: uuid("billing_owner_employee_id").references(() => employees.id),
+    reminderBeforeDays: integer("reminder_before_days").notNull().default(3),
+    reminderAfterDays: integer("reminder_after_days").notNull().default(1),
+    notes: text("notes"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clientIdx: uniqueIndex("client_billing_profiles_client_idx").on(table.clientId),
+    organizationIdx: index("client_billing_profiles_organization_idx").on(table.organizationId),
+  }),
+);
+
 export const financialEntries = pgTable(
   "financial_entries",
   {
@@ -388,8 +421,10 @@ export const financialEntries = pgTable(
     clientId: uuid("client_id").references(() => clients.id),
     description: text("description").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    receivedAmount: numeric("received_amount", { precision: 12, scale: 2 }),
     dueDate: date("due_date").notNull(),
     receivedDate: date("received_date"),
+    paymentMethod: text("payment_method"),
     competence: text("competence").notNull(),
     status: financialEntryStatusEnum("status").notNull().default("planned"),
     recurring: boolean("recurring").notNull().default(false),
@@ -407,6 +442,41 @@ export const financialEntries = pgTable(
     competenceIdx: index("financial_entries_competence_idx").on(
       table.organizationId,
       table.competence,
+    ),
+  }),
+);
+
+export const clientPaymentReminders = pgTable(
+  "client_payment_reminders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, {
+      onDelete: "cascade",
+    }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    dueDate: date("due_date"),
+    status: text("status").notNull().default("open"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clientIdx: index("client_payment_reminders_client_idx").on(table.clientId),
+    statusIdx: index("client_payment_reminders_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+    entryKindIdx: uniqueIndex("client_payment_reminders_entry_kind_idx").on(
+      table.financialEntryId,
+      table.kind,
     ),
   }),
 );
