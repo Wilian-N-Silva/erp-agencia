@@ -168,3 +168,23 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run lint`
     - `npm.cmd run test`
     - `npm.cmd run build`
+
+## Atualizacao de RBAC e DAL em 2026-05-12
+
+1. Criada branch `feature/rbac-dal` a partir de `development`.
+2. Criados papeis canonicos em `src/lib/rbac/permissions.ts`.
+3. Criadas permissoes canonicas e descricoes para o seed.
+4. Criado mapa conservador de permissoes por papel em `src/lib/rbac/policy.ts`.
+5. Confirmado que Admin Tecnico nao recebe acesso padrao a financeiro, remuneracao ou documentos sensiveis.
+6. Criados guards `can`, `canAny`, `assertCan` e `assertCanAny`.
+7. Criado erro generico `AccessDeniedError` sem vazamento de existencia de registro.
+8. Criado `AccessContext` e resolver server-side em `src/lib/dal/context.ts`.
+9. Criadas regras de escopo para colaborador proprio e lideranca de equipe direta.
+10. Atualizado seed scaffold para expor contagens de papeis, permissoes e grants RBAC.
+11. Adicionados testes de matriz RBAC, erro generico e escopo DAL.
+12. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run build`
+    - `npm.cmd run db:seed`

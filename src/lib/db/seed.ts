@@ -1,3 +1,9 @@
+import {
+  defaultRolePermissions,
+  permissionDescriptions,
+  roleLabels,
+} from "@/lib/rbac";
+
 const seedSteps = [
   "organization",
   "roles",
@@ -8,6 +14,9 @@ const seedSteps = [
 
 async function main() {
   console.log("Seed scaffold ready:", seedSteps.join(", "));
+  console.log("RBAC roles:", Object.keys(roleLabels).length);
+  console.log("RBAC permissions:", Object.keys(permissionDescriptions).length);
+  console.log("RBAC grants:", Object.values(defaultRolePermissions).flat().length);
 }
 
 main().catch((error: unknown) => {
