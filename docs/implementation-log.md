@@ -188,3 +188,20 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run test`
     - `npm.cmd run build`
     - `npm.cmd run db:seed`
+
+## Atualizacao de auditoria em 2026-05-12
+
+1. Criada branch `feature/audit-logging` a partir de `development`.
+2. Criados tipos de acoes e entidades auditaveis em `src/lib/audit/types.ts`.
+3. Criado sanitizador de payloads com redacao de segredos, tokens, cookies e credenciais.
+4. Criado extrator de metadados de request para IP e user agent.
+5. Criado builder de payload de audit log exigindo `organizationId`.
+6. Criado `writeAuditLog` para gravar em `audit_logs`.
+7. Criado helper `auditSensitiveRead` para leituras sensiveis.
+8. Criados guards `canReadAuditLogs` e `assertCanReadAuditLogs`.
+9. Adicionados testes de sanitizacao, metadados, obrigatoriedade de organizacao e autorizacao de leitura.
+10. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run build`
