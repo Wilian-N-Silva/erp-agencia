@@ -147,3 +147,24 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run db:migrate`
     - `npm.cmd run db:seed`
     - `npm.cmd run build`
+
+## Atualizacao de autenticacao em 2026-05-12
+
+1. Criada branch `feature/auth-better-auth` a partir de `development`.
+2. Implementada configuracao Better Auth com Drizzle adapter em `src/lib/auth/index.ts`.
+3. Criada rota catch-all de autenticacao em `src/app/api/auth/[...all]/route.ts`.
+4. Criados helpers de configuracao de auth em `src/lib/auth/config.ts`.
+5. Criado helper server-side de sessao em `src/lib/auth/session.ts`.
+6. Criado client Better Auth em `src/lib/auth/client.ts`.
+7. Criada pagina de login com botao Google em `src/app/login/page.tsx`.
+8. Criado middleware para proteger `/app` e `/portal` por presenca de cookie de sessao.
+9. Adicionado bloqueio de dominio de e-mail no hook de criacao de usuario quando `ALLOWED_EMAIL_DOMAIN` estiver configurado.
+10. Adicionadas variaveis `BETTER_AUTH_TRUSTED_ORIGINS` e `NEXT_PUBLIC_BETTER_AUTH_URL` em `.env.example`.
+11. Criado placeholder temporario de `/app` para callback pos-login ate a branch de app shell.
+12. Tornado o cliente Drizzle lazy para evitar falha de build sem `DATABASE_URL` durante coleta de rotas.
+13. Adicionados testes para helpers de configuracao de auth.
+14. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run build`

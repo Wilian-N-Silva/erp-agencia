@@ -5,8 +5,27 @@ import { getRequiredEnv } from "@/lib/env";
 
 import * as schema from "./schema";
 
-const client = neon(getRequiredEnv("DATABASE_URL"));
+function createDatabase() {
+  const client = neon(getRequiredEnv("DATABASE_URL"));
 
-export const db = drizzle(client, { schema });
+  return drizzle(client, { schema });
+}
 
-export type Database = typeof db;
+let cachedDb: Database | undefined;
+
+export function getDb() {
+  cachedDb ??= createDatabase();
+
+  return cachedDb;
+}
+
+export type Database = ReturnType<typeof createDatabase>;
+
+export const db = new Proxy({} as Database, {
+  get(_target, property, receiver) {
+    const database = getDb();
+    const value = Reflect.get(database, property, receiver);
+
+    return typeof value === "function" ? value.bind(database) : value;
+  },
+});
