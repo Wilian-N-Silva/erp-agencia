@@ -14,6 +14,12 @@ const eslintConfig = [
   {
     ignores: [".next/**", "node_modules/**", "coverage/**"],
   },
+  {
+    files: ["**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/triple-slash-reference": "off",
+    },
+  },
 ];
 
 export default eslintConfig;
