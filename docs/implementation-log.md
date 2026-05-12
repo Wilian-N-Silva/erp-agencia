@@ -205,3 +205,19 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run lint`
     - `npm.cmd run test`
     - `npm.cmd run build`
+
+## Atualizacao de layout privado em 2026-05-12
+
+1. Criada branch `feature/app-shell-navigation` a partir de `development`.
+2. Removido placeholder temporario de `src/app/app/page.tsx`.
+3. Criado route group privado em `src/app/(private)`.
+4. Criado layout privado server-side com `getCurrentAccessContext`.
+5. Criado shell visual em `src/components/layout/app-shell.tsx`.
+6. Criada navegacao filtrada por permissoes em `src/components/layout/navigation-items.ts`.
+7. Criadas paginas iniciais para `/app`, `/portal` e `/acesso-negado`.
+8. Adicionados testes para navegacao filtrada por permissao.
+9. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run build`
