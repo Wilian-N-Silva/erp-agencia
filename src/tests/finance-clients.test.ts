@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyClientFilters,
+  buildClientBillingDueDate,
+  buildClientExpectedEntryDescription,
+  buildClientReminderCandidates,
   canReadClientFinancialValues,
+  canGenerateClientExpectedEntry,
   generateClientCode,
+  getClientMonthlyFinancialStatus,
   getClientListScope,
+  getClientPaymentStatus,
+  getNextClientBillingDueDate,
   normalizeClientFilters,
   toClientListItem,
 } from "@/features/clients/rules";
@@ -234,6 +241,8 @@ describe("finance status rules", () => {
           dueDate: "2026-05-12",
           id: "entry_1",
           notes: null,
+          paymentMethod: "Pix",
+          receivedAmount: "100.00",
           receivedDate: "2026-05-12",
           recurring: true,
           status: "received",
@@ -354,5 +363,104 @@ describe("client access rules", () => {
     expect(getClientListScope(leaderContext)).toBe("owned");
     expect(getClientListScope(directorContext)).toBe("all");
     expect(getClientListScope(employeeContext)).toBe("none");
+  });
+
+  it("builds billing due dates with payment terms and month clamping", () => {
+    expect(buildClientBillingDueDate("2026-02", 31, 2)).toBe("2026-03-02");
+    expect(
+      getNextClientBillingDueDate(
+        {
+          billingDay: 10,
+          paymentTermsDays: 0,
+        },
+        "2026-05-11",
+      ),
+    ).toBe("2026-06-10");
+  });
+
+  it("allows expected entry generation only for active billable clients", () => {
+    expect(
+      canGenerateClientExpectedEntry({
+        billingDay: 10,
+        clientStatus: "active",
+        monthlyFee: "1200.00",
+      }),
+    ).toBe(true);
+    expect(
+      canGenerateClientExpectedEntry({
+        billingDay: 10,
+        clientStatus: "cancelled",
+        monthlyFee: "1200.00",
+      }),
+    ).toBe(false);
+    expect(buildClientExpectedEntryDescription("Acme", "2026-05")).toBe(
+      "Fee 05/2026 - Acme",
+    );
+  });
+
+  it("classifies client payment and monthly financial status", () => {
+    const payments = [
+      {
+        amount: "1000.00",
+        dueDate: "2026-05-10",
+        receivedAmount: null,
+        receivedDate: null,
+        status: "planned" as const,
+      },
+      {
+        amount: "500.00",
+        dueDate: "2026-05-15",
+        receivedAmount: "100.00",
+        receivedDate: null,
+        status: "planned" as const,
+      },
+    ];
+
+    expect(getClientPaymentStatus(payments[0], "2026-05-12")).toBe("overdue");
+    expect(getClientPaymentStatus(payments[1], "2026-05-12")).toBe("partial");
+    expect(getClientMonthlyFinancialStatus(payments, "2026-05-12")).toBe("partial");
+  });
+
+  it("generates reminder candidates for due, overdue, partial, and multiple open charges", () => {
+    const reminders = buildClientReminderCandidates({
+      asOf: "2026-05-12",
+      reminderBeforeDays: 3,
+      payments: [
+        {
+          id: "entry_due_today",
+          clientName: "Acme",
+          amount: "100.00",
+          dueDate: "2026-05-12",
+          receivedAmount: null,
+          receivedDate: null,
+          status: "planned",
+        },
+        {
+          id: "entry_overdue",
+          clientName: "Acme",
+          amount: "100.00",
+          dueDate: "2026-05-10",
+          receivedAmount: null,
+          receivedDate: null,
+          status: "planned",
+        },
+        {
+          id: "entry_partial",
+          clientName: "Acme",
+          amount: "100.00",
+          dueDate: "2026-05-20",
+          receivedAmount: "25.00",
+          receivedDate: null,
+          status: "planned",
+        },
+      ],
+    });
+
+    expect(reminders.map((reminder) => reminder.kind).sort()).toEqual([
+      "due_today",
+      "multiple_open",
+      "overdue",
+      "partial_payment",
+    ]);
   });
 });

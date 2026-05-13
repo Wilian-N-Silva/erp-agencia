@@ -45,6 +45,8 @@ export default async function ClientsPage({ searchParams }: PageProps) {
   const filters = normalizeClientFilters((await searchParams) ?? {});
   const clients = await listClients(context, filters);
   const activeClients = clients.filter((client) => client.status === "active").length;
+  const pausedClients = clients.filter((client) => client.status === "paused");
+  const portfolioClients = clients.filter((client) => client.status !== "paused");
   const visibleMonthlyFeeCents = clients.reduce(
     (total, client) => total + moneyToCents(client.monthlyFee),
     0,
@@ -86,7 +88,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
 
       <section className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
-          <h2 className="text-base font-semibold">Carteira</h2>
+          <h2 className="text-base font-semibold">Carteira ativa e cancelada</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
@@ -102,7 +104,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
               </tr>
             </thead>
             <tbody>
-              {clients.length === 0 ? (
+              {portfolioClients.length === 0 ? (
                 <tr>
                   <td
                     className="px-4 py-8 text-center text-muted-foreground"
@@ -112,7 +114,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
                   </td>
                 </tr>
               ) : (
-                clients.map((client) => (
+                portfolioClients.map((client) => (
                   <tr className="border-b last:border-b-0" key={client.id}>
                     <td className="px-4 py-3 font-medium">{client.code}</td>
                     <td className="px-4 py-3">
@@ -147,6 +149,57 @@ export default async function ClientsPage({ searchParams }: PageProps) {
           </table>
         </div>
       </section>
+
+      {pausedClients.length > 0 ? (
+        <section className="rounded-lg border bg-card">
+          <div className="border-b px-4 py-3">
+            <h2 className="text-base font-semibold">Clientes pausados</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Codigo</th>
+                  <th className="px-4 py-3 font-medium">Cliente</th>
+                  <th className="px-4 py-3 font-medium">Responsavel</th>
+                  <th className="px-4 py-3 font-medium">Cobranca</th>
+                  <th className="px-4 py-3 text-right font-medium">Fee mensal</th>
+                  {canWrite ? <th className="px-4 py-3 text-right font-medium">Acoes</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {pausedClients.map((client) => (
+                  <tr className="border-b last:border-b-0" key={client.id}>
+                    <td className="px-4 py-3 font-medium">{client.code}</td>
+                    <td className="px-4 py-3">
+                      <Link
+                        className="font-medium text-primary underline-offset-4 hover:underline"
+                        href={`/app/clientes/${client.id}` as Route}
+                      >
+                        {client.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {client.internalOwnerName ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Dia {client.billingDay}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">
+                      {client.valueHidden ? "Restrito" : formatMoney(client.monthlyFee)}
+                    </td>
+                    {canWrite ? (
+                      <td className="px-4 py-3">
+                        <ClientActions id={client.id} status={client.status} />
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

@@ -31,7 +31,7 @@ describe("permission-filtered navigation", () => {
     );
   });
 
-  it("hides routes that are not implemented yet", () => {
+  it("shows only implemented back-office routes", () => {
     const context = createAccessContext({
       userId: "director_1",
       roles: ["director"],
@@ -41,9 +41,12 @@ describe("permission-filtered navigation", () => {
     expect(hrefs).toContain("/app");
     expect(hrefs).toContain("/app/financeiro");
     expect(hrefs).toContain("/app/clientes");
+    expect(hrefs).toContain("/app/colaboradores");
+    expect(hrefs).toContain("/app/ferias");
+    expect(hrefs).toContain("/app/documentos");
+    expect(hrefs).toContain("/app/nfs");
+    expect(hrefs).toContain("/app/reembolsos");
     expect(hrefs).not.toContain("/app/auditoria");
-    expect(hrefs).not.toContain("/app/colaboradores");
-    expect(hrefs).not.toContain("/app/reembolsos");
     expect(hrefs).not.toContain("/app/equipamentos");
     expect(hrefs).not.toContain("/app/acessos");
     expect(hrefs).not.toContain("/app/saas");

@@ -15,6 +15,20 @@
       "when": 1778625300007,
       "tag": "0001_big_alice",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778681817615,
+      "tag": "0002_youthful_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778685767485,
+      "tag": "0003_deep_steve_rogers",
+      "breakpoints": true
     }
   ]
 }

@@ -277,3 +277,106 @@ Correção aplicada em 2026-05-12:
 18. Financeiro ajustado para abrir criacao de entradas, saidas e provisoes em dialogs, com edicao de entradas e saidas tambem em dialogs por linha.
 19. Clientes ajustado para cadastro em `/app/clientes/novo` e detalhe/edicao em `/app/clientes/[id]`.
 20. Detalhe de cliente passou a exibir dados ampliados, acoes de status e historico recente de auditoria quando o perfil pode ler logs.
+
+## Atualizacao de central de cobranca de clientes em 2026-05-13
+
+1. Refeito o detalhe de cliente em `/app/clientes/[id]` como central de cobranca recorrente com abas de resumo, pagamentos, cobranca, contratos/documentos, historico e observacoes internas.
+2. Adicionadas regras puras para vencimento recorrente, elegibilidade de geracao de entrada prevista, status financeiro mensal do cliente, pagamento parcial e lembretes de cobranca.
+3. Criado DAL expandido para perfil de cobranca, historico de pagamentos, resumo financeiro, lembretes e alertas de clientes sem enviar valores para perfis sem `finance.read`.
+4. Criadas server actions para atualizar perfil de cobranca, gerar entrada prevista, marcar pagamento recebido pelo detalhe do cliente e editar observacoes internas.
+5. A geracao de entrada prevista bloqueia clientes cancelados ou sem cobranca valida e evita duplicar a mesma competencia/descricao.
+6. Lembretes internos cobrem cobranca proxima do vencimento, vencendo hoje, atrasada, pagamento parcial e multiplas cobrancas abertas.
+7. Dashboard `/app` passou a exibir alertas de cobranca para usuarios com permissao financeira.
+8. Listagem de clientes passou a separar clientes pausados da carteira ativa/cancelada.
+9. Seed local passou a criar perfis de cobranca, metodos de pagamento e valores recebidos de exemplo.
+10. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run db:migrate`
+    - `npm.cmd run db:seed`
+    - `npm.cmd run build`
+
+## Atualizacao de colaboradores e remuneracao em 2026-05-13
+
+1. Iniciada a proxima fatia da Wave 2 com modulo de colaboradores e remuneracao.
+2. Criadas tabelas `compensation_history` e `employee_benefits` para historico de remuneracao e beneficios.
+3. Gerada migration `drizzle/0002_youthful_squadron_sinister.sql`.
+4. Criadas regras puras para matricula `FG-00001`, escopo de leitura, redacao de remuneracao, tempo de casa, diferenca de remuneracao e beneficios ativos.
+5. Criado DAL de colaboradores com escopo por permissao: diretoria/RH/financeiro veem conforme perfil, lideranca ve equipe direta e colaborador ve apenas proprio registro.
+6. DTOs de colaboradores ocultam remuneracao para perfis sem permissao de compensacao e ocultam dados pessoais sensiveis quando o perfil nao pode le-los.
+7. Criadas server actions para cadastrar/editar colaborador, alterar remuneracao com historico auditado, criar beneficio e encerrar beneficio.
+8. Criadas rotas privadas:
+   - `/app/colaboradores`
+   - `/app/colaboradores/novo`
+   - `/app/colaboradores/[id]`
+   - `/app/colaboradores/[id]/remuneracao`
+9. Navegacao lateral passou a exibir Colaboradores para perfis com permissao de pessoas.
+10. Seed local passou a criar colaborador PJ de exemplo, historico de remuneracao e beneficio recorrente.
+11. Adicionados testes de regras de pessoas/remuneracao e atualizados testes de navegacao.
+12. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run db:migrate`
+    - `npm.cmd run db:seed`
+    - `npm.cmd run build`
+
+## Atualizacao de portal, NFs e reembolsos em 2026-05-13
+
+1. Implementada a primeira fatia do fluxo de portal, notas fiscais PJ e reembolsos sobre as tabelas existentes.
+2. Criadas regras puras para composicao de NF, soma de itens com descontos, divergencia de valor emitido, escopo de leitura de NF e transicoes de reembolso.
+3. Criado DAL de portal com:
+   - resumo do colaborador atual
+   - NFs proprias ou administrativas conforme permissao
+   - reembolsos proprios, de equipe direta ou globais conforme perfil
+   - opcoes de colaboradores PJ para o financeiro publicar solicitacoes de NF
+4. Criadas server actions para:
+   - publicar solicitacao de NF para PJ
+   - colaborador informar valor emitido da NF
+   - financeiro aprovar, solicitar ajuste/recusar e marcar NF como paga
+   - colaborador enviar reembolso
+   - lideranca aprovar/recusar reembolso da equipe
+   - financeiro aprovar/recusar e marcar reembolso como pago
+5. Aprovacao de NF gera saida financeira prevista com log de auditoria.
+6. Portal `/portal` passou a exibir card operacional de NF pendente para PJ, lista de NFs e lista/formulario de reembolsos.
+7. Criadas rotas back-office:
+   - `/app/nfs`
+   - `/app/reembolsos`
+8. Navegacao lateral passou a exibir NFs PJ e Reembolsos para perfis autorizados.
+9. Seed local passou a criar uma solicitacao de NF PJ pendente e um reembolso enviado.
+10. Adicionados testes de regras de portal, NFs e reembolsos.
+11. Observacao: upload real de arquivo da NF/anexo ainda nao foi implementado; esta fatia registra o valor emitido e o fluxo de aprovacao manual.
+12. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run db:migrate`
+    - `npm.cmd run db:seed`
+    - `npm.cmd run build`
+
+## Atualizacao de ferias, pausas e documentos em 2026-05-13
+
+1. Implementada a fatia de ferias/pausas e documentos sobre as tabelas existentes e a nova tabela de metadados documentais.
+2. Criada tabela `documents` para vincular arquivos a colaboradores e outros donos logicos, com tipo, visibilidade, versao, status e soft delete.
+3. Gerada migration `drizzle/0003_deep_steve_rogers.sql`.
+4. Criadas regras puras para validacao de metadados de upload, extensao/MIME permitidos, limite de tamanho, sensibilidade, visibilidade e leitura propria.
+5. Criado DAL de documentos para listagem administrativa, leitura propria no portal e opcoes de colaboradores para registro.
+6. Criadas server actions para registrar metadados de documento e excluir documento por soft delete, com RBAC e audit log.
+7. Criadas regras, DAL e server actions para solicitacao propria de ferias/pausa, calculo de dias uteis e aprovacao/recusa por RH ou lideranca direta.
+8. Portal `/portal` passou a exibir documentos proprios e solicitacoes de ferias/pausas, alem do formulario de nova solicitacao.
+9. Criadas rotas back-office:
+   - `/app/ferias`
+   - `/app/documentos`
+10. Navegacao lateral passou a exibir Ferias/Pausas e Documentos para perfis autorizados.
+11. Seed local passou a criar uma pausa programada pendente e um documento de contrato PJ visivel ao colaborador.
+12. Adicionados testes de regras de documentos, validacao de metadados de upload, calculo de dias e aprovacao de ferias/pausas.
+13. Observacao: upload/download binario real no storage ainda nao foi implementado; esta fatia registra metadados e chaves de storage para operar o fluxo com rastreabilidade.
+14. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run db:generate`
+    - `npm.cmd run db:migrate`
+    - `npm.cmd run db:seed`
+    - `npm.cmd run build`

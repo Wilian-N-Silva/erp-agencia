@@ -177,6 +177,7 @@ export async function markFinancialEntryReceivedAction(formData: FormData) {
   const [after] = await db
     .update(financialEntries)
     .set({
+      receivedAmount: before.amount,
       receivedDate: toDateKey(new Date()),
       status: "received",
       updatedAt: new Date(),
@@ -202,6 +203,10 @@ export async function markFinancialEntryReceivedAction(formData: FormData) {
   });
 
   revalidatePath("/app/financeiro");
+  if (before.clientId) {
+    revalidatePath("/app");
+    revalidatePath(`/app/clientes/${before.clientId}`);
+  }
 }
 
 export async function cancelFinancialEntryAction(formData: FormData) {

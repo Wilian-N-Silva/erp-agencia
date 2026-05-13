@@ -351,6 +351,70 @@ export const employees = pgTable(
   }),
 );
 
+export const compensationHistory = pgTable(
+  "compensation_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    previousAmount: numeric("previous_amount", { precision: 12, scale: 2 }).notNull(),
+    newAmount: numeric("new_amount", { precision: 12, scale: 2 }).notNull(),
+    differenceAmount: numeric("difference_amount", { precision: 12, scale: 2 }).notNull(),
+    effectiveDate: date("effective_date").notNull(),
+    reason: text("reason").notNull(),
+    approvedByUserId: text("approved_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    documentFileId: uuid("document_file_id").references(() => files.id),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeIdx: index("compensation_history_employee_idx").on(table.employeeId),
+    organizationIdx: index("compensation_history_organization_idx").on(
+      table.organizationId,
+      table.effectiveDate,
+    ),
+  }),
+);
+
+export const employeeBenefits = pgTable(
+  "employee_benefits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    benefitType: text("benefit_type").notNull(),
+    name: text("name").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    recurring: boolean("recurring").notNull().default(true),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
+    status: text("status").notNull().default("active"),
+    notes: text("notes"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeIdx: index("employee_benefits_employee_idx").on(table.employeeId),
+    statusIdx: index("employee_benefits_status_idx").on(table.organizationId, table.status),
+  }),
+);
+
 export const clients = pgTable(
   "clients",
   {
@@ -569,6 +633,36 @@ export const files = pgTable(
   (table) => ({
     ownerIdx: index("files_owner_idx").on(table.ownerEmployeeId),
     storageIdx: uniqueIndex("files_storage_idx").on(table.storageProvider, table.storageKey),
+  }),
+);
+
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    ownerType: text("owner_type").notNull(),
+    ownerId: text("owner_id").notNull(),
+    documentType: text("document_type").notNull(),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    visibility: text("visibility").notNull().default("restricted"),
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("active"),
+    uploadedByUserId: text("uploaded_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    ownerIdx: index("documents_owner_idx").on(table.organizationId, table.ownerType, table.ownerId),
+    fileIdx: uniqueIndex("documents_file_idx").on(table.fileId),
+    statusIdx: index("documents_status_idx").on(table.organizationId, table.status),
   }),
 );
 
