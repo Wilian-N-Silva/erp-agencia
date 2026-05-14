@@ -380,3 +380,156 @@ Correção aplicada em 2026-05-12:
     - `npm.cmd run db:migrate`
     - `npm.cmd run db:seed`
     - `npm.cmd run build`
+
+## Atualizacao de governanca, equipamentos, acessos e SaaS em 2026-05-14
+
+1. Criada branch `feature/governance-assets-access-saas` a partir do HEAD atual de `feature/finance-clients`, pois `development` ainda nao continha as fatias de Wave 2 ja commitadas.
+2. Implementado modulo de equipamentos com regras puras de patrimonio `EQ-00001`, escopo proprio/equipe/total, status que exigem responsavel e alertas de devolucao.
+3. Criado DAL e server actions de equipamentos para listar por escopo, cadastrar, atribuir, devolver, colocar em manutencao e descartar com audit log.
+4. Implementado modulo de acessos com regras de criticidade, revisao vencida/proxima/ausente, acesso ativo de colaborador desligado e escopo por perfil.
+5. Criado DAL e server actions de acessos para registrar, aprovar, revisar e remover acessos sem armazenar senhas, com audit log.
+6. Implementado modulo de SaaS/assinaturas com escopo total ou vinculado, ocultacao de custo sem `finance.read`, janela de renovacao e vinculo de colaboradores.
+7. Criado DAL e server actions de SaaS para cadastrar, atualizar, vincular/desvincular usuarios, renovar e cancelar assinaturas com audit log.
+8. Criadas rotas privadas:
+   - `/app/equipamentos`
+   - `/app/acessos`
+   - `/app/assinaturas`
+9. Portal passou a exibir equipamentos, acessos e ferramentas vinculadas ao colaborador.
+10. Dashboard passou a consolidar alertas de devolucao de equipamento, revisao de acesso critico e renovacao de assinatura.
+11. Navegacao lateral passou a exibir Equipamentos, Acessos e Assinaturas para perfis autorizados.
+12. Seed local passou a criar equipamentos, acessos e uma assinatura SaaS de demonstracao vinculada ao colaborador PJ.
+13. Adicionados testes de regras de governanca e atualizados testes de navegacao.
+14. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run test`
+    - `npm.cmd run lint`
+    - `npm.cmd run build`
+    - `npm.cmd run db:seed`
+
+## Atualizacao de admissoes, desligamentos e checklists em 2026-05-14
+
+1. Continuada a branch `feature/governance-assets-access-saas` com a primeira fatia da Wave 3, pois ela depende dos modulos de pessoas, documentos, equipamentos, acessos e SaaS.
+2. Criadas tabelas `lifecycle_checklists` e `lifecycle_checklist_items` para checklists de admissao e desligamento com responsavel, prazo, status, obrigatoriedade e auditoria.
+3. Gerada migration `drizzle/0004_noisy_human_robot.sql`.
+4. Adicionadas permissoes `lifecycle.read` e `lifecycle.write` ao RBAC.
+5. Criadas regras puras para itens padrao de admissao/desligamento, progresso, conclusao bloqueada por itens obrigatorios pendentes e estado atrasado.
+6. Criado DAL de lifecycle para listar checklists com progresso, itens, responsaveis e pendencias de dashboard.
+7. Criadas server actions para criar checklist, alterar status de item, concluir checklist e cancelar checklist com audit log.
+8. A criacao de checklist de desligamento move o colaborador para `notice`; a conclusao do checklist move o colaborador para `terminated`.
+9. Criadas rotas privadas:
+   - `/app/admissoes`
+   - `/app/desligamentos`
+10. Dashboard passou a exibir checklists de lifecycle em aberto junto com pendencias operacionais.
+11. Navegacao lateral passou a exibir Admissoes e Desligamentos para perfis autorizados.
+12. Seed local passou a criar um checklist de desligamento de demonstracao.
+13. Adicionados testes de regras de lifecycle e atualizados testes de navegacao.
+14. Comandos validados com sucesso:
+    - `npm.cmd run db:generate`
+    - `npm.cmd run db:migrate`
+    - `npm.cmd run db:seed`
+    - `npm.cmd run test`
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run build`
+
+## Atualizacao de central de alertas e dialogs em 2026-05-14
+
+1. Adicionadas permissoes `alerts.read` e `alerts.write` ao RBAC.
+2. Criadas regras puras de alertas para severidade, status, filtros, ordenacao e deduplicacao de candidatos.
+3. Criado DAL de alertas para consolidar pendencias de clientes, financeiro, NFs, reembolsos, ferias, lifecycle, equipamentos, acessos e assinaturas.
+4. Criadas server actions para gerar alertas persistidos, resolver e descartar alertas com RBAC server-side.
+5. Criada rota privada `/app/alertas` com filtros, visao de candidatos e alertas persistidos.
+6. Dashboard `/app` passou a consumir a central consolidada de alertas.
+7. Navegacao lateral passou a exibir Alertas para perfis autorizados.
+8. Seed local passou a publicar as permissoes atuais, totalizando 55 permissoes.
+9. Adicionados testes de regras de alertas e atualizados testes de navegacao.
+10. Rotas de admissoes e desligamentos foram movidas para dentro de Colaboradores:
+    - `/app/colaboradores/admissoes`
+    - `/app/colaboradores/desligamentos`
+11. As rotas antigas `/app/admissoes` e `/app/desligamentos` foram mantidas como redirects para os novos caminhos.
+12. Formularios compactos de cadastro/solicitacao com menos de 10 campos foram movidos para `ActionDialog` em acessos, equipamentos, assinaturas, lifecycle, documentos, portal, detalhe de cliente e remuneracao.
+13. Admissoes foi integrado ao cadastro de colaboradores: a tela agora usa o formulario completo de novo colaborador e cria o checklist de admissao com itens padrao automaticamente.
+14. Desligamentos e checklists passaram a exibir dados do colaborador vinculado, link para o cadastro e o modelo/lista de itens do checklist.
+15. `ActionDialog` passou a aceitar estado `disabled` para preservar a disponibilidade de acoes condicionais.
+16. Comandos validados com sucesso:
+    - `npm.cmd run typecheck`
+    - `npm.cmd run lint`
+    - `npm.cmd run test`
+    - `npm.cmd run build`
+    - `npm.cmd run db:seed`
+
+## Atualizacao de usuarios demo locais em 2026-05-14
+
+1. Seed local passou a criar usuarios de teste por perfil com senha compartilhada configuravel por `DEMO_USER_PASSWORD`.
+2. Criado usuario `pj.exemplo@formula.local` com perfil `employee` e vinculo ao colaborador PJ de demonstracao.
+3. Criado usuario `todos.perfis@formula.local` com todos os perfis para validar a navegacao completa.
+4. Criado colaborador de lideranca vinculado a `lideranca@formula.local`, usado como gestor do PJ demo para testar escopo de equipe.
+
+## Atualizacao de auditoria administrativa em 2026-05-14
+
+1. Criada feature `src/features/audit` com filtros, escopo por perfil, labels e exportacao CSV.
+2. Criada rota privada `/app/auditoria` com filtros por busca, acao, entidade, ator, ID de entidade e periodo.
+3. Criada rota privada `/app/auditoria/[id]` com detalhe do log; payloads, IP e user agent ficam restritos a `audit.read`.
+4. Criada exportacao `/app/auditoria/exportar`, permitida apenas para `audit.read` e registrada com log de auditoria.
+5. Navegacao lateral passou a exibir Auditoria para `audit.read` e `audit.read_limited`.
+6. Usuarios com `audit.read_limited` veem apenas entidades relacionadas ao seu dominio e sem snapshots/payloads sensiveis.
+7. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test -- src/tests/audit.test.ts src/tests/navigation.test.ts`
+
+## Atualizacao de configuracoes administrativas em 2026-05-14
+
+1. Criada tabela `app_settings` para parametros operacionais por organizacao.
+2. Gerada migration `drizzle/0005_early_marvel_zombies.sql`.
+3. Seed local passou a criar parametros de storage, limite de upload e dominio permitido.
+4. Criada feature `src/features/settings` com regras, DAL e server actions para configuracoes.
+5. Criada rota privada `/app/configuracoes` com usuarios, atribuicao de perfis, ativacao/desativacao, matriz de permissoes e parametros editaveis.
+6. Criacao e alteracao de usuario/perfis/status/parametros geram logs de auditoria.
+7. Navegacao lateral passou a exibir Configuracoes para `settings.read` e `settings.manage`.
+8. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run db:generate`
+   - `npm.cmd run db:migrate`
+   - `npm.cmd run db:seed`
+   - `npm.cmd run test -- src/tests/settings.test.ts src/tests/audit.test.ts src/tests/navigation.test.ts`
+
+## Atualizacao de storage e upload em 2026-05-14
+
+1. Criado `src/lib/storage.ts` com fallback local e suporte a Cloudflare R2 via API S3 compativel.
+2. A selecao de storage usa R2 quando bucket, endpoint/account id, access key e secret estao configurados; caso contrario usa pasta local.
+3. `.gitignore` passou a ignorar `uploads` e `storage-local`.
+4. `.env.example` passou a documentar `LOCAL_UPLOAD_DIR`, `STORAGE_ENDPOINT` e `STORAGE_ACCOUNT_ID`.
+5. Cadastro de documentos passou a enviar arquivo binario real, calcular checksum SHA-256 e gravar provider/bucket/key no cadastro do arquivo.
+6. Criada rota autenticada `/app/documentos/[id]/download` com autorizacao por documento e log de `sensitive_read`.
+7. Back-office de documentos e portal do colaborador passaram a exibir acao de download.
+8. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test -- src/tests/storage.test.ts src/tests/timeoff-documents.test.ts`
+
+## Atualizacao de hardening e E2E em 2026-05-14
+
+1. Adicionado script `npm.cmd run test:e2e` com Playwright.
+2. Criada configuracao `playwright.config.ts` usando servidor local isolado na porta `3100`.
+3. Criados fluxos E2E criticos para login de colaborador comum e usuario com todos os perfis.
+4. Criados testes de seguranca para fronteiras de permissao, IDOR de documentos, auditoria limitada e restricoes de upload.
+5. Playwright Chromium foi instalado no ambiente local para execucao dos testes.
+6. Foi necessario limpar `.next` e rebuildar para remover referencia stale de vendor chunk antes do E2E.
+7. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test`
+   - `npm.cmd run lint`
+   - `npm.cmd run build`
+   - `npm.cmd run test:e2e`
+
+## Atualizacao de upload no portal em 2026-05-14
+
+1. Envio de NF pelo portal passou a exigir arquivo valido e gravar o binario via storage configurado.
+2. Solicitacao de reembolso passou a aceitar comprovante opcional, vinculando `fileId` e documento quando enviado.
+3. Uploads de NF e reembolso agora criam versoes em `documents`, checksum SHA-256 em `files` e log de auditoria de arquivo.
+4. Comandos validados com sucesso:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run test -- src/tests/portal-workflows.test.ts src/tests/storage.test.ts src/tests/security-critical-flows.test.ts`
+   - `npm.cmd run lint`
+   - `npm.cmd run test`
+   - `npm.cmd run build`
+   - `npm.cmd run test:e2e`

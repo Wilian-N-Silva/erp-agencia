@@ -1,6 +1,8 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+import { and, count, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -9,7 +11,9 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
   areas,
+  documents,
   employees,
+  files,
   financialExpenses,
   invoiceRequestItems,
   invoiceRequests,
@@ -18,7 +22,19 @@ import {
 } from "@/lib/db/schema";
 import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import {
+  createStorageKey,
+  getSha256Hex,
+  putStorageObject,
+} from "@/lib/storage";
 
+import {
+  validateUploadMetadata,
+  type DocumentOwnerType,
+  type DocumentType,
+  type DocumentVisibility,
+  type FileSensitivity,
+} from "@/features/documents/rules";
 import { normalizeMoneyInput } from "@/features/finance/rules";
 
 import {
@@ -159,10 +175,22 @@ export async function submitInvoiceRequestAction(formData: FormData) {
     throw new AccessDeniedError();
   }
 
+  const uploadedFile = getRequiredUploadedFile(formData, "Invoice file is required.");
+  const storedDocument = await storePortalDocument({
+    context,
+    documentType: "invoice",
+    ownerEmployeeId: before.employeeId,
+    ownerId: input.id,
+    ownerType: "invoice_request",
+    sensitivity: "restricted",
+    uploadedFile,
+    visibility: "employee_visible",
+  });
   const divergence = hasInvoiceDivergence(before.expectedAmount, input.issuedAmount);
   const [after] = await db
     .update(invoiceRequests)
     .set({
+      fileId: storedDocument.file.id,
       issuedAmount: input.issuedAmount,
       status: divergence ? "under_review" : "submitted",
       updatedAt: new Date(),
@@ -177,7 +205,9 @@ export async function submitInvoiceRequestAction(formData: FormData) {
     before,
     after,
     metadata: {
+      documentId: storedDocument.document.id,
       divergence,
+      fileId: storedDocument.file.id,
       source: "portal",
     },
   });
@@ -307,9 +337,25 @@ export async function createReimbursementAction(formData: FormData) {
 
   assertCan("reimbursements.read_own", context);
   const input = createReimbursementSchema.parse(formDataToObject(formData));
+  const uploadedFile = getUploadedFile(formData);
+  const reimbursementId = randomUUID();
+  const storedDocument = uploadedFile
+    ? await storePortalDocument({
+        context,
+        documentType: "reimbursement_receipt",
+        ownerEmployeeId: context.employeeId,
+        ownerId: reimbursementId,
+        ownerType: "reimbursement_request",
+        sensitivity: "restricted",
+        uploadedFile,
+        visibility: "employee_visible",
+      })
+    : null;
   const [reimbursement] = await db
     .insert(reimbursementRequests)
     .values({
+      id: reimbursementId,
+      fileId: storedDocument?.file.id ?? null,
       organizationId: context.organizationId,
       employeeId: context.employeeId,
       title: input.title,
@@ -326,6 +372,12 @@ export async function createReimbursementAction(formData: FormData) {
     entityType: "reimbursement_request",
     entityId: reimbursement.id,
     after: reimbursement,
+    metadata: storedDocument
+      ? {
+          documentId: storedDocument.document.id,
+          fileId: storedDocument.file.id,
+        }
+      : undefined,
   });
 
   revalidateReimbursementPaths();
@@ -432,6 +484,17 @@ export async function markReimbursementPaidAction(formData: FormData) {
 }
 
 type AuthorizedContext = AccessContext & { organizationId: string };
+
+type StorePortalDocumentInput = {
+  context: AuthorizedContext;
+  documentType: DocumentType;
+  ownerEmployeeId: string | null;
+  ownerId: string;
+  ownerType: DocumentOwnerType;
+  sensitivity: FileSensitivity;
+  uploadedFile: File;
+  visibility: DocumentVisibility;
+};
 
 async function requireCurrentContext(): Promise<AuthorizedContext> {
   const context = await getCurrentAccessContext();
@@ -603,6 +666,88 @@ async function updateReimbursementStatus(
   revalidateReimbursementPaths();
 }
 
+async function storePortalDocument(input: StorePortalDocumentInput) {
+  const originalName = input.uploadedFile.name;
+  const mimeType = input.uploadedFile.type || "application/octet-stream";
+  const byteSize = input.uploadedFile.size;
+  const upload = validateUploadMetadata({
+    byteSize,
+    mimeType,
+    originalName,
+  });
+  const body = Buffer.from(await input.uploadedFile.arrayBuffer());
+  const storedObject = await putStorageObject({
+    body,
+    contentType: upload.normalizedMimeType,
+    key: createStorageKey({
+      fileName: originalName,
+      organizationId: input.context.organizationId,
+      prefix: `documents/${input.ownerType}/${input.ownerId}`,
+    }),
+  });
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.organizationId, input.context.organizationId),
+        eq(documents.ownerType, input.ownerType),
+        eq(documents.ownerId, input.ownerId),
+        eq(documents.documentType, input.documentType),
+      ),
+    );
+  const [file] = await db
+    .insert(files)
+    .values({
+      organizationId: input.context.organizationId,
+      ownerEmployeeId: input.ownerEmployeeId,
+      storageProvider: storedObject.provider,
+      bucket: storedObject.bucket,
+      storageKey: storedObject.key,
+      originalName,
+      mimeType: upload.normalizedMimeType,
+      extension: upload.extension,
+      byteSize,
+      sensitivity: input.sensitivity,
+      checksum: getSha256Hex(body),
+      uploadedByUserId: input.context.userId,
+    })
+    .returning();
+  const [document] = await db
+    .insert(documents)
+    .values({
+      organizationId: input.context.organizationId,
+      ownerType: input.ownerType,
+      ownerId: input.ownerId,
+      documentType: input.documentType,
+      fileId: file.id,
+      visibility: input.visibility,
+      version: total + 1,
+      uploadedByUserId: input.context.userId,
+    })
+    .returning();
+
+  await writeAuditLog(input.context, {
+    action: "create",
+    entityType: "file",
+    entityId: file.id,
+    after: {
+      document,
+      file,
+    },
+    metadata: {
+      ownerId: input.ownerId,
+      ownerType: input.ownerType,
+      source: "portal",
+    },
+  });
+
+  return {
+    document,
+    file,
+  };
+}
+
 function buildInvoiceItems(input: z.infer<typeof createInvoiceRequestSchema>) {
   const rawItems: { amount: string | null; kind: InvoiceItemKind; label: string }[] = [
     {
@@ -655,6 +800,22 @@ function revalidateReimbursementPaths() {
 
 function formDataToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
+}
+
+function getRequiredUploadedFile(formData: FormData, message: string) {
+  const file = getUploadedFile(formData);
+
+  if (!file) {
+    throw new Error(message);
+  }
+
+  return file;
+}
+
+function getUploadedFile(formData: FormData) {
+  const file = formData.get("file");
+
+  return typeof File !== "undefined" && file instanceof File && file.size > 0 ? file : null;
 }
 
 function optionalTextSchema(maxLength: number) {

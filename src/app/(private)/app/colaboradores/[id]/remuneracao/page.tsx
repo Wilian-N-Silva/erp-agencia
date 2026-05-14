@@ -2,6 +2,7 @@ import { ArrowLeft, Ban, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ActionDialog } from "@/components/ui/action-dialog";
 import {
   createEmployeeBenefitAction,
   endEmployeeBenefitAction,
@@ -68,11 +69,28 @@ export default async function EmployeeCompensationPage({ params }: PageProps) {
           <ArrowLeft className="size-4" aria-hidden="true" />
           Voltar
         </Link>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-normal">Remuneracao</h1>
-          <p className="text-sm text-muted-foreground">
-            {employee.socialName || employee.fullName} - {employmentTypeLabels[employee.employmentType]}
-          </p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-normal">Remuneracao</h1>
+            <p className="text-sm text-muted-foreground">
+              {employee.socialName || employee.fullName} - {employmentTypeLabels[employee.employmentType]}
+            </p>
+          </div>
+          {canWrite ? (
+            <ActionDialog
+              title="Alterar remuneracao"
+              trigger={
+                <>
+                  <Save className="size-4" aria-hidden="true" />
+                  Alterar remuneracao
+                </>
+              }
+              triggerClassName={`${primaryButtonClassName} sm:w-auto`}
+              triggerLabel="Alterar remuneracao"
+            >
+              <CompensationForm employee={employee} />
+            </ActionDialog>
+          ) : null}
         </div>
       </div>
 
@@ -81,45 +99,6 @@ export default async function EmployeeCompensationPage({ params }: PageProps) {
         <SummaryCard label="Ajuda de custo" value={formatMoney(employee.recurringCostAllowance)} />
         <SummaryCard label="Transporte" value={formatMoney(employee.recurringTransport)} />
       </div>
-
-      {canWrite ? (
-        <section className="rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-base font-semibold">Alterar remuneracao</h2>
-          </div>
-          <form action={updateEmployeeCompensationAction} className="grid gap-4 p-4">
-            <input name="employeeId" type="hidden" value={employee.id} />
-            <div className="grid gap-3 lg:grid-cols-4">
-              <label className={fieldClassName}>
-                Novo valor
-                <input className={inputClassName} defaultValue={employee.currentCompensation ?? ""} inputMode="decimal" name="newAmount" required />
-              </label>
-              <label className={fieldClassName}>
-                Ajuda de custo
-                <input className={inputClassName} defaultValue={employee.recurringCostAllowance ?? ""} inputMode="decimal" name="recurringCostAllowance" />
-              </label>
-              <label className={fieldClassName}>
-                Transporte
-                <input className={inputClassName} defaultValue={employee.recurringTransport ?? ""} inputMode="decimal" name="recurringTransport" />
-              </label>
-              <label className={fieldClassName}>
-                Vigencia
-                <input className={inputClassName} defaultValue={currentDate()} name="effectiveDate" required type="date" />
-              </label>
-            </div>
-            <label className={fieldClassName}>
-              Motivo
-              <textarea className={textareaClassName} maxLength={500} name="reason" required rows={3} />
-            </label>
-            <div className="flex justify-end">
-              <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-                <Save className="size-4" aria-hidden="true" />
-                Registrar alteracao
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <section className="rounded-lg border bg-card">
@@ -147,8 +126,23 @@ export default async function EmployeeCompensationPage({ params }: PageProps) {
         </section>
 
         <section className="rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
             <h2 className="text-base font-semibold">Beneficios</h2>
+            {canWrite ? (
+              <ActionDialog
+                title="Novo beneficio"
+                trigger={
+                  <>
+                    <Plus className="size-4" aria-hidden="true" />
+                    Novo
+                  </>
+                }
+                triggerClassName={compactSecondaryButtonClassName}
+                triggerLabel="Novo beneficio"
+              >
+                <BenefitForm employeeId={employee.id} />
+              </ActionDialog>
+            ) : null}
           </div>
           <div className="divide-y">
             {benefits.length === 0 ? (
@@ -179,52 +173,112 @@ export default async function EmployeeCompensationPage({ params }: PageProps) {
           </div>
         </section>
       </div>
-
-      {canWrite ? (
-        <section className="rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-base font-semibold">Novo beneficio</h2>
-          </div>
-          <form action={createEmployeeBenefitAction} className="grid gap-4 p-4">
-            <input name="employeeId" type="hidden" value={employee.id} />
-            <div className="grid gap-3 lg:grid-cols-4">
-              <label className={fieldClassName}>
-                Tipo
-                <input className={inputClassName} maxLength={80} name="benefitType" required />
-              </label>
-              <label className={fieldClassName}>
-                Nome
-                <input className={inputClassName} maxLength={160} name="name" required />
-              </label>
-              <label className={fieldClassName}>
-                Valor
-                <input className={inputClassName} inputMode="decimal" name="amount" required />
-              </label>
-              <label className={fieldClassName}>
-                Inicio
-                <input className={inputClassName} defaultValue={currentDate()} name="startDate" required type="date" />
-              </label>
-            </div>
-            <div className="grid gap-3 lg:grid-cols-[minmax(10rem,0.3fr)_1fr]">
-              <label className="flex items-center gap-2 self-end text-sm text-muted-foreground">
-                <input className="size-4 accent-primary" defaultChecked name="recurring" type="checkbox" />
-                Recorrente
-              </label>
-              <label className={fieldClassName}>
-                Observacao
-                <input className={inputClassName} maxLength={1000} name="notes" />
-              </label>
-            </div>
-            <div className="flex justify-end">
-              <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-                <Plus className="size-4" aria-hidden="true" />
-                Criar beneficio
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
     </section>
+  );
+}
+
+function CompensationForm({
+  employee,
+}: {
+  employee: {
+    id: string;
+    currentCompensation: string | null;
+    recurringCostAllowance: string | null;
+    recurringTransport: string | null;
+  };
+}) {
+  return (
+    <form action={updateEmployeeCompensationAction} className="grid gap-4">
+      <input name="employeeId" type="hidden" value={employee.id} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Novo valor
+          <input
+            className={inputClassName}
+            defaultValue={employee.currentCompensation ?? ""}
+            inputMode="decimal"
+            name="newAmount"
+            required
+          />
+        </label>
+        <label className={fieldClassName}>
+          Vigencia
+          <input className={inputClassName} defaultValue={currentDate()} name="effectiveDate" required type="date" />
+        </label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Ajuda de custo
+          <input
+            className={inputClassName}
+            defaultValue={employee.recurringCostAllowance ?? ""}
+            inputMode="decimal"
+            name="recurringCostAllowance"
+          />
+        </label>
+        <label className={fieldClassName}>
+          Transporte
+          <input
+            className={inputClassName}
+            defaultValue={employee.recurringTransport ?? ""}
+            inputMode="decimal"
+            name="recurringTransport"
+          />
+        </label>
+      </div>
+      <label className={fieldClassName}>
+        Motivo
+        <textarea className={textareaClassName} maxLength={500} name="reason" required rows={3} />
+      </label>
+      <div className="flex justify-end">
+        <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+          <Save className="size-4" aria-hidden="true" />
+          Registrar alteracao
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function BenefitForm({ employeeId }: { employeeId: string }) {
+  return (
+    <form action={createEmployeeBenefitAction} className="grid gap-4">
+      <input name="employeeId" type="hidden" value={employeeId} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Tipo
+          <input className={inputClassName} maxLength={80} name="benefitType" required />
+        </label>
+        <label className={fieldClassName}>
+          Nome
+          <input className={inputClassName} maxLength={160} name="name" required />
+        </label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Valor
+          <input className={inputClassName} inputMode="decimal" name="amount" required />
+        </label>
+        <label className={fieldClassName}>
+          Inicio
+          <input className={inputClassName} defaultValue={currentDate()} name="startDate" required type="date" />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <input className="size-4 accent-primary" defaultChecked name="recurring" type="checkbox" />
+        Recorrente
+      </label>
+      <label className={fieldClassName}>
+        Observacao
+        <input className={inputClassName} maxLength={1000} name="notes" />
+      </label>
+      <div className="flex justify-end">
+        <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+          <Plus className="size-4" aria-hidden="true" />
+          Criar beneficio
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -258,6 +312,9 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+
+const compactSecondaryButtonClassName =
+  "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 
 const dangerIconButtonClassName =
   "inline-flex size-8 items-center justify-center rounded-md border border-destructive/30 text-destructive transition-colors hover:bg-destructive/10";

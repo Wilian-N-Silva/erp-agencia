@@ -10,6 +10,11 @@ import { db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import {
+  createStorageKey,
+  getSha256Hex,
+  putStorageObject,
+} from "@/lib/storage";
 
 import {
   canWriteDocuments,
@@ -47,16 +52,19 @@ const sensitivitySchema = z.enum(
   ],
 );
 
-const registerDocumentSchema = z.object({
+const documentMetadataSchema = z.object({
   ownerType: ownerTypeSchema,
   ownerId: z.string().trim().min(1).max(160),
   ownerEmployeeId: optionalIdSchema(),
   documentType: documentTypeSchema,
+  sensitivity: sensitivitySchema,
+  visibility: visibilitySchema,
+});
+
+const legacyRegisterDocumentSchema = documentMetadataSchema.extend({
   originalName: z.string().trim().min(1).max(240),
   mimeType: z.string().trim().min(1).max(160),
   byteSize: z.coerce.number().int().positive(),
-  sensitivity: sensitivitySchema,
-  visibility: visibilitySchema,
   storageKey: z.string().trim().min(1).max(500),
   checksum: z
     .string()
@@ -72,7 +80,11 @@ const idSchema = z.object({
 
 export async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
-  const input = registerDocumentSchema.parse(formDataToObject(formData));
+  const metadata = documentMetadataSchema.parse(formDataToObject(formData));
+  const uploadedFile = getUploadedFile(formData);
+  const input = uploadedFile
+    ? await buildUploadedDocumentInput(uploadedFile, metadata, organizationId)
+    : buildLegacyDocumentInput(formData);
   const ownerEmployeeId = await resolveOwnerEmployeeId(input, organizationId);
   const upload = validateUploadMetadata({
     byteSize: input.byteSize,
@@ -95,8 +107,8 @@ export async function registerDocumentAction(formData: FormData) {
     .values({
       organizationId,
       ownerEmployeeId,
-      storageProvider: process.env.STORAGE_PROVIDER || "metadata",
-      bucket: process.env.STORAGE_BUCKET || null,
+      storageProvider: input.storageProvider,
+      bucket: input.bucket,
       storageKey: input.storageKey,
       originalName: input.originalName,
       mimeType: upload.normalizedMimeType,
@@ -136,6 +148,59 @@ export async function registerDocumentAction(formData: FormData) {
   });
 
   revalidateDocumentPaths();
+}
+
+async function buildUploadedDocumentInput(
+  uploadedFile: File,
+  metadata: z.infer<typeof documentMetadataSchema>,
+  organizationId: string,
+) {
+  const originalName = uploadedFile.name;
+  const mimeType = uploadedFile.type || "application/octet-stream";
+  const byteSize = uploadedFile.size;
+  const upload = validateUploadMetadata({
+    byteSize,
+    mimeType,
+    originalName,
+  });
+  const body = Buffer.from(await uploadedFile.arrayBuffer());
+  const storageKey = createStorageKey({
+    fileName: originalName,
+    organizationId,
+    prefix: `documents/${metadata.ownerType}/${metadata.ownerId}`,
+  });
+  const storedObject = await putStorageObject({
+    body,
+    contentType: upload.normalizedMimeType,
+    key: storageKey,
+  });
+
+  return {
+    ...metadata,
+    bucket: storedObject.bucket,
+    byteSize,
+    checksum: getSha256Hex(body),
+    mimeType,
+    originalName,
+    storageKey: storedObject.key,
+    storageProvider: storedObject.provider,
+  };
+}
+
+function buildLegacyDocumentInput(formData: FormData) {
+  const input = legacyRegisterDocumentSchema.parse(formDataToObject(formData));
+
+  return {
+    ...input,
+    bucket: process.env.STORAGE_BUCKET || null,
+    storageProvider: process.env.STORAGE_PROVIDER || "metadata",
+  };
+}
+
+function getUploadedFile(formData: FormData) {
+  const file = formData.get("file");
+
+  return typeof File !== "undefined" && file instanceof File && file.size > 0 ? file : null;
 }
 
 export async function deleteDocumentAction(formData: FormData) {

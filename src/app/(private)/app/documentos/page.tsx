@@ -1,7 +1,8 @@
-import { Ban, FileUp } from "lucide-react";
+import { Ban, Download, FileUp } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { deleteDocumentAction, registerDocumentAction } from "@/features/documents/actions";
+import { ActionDialog } from "@/components/ui/action-dialog";
 import {
   listDocumentEmployeeOptions,
   listDocuments,
@@ -39,12 +40,27 @@ export default async function DocumentsPage() {
 
   return (
     <section className="flex w-full flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-normal">Documentos</h1>
-        <p className="text-sm text-muted-foreground">Metadados, sensibilidade e visibilidade</p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-normal">Documentos</h1>
+          <p className="text-sm text-muted-foreground">Metadados, sensibilidade e visibilidade</p>
+        </div>
+        {canWrite ? (
+          <ActionDialog
+            title="Enviar documento"
+            trigger={
+              <>
+                <FileUp className="size-4" aria-hidden="true" />
+                Enviar documento
+              </>
+            }
+            triggerClassName={`${primaryButtonClassName} sm:w-auto`}
+            triggerLabel="Enviar documento"
+          >
+            <DocumentRegistrationForm employeeOptions={employeeOptions} />
+          </ActionDialog>
+        ) : null}
       </div>
-
-      {canWrite ? <DocumentRegistrationForm employeeOptions={employeeOptions} /> : null}
 
       <section className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
@@ -89,93 +105,70 @@ function DocumentRegistrationForm({
   employeeOptions: DocumentOwnerOption[];
 }) {
   return (
-    <section className="rounded-lg border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-base font-semibold">Registrar documento</h2>
+    <form action={registerDocumentAction} className="grid gap-4" encType="multipart/form-data">
+      <input name="ownerType" type="hidden" value="employee" />
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Colaborador
+          <select className={inputClassName} name="ownerId" required>
+            <option value="">Selecione um colaborador</option>
+            {employeeOptions.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={fieldClassName}>
+          Tipo
+          <select className={inputClassName} name="documentType" required>
+            {Object.entries(documentTypeLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      <form action={registerDocumentAction} className="grid gap-4 p-4">
-        <input name="ownerType" type="hidden" value="employee" />
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className={fieldClassName}>
-            Colaborador
-            <select className={inputClassName} name="ownerId" required>
-              <option value="">Selecione um colaborador</option>
-              {employeeOptions.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={fieldClassName}>
-            Tipo
-            <select className={inputClassName} name="documentType" required>
-              {Object.entries(documentTypeLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={fieldClassName}>
-            Nome do arquivo
-            <input className={inputClassName} maxLength={240} name="originalName" required />
-          </label>
-        </div>
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className={fieldClassName}>
-            MIME type
-            <input
-              className={inputClassName}
-              defaultValue="application/pdf"
-              maxLength={160}
-              name="mimeType"
-              required
-            />
-          </label>
-          <label className={fieldClassName}>
-            Tamanho bytes
-            <input className={inputClassName} min={1} name="byteSize" required type="number" />
-          </label>
-          <label className={fieldClassName}>
-            Storage key
-            <input className={inputClassName} maxLength={500} name="storageKey" required />
-          </label>
-        </div>
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className={fieldClassName}>
-            Sensibilidade
-            <select className={inputClassName} defaultValue="restricted" name="sensitivity">
-              {Object.entries(fileSensitivityLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={fieldClassName}>
-            Visibilidade
-            <select className={inputClassName} defaultValue="restricted" name="visibility">
-              {Object.entries(documentVisibilityLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={fieldClassName}>
-            Checksum
-            <input className={inputClassName} maxLength={160} name="checksum" />
-          </label>
-        </div>
-        <div className="flex justify-end">
-          <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-            <FileUp className="size-4" aria-hidden="true" />
-            Registrar documento
-          </button>
-        </div>
-      </form>
-    </section>
+      <label className={fieldClassName}>
+        Arquivo
+        <input
+          accept=".pdf,.jpg,.jpeg,.png,.xml,.xlsx,application/pdf,image/jpeg,image/png,application/xml,text/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className={fileInputClassName}
+          name="file"
+          required
+          type="file"
+        />
+      </label>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className={fieldClassName}>
+          Sensibilidade
+          <select className={inputClassName} defaultValue="restricted" name="sensitivity">
+            {Object.entries(fileSensitivityLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={fieldClassName}>
+          Visibilidade
+          <select className={inputClassName} defaultValue="restricted" name="visibility">
+            {Object.entries(documentVisibilityLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex justify-end">
+        <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+          <FileUp className="size-4" aria-hidden="true" />
+          Enviar documento
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -194,8 +187,17 @@ function DocumentRow({ canWrite, document }: { canWrite: boolean; document: Docu
       <td className="px-4 py-3 text-muted-foreground">v{document.version}</td>
       <td className="px-4 py-3 text-muted-foreground">{formatDate(document.createdAt)}</td>
       <td className="px-4 py-3">
-        {canWrite ? (
-          <form action={deleteDocumentAction} className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <a
+            aria-label="Baixar documento"
+            className="inline-flex size-8 items-center justify-center rounded-md border border-primary/30 text-primary transition-colors hover:bg-primary/10"
+            href={`/app/documentos/${document.id}/download`}
+            title="Baixar documento"
+          >
+            <Download className="size-4" aria-hidden="true" />
+          </a>
+          {canWrite ? (
+          <form action={deleteDocumentAction}>
             <input name="id" type="hidden" value={document.id} />
             <button
               aria-label="Excluir documento"
@@ -206,7 +208,8 @@ function DocumentRow({ canWrite, document }: { canWrite: boolean; document: Docu
               <Ban className="size-4" aria-hidden="true" />
             </button>
           </form>
-        ) : null}
+          ) : null}
+        </div>
       </td>
     </tr>
   );
@@ -214,6 +217,9 @@ function DocumentRow({ canWrite, document }: { canWrite: boolean; document: Docu
 
 const inputClassName =
   "h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20";
+
+const fileInputClassName =
+  "min-h-10 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground";
 
 const fieldClassName = "grid min-w-0 gap-1 text-sm font-medium";
 

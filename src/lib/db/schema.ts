@@ -877,6 +877,68 @@ export const saasSubscriptionUsers = pgTable(
   }),
 );
 
+export const lifecycleChecklists = pgTable(
+  "lifecycle_checklists",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("open"),
+    dueDate: date("due_date"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedByUserId: text("completed_by_user_id").references(() => users.id),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    notes: text("notes"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeTypeIdx: index("lifecycle_checklists_employee_type_idx").on(
+      table.employeeId,
+      table.type,
+    ),
+    statusIdx: index("lifecycle_checklists_status_idx").on(table.organizationId, table.status),
+  }),
+);
+
+export const lifecycleChecklistItems = pgTable(
+  "lifecycle_checklist_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    checklistId: uuid("checklist_id")
+      .notNull()
+      .references(() => lifecycleChecklists.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    title: text("title").notNull(),
+    required: boolean("required").notNull().default(true),
+    status: text("status").notNull().default("pending"),
+    responsibleUserId: text("responsible_user_id").references(() => users.id),
+    dueDate: date("due_date"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedByUserId: text("completed_by_user_id").references(() => users.id),
+    notes: text("notes"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    checklistIdx: index("lifecycle_items_checklist_idx").on(table.checklistId),
+    checklistKeyIdx: uniqueIndex("lifecycle_items_checklist_key_idx").on(
+      table.checklistId,
+      table.key,
+    ),
+    statusIdx: index("lifecycle_items_status_idx").on(table.status),
+  }),
+);
+
 export const alerts = pgTable(
   "alerts",
   {
@@ -902,7 +964,28 @@ export const alerts = pgTable(
   }),
 );
 
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    key: text("key").notNull(),
+    value: jsonb("value"),
+    description: text("description"),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    keyIdx: uniqueIndex("app_settings_org_key_idx").on(table.organizationId, table.key),
+    organizationIdx: index("app_settings_organization_idx").on(table.organizationId),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type AppSetting = typeof appSettings.$inferSelect;

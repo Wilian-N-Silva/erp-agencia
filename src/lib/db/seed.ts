@@ -6,6 +6,7 @@ import { getOptionalEnv } from "@/lib/env";
 import {
   defaultRolePermissions,
   permissionDescriptions,
+  roleKeys,
   roleLabels,
   type PermissionKey,
   type RoleKey,
@@ -14,6 +15,8 @@ import {
 import { db } from "./index";
 import {
   accounts,
+  accessRecords,
+  appSettings,
   areas,
   clientBillingProfiles,
   clients,
@@ -21,17 +24,22 @@ import {
   documents,
   employeeBenefits,
   employees,
+  equipment,
   files,
   financialEntries,
   financialExpenses,
   invoiceRequestItems,
   invoiceRequests,
+  lifecycleChecklistItems,
+  lifecycleChecklists,
   permissions,
   positions,
   provisions,
   reimbursementRequests,
   rolePermissions,
   roles,
+  saasSubscriptionUsers,
+  saasSubscriptions,
   timeOffRequests,
   userRoles,
   users,
@@ -48,6 +56,8 @@ const organizationSeed = {
   slug: "formula-group",
 };
 
+type DemoUserKey = RoleKey | "all_roles";
+
 async function main() {
   const organization = await seedOrganization();
   const roleByKey = await seedRoles();
@@ -55,18 +65,42 @@ async function main() {
 
   await seedRolePermissions(roleByKey, permissionByKey);
   const adminUser = await seedInitialAdmin(organization.id, roleByKey);
+  const demoUsers = await seedRoleTestUsers(organization.id, roleByKey, adminUser?.id);
+  const seedActorUserId = adminUser?.id ?? demoUsers.all_roles?.id;
+  await seedAppSettings(organization.id, seedActorUserId);
   const ownerEmployeeId = adminUser
     ? await seedInitialEmployee(organization.id, adminUser.id)
     : null;
+  const leadershipEmployeeId = await seedLeadershipDemoEmployee(
+    organization.id,
+    demoUsers.leadership?.id,
+  );
 
-  await seedPeopleDemoData(organization.id, adminUser?.id, ownerEmployeeId);
-  await seedFinanceClientDemoData(organization.id, adminUser?.id, ownerEmployeeId);
+  const demoEmployeeId = await seedPeopleDemoData(
+    organization.id,
+    seedActorUserId,
+    leadershipEmployeeId ?? ownerEmployeeId,
+    demoUsers.employee?.id,
+  );
+  await seedFinanceClientDemoData(
+    organization.id,
+    seedActorUserId,
+    ownerEmployeeId ?? leadershipEmployeeId,
+  );
+  await seedGovernanceDemoData(
+    organization.id,
+    seedActorUserId,
+    ownerEmployeeId ?? leadershipEmployeeId,
+    demoEmployeeId,
+  );
+  await seedLifecycleDemoData(organization.id, seedActorUserId, demoEmployeeId);
 
   console.log("Seed complete:");
   console.log(`- organization: ${organization.name}`);
   console.log(`- roles: ${Object.keys(roleByKey).length}`);
   console.log(`- permissions: ${Object.keys(permissionByKey).length}`);
   console.log(`- admin: ${adminUser?.email ?? "skipped"}`);
+  console.log(`- demo users: ${Object.keys(demoUsers).length} (password: ${getDemoUserPassword()})`);
 }
 
 async function seedOrganization() {
@@ -221,6 +255,176 @@ async function seedInitialAdmin(
   return user;
 }
 
+async function seedRoleTestUsers(
+  organizationId: string,
+  roleByKey: Record<RoleKey, typeof roles.$inferSelect>,
+  assignedByUserId?: string,
+) {
+  const fixtures: {
+    key: DemoUserKey;
+    id: string;
+    email: string;
+    name: string;
+    roles: readonly RoleKey[];
+  }[] = [
+    {
+      key: "all_roles",
+      id: "demo-all-roles",
+      email: "todos.perfis@formula.local",
+      name: "Todos Perfis Demo",
+      roles: roleKeys,
+    },
+    {
+      key: "technical_admin",
+      id: "demo-technical-admin",
+      email: "admin.tecnico@formula.local",
+      name: "Admin Tecnico Demo",
+      roles: ["technical_admin"],
+    },
+    {
+      key: "director",
+      id: "demo-director",
+      email: "diretoria@formula.local",
+      name: "Diretoria Demo",
+      roles: ["director"],
+    },
+    {
+      key: "finance",
+      id: "demo-finance",
+      email: "financeiro@formula.local",
+      name: "Financeiro Demo",
+      roles: ["finance"],
+    },
+    {
+      key: "hr_admin",
+      id: "demo-hr-admin",
+      email: "rh@formula.local",
+      name: "RH Demo",
+      roles: ["hr_admin"],
+    },
+    {
+      key: "it_governance",
+      id: "demo-it-governance",
+      email: "ti@formula.local",
+      name: "TI Governanca Demo",
+      roles: ["it_governance"],
+    },
+    {
+      key: "leadership",
+      id: "demo-leadership",
+      email: "lideranca@formula.local",
+      name: "Lideranca Demo",
+      roles: ["leadership"],
+    },
+    {
+      key: "employee",
+      id: "demo-employee",
+      email: "pj.exemplo@formula.local",
+      name: "Colaborador PJ Exemplo",
+      roles: ["employee"],
+    },
+  ];
+  const passwordHash = await hashPassword(getDemoUserPassword());
+  const usersByKey: Partial<Record<DemoUserKey, typeof users.$inferSelect>> = {};
+
+  for (const fixture of fixtures) {
+    const [user] = await db
+      .insert(users)
+      .values({
+        id: fixture.id,
+        organizationId,
+        name: fixture.name,
+        email: fixture.email,
+        emailVerified: true,
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: users.email,
+        set: {
+          organizationId,
+          name: fixture.name,
+          emailVerified: true,
+          isActive: true,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    await db
+      .insert(accounts)
+      .values({
+        id: `credential:${user.id}`,
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: passwordHash,
+      })
+      .onConflictDoUpdate({
+        target: [accounts.providerId, accounts.accountId],
+        set: {
+          password: passwordHash,
+          updatedAt: new Date(),
+        },
+      });
+
+    await db
+      .insert(userRoles)
+      .values(
+        fixture.roles.map((roleKey) => ({
+          userId: user.id,
+          roleId: roleByKey[roleKey].id,
+          assignedByUserId: assignedByUserId ?? user.id,
+        })),
+      )
+      .onConflictDoNothing();
+
+    usersByKey[fixture.key] = user;
+  }
+
+  return usersByKey;
+}
+
+async function seedAppSettings(organizationId: string, updatedByUserId?: string) {
+  await ensureAppSetting("storage", {
+    organizationId,
+    key: "storage",
+    value: {
+      localPath: getOptionalEnv("LOCAL_UPLOAD_DIR") ?? "uploads",
+      provider: hasR2Config() ? "r2" : "local",
+      r2Bucket: getOptionalEnv("STORAGE_BUCKET") ?? null,
+      r2Region: getOptionalEnv("STORAGE_REGION") ?? "auto",
+    },
+    description: "Provedor de armazenamento de documentos e anexos.",
+    updatedByUserId,
+  });
+  await ensureAppSetting("upload_max_bytes", {
+    organizationId,
+    key: "upload_max_bytes",
+    value: {
+      bytes: Number(getOptionalEnv("UPLOAD_MAX_BYTES") ?? 10_485_760),
+    },
+    description: "Limite maximo de bytes por upload.",
+    updatedByUserId,
+  });
+  await ensureAppSetting("allowed_email_domain", {
+    organizationId,
+    key: "allowed_email_domain",
+    value: {
+      domain: getOptionalEnv("ALLOWED_EMAIL_DOMAIN") ?? null,
+    },
+    description: "Dominio permitido para login corporativo.",
+    updatedByUserId,
+  });
+}
+
+function hasR2Config() {
+  return Boolean(
+    getOptionalEnv("STORAGE_BUCKET") &&
+      getOptionalEnv("STORAGE_ACCESS_KEY_ID") &&
+      getOptionalEnv("STORAGE_SECRET_ACCESS_KEY"),
+  );
+}
+
 async function seedInitialEmployee(organizationId: string, userId: string) {
   const [area] = await db
     .insert(areas)
@@ -271,6 +475,74 @@ async function seedInitialEmployee(organizationId: string, userId: string) {
         userId,
         fullName: getOptionalEnv("INITIAL_ADMIN_NAME") ?? "Admin Local",
         corporateEmail: getOptionalEnv("INITIAL_ADMIN_EMAIL")?.trim().toLowerCase(),
+        positionId: position.id,
+        areaId: area.id,
+        status: "active",
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  return employee.id;
+}
+
+async function seedLeadershipDemoEmployee(
+  organizationId: string,
+  userId?: string | null,
+) {
+  if (!userId) {
+    return null;
+  }
+
+  const [area] = await db
+    .insert(areas)
+    .values({
+      organizationId,
+      name: "Operacoes",
+    })
+    .onConflictDoUpdate({
+      target: [areas.organizationId, areas.name],
+      set: {
+        name: "Operacoes",
+      },
+    })
+    .returning();
+  const [position] = await db
+    .insert(positions)
+    .values({
+      organizationId,
+      name: "Lider de Operacoes",
+    })
+    .onConflictDoUpdate({
+      target: [positions.organizationId, positions.name],
+      set: {
+        name: "Lider de Operacoes",
+      },
+    })
+    .returning();
+  const [employee] = await db
+    .insert(employees)
+    .values({
+      organizationId,
+      userId,
+      registrationNumber: "FG-00003",
+      fullName: "Lideranca Demo",
+      corporateEmail: "lideranca@formula.local",
+      positionId: position.id,
+      areaId: area.id,
+      employmentType: "clt",
+      startDate: "2026-05-01",
+      status: "active",
+      workModel: "Hibrido",
+      location: "Sao Paulo",
+      currentCompensation: "9000.00",
+    })
+    .onConflictDoUpdate({
+      target: [employees.organizationId, employees.registrationNumber],
+      set: {
+        userId,
+        fullName: "Lideranca Demo",
+        corporateEmail: "lideranca@formula.local",
         positionId: position.id,
         areaId: area.id,
         status: "active",
@@ -410,9 +682,10 @@ async function seedPeopleDemoData(
   organizationId: string,
   responsibleUserId?: string,
   managerEmployeeId?: string | null,
+  employeeUserId?: string | null,
 ) {
   if (!responsibleUserId) {
-    return;
+    return null;
   }
 
   const [area] = await db
@@ -445,6 +718,7 @@ async function seedPeopleDemoData(
     .insert(employees)
     .values({
       organizationId,
+      userId: employeeUserId ?? null,
       registrationNumber: "FG-00002",
       fullName: "Colaborador PJ Exemplo",
       corporateEmail: "pj.exemplo@formula.local",
@@ -463,6 +737,7 @@ async function seedPeopleDemoData(
     .onConflictDoUpdate({
       target: [employees.organizationId, employees.registrationNumber],
       set: {
+        userId: employeeUserId ?? null,
         fullName: "Colaborador PJ Exemplo",
         corporateEmail: "pj.exemplo@formula.local",
         positionId: position.id,
@@ -556,6 +831,132 @@ async function seedPeopleDemoData(
       sensitivity: "restricted",
       uploadedByUserId: responsibleUserId,
     },
+  );
+
+  return employee.id;
+}
+
+async function seedGovernanceDemoData(
+  organizationId: string,
+  responsibleUserId?: string,
+  ownerEmployeeId?: string | null,
+  demoEmployeeId?: string | null,
+) {
+  const linkedEmployeeId = demoEmployeeId ?? ownerEmployeeId;
+
+  if (!responsibleUserId || !linkedEmployeeId) {
+    return;
+  }
+
+  await ensureEquipment("EQ-00001", {
+    organizationId,
+    assetNumber: "EQ-00001",
+    type: "Notebook",
+    brand: "Dell",
+    model: "Latitude",
+    serialNumber: "DEMO-NOTE-001",
+    status: "in_use",
+    currentEmployeeId: linkedEmployeeId,
+    notes: "Equipamento de demonstracao vinculado ao colaborador.",
+  });
+  await ensureEquipment("EQ-00002", {
+    organizationId,
+    assetNumber: "EQ-00002",
+    type: "Monitor",
+    brand: "LG",
+    model: "UltraWide",
+    serialNumber: "DEMO-MON-002",
+    status: "available",
+    currentEmployeeId: null,
+    notes: "Equipamento disponivel para nova atribuicao.",
+  });
+  await ensureAccessRecord(linkedEmployeeId, "Google Workspace", {
+    organizationId,
+    employeeId: linkedEmployeeId,
+    platform: "Google Workspace",
+    accountIdentifier: "pj.exemplo@formula.local",
+    accessLevel: "Usuario padrao",
+    critical: true,
+    status: "active",
+    reviewDueDate: "2026-05-20",
+    responsibleUserId,
+    notes: "Acesso critico de demonstracao com revisao proxima.",
+  });
+  await ensureAccessRecord(linkedEmployeeId, "Figma", {
+    organizationId,
+    employeeId: linkedEmployeeId,
+    platform: "Figma",
+    accountIdentifier: "pj.exemplo@formula.local",
+    accessLevel: "Editor",
+    critical: false,
+    status: "active",
+    responsibleUserId,
+    notes: "Acesso operacional de demonstracao.",
+  });
+
+  const subscription = await ensureSaasSubscription("Google Workspace", {
+    organizationId,
+    name: "Google Workspace",
+    category: "Produtividade",
+    provider: "Google",
+    monthlyCost: "1200.00",
+    renewalDate: "2026-06-01",
+    status: "active",
+    responsibleUserId,
+    notes: "Assinatura recorrente de demonstracao.",
+  });
+
+  await ensureSaasSubscriptionUser(subscription.id, linkedEmployeeId);
+}
+
+async function seedLifecycleDemoData(
+  organizationId: string,
+  responsibleUserId?: string,
+  demoEmployeeId?: string | null,
+) {
+  if (!responsibleUserId || !demoEmployeeId) {
+    return;
+  }
+
+  await ensureLifecycleChecklist(
+    {
+      organizationId,
+      employeeId: demoEmployeeId,
+      type: "offboarding",
+      status: "open",
+      dueDate: "2026-06-10",
+      createdByUserId: responsibleUserId,
+      notes: "Checklist de desligamento de demonstracao.",
+    },
+    [
+      { key: "final_date", title: "Data final definida", required: true, status: "done" },
+      { key: "reason_registered", title: "Motivo registrado", required: true, status: "done" },
+      {
+        key: "finance_reviewed",
+        title: "Pendencias financeiras revisadas",
+        required: true,
+        status: "pending",
+      },
+      {
+        key: "equipment_returned",
+        title: "Equipamentos devolvidos",
+        required: true,
+        status: "pending",
+      },
+      { key: "accesses_removed", title: "Acessos removidos", required: true, status: "pending" },
+      { key: "saas_reviewed", title: "SaaS/licencas revisados", required: true, status: "pending" },
+      {
+        key: "offboarding_completed",
+        title: "Desligamento concluido",
+        required: true,
+        status: "pending",
+      },
+    ].map((item, index) => ({
+      ...item,
+      responsibleUserId,
+      dueDate: "2026-06-10",
+      sortOrder: index,
+    })),
   );
 }
 
@@ -777,6 +1178,211 @@ async function ensureDocument(
   });
 }
 
+async function ensureEquipment(
+  assetNumber: string,
+  values: typeof equipment.$inferInsert,
+) {
+  const [existing] = await db
+    .select({ id: equipment.id })
+    .from(equipment)
+    .where(
+      and(
+        eq(equipment.organizationId, values.organizationId),
+        eq(equipment.assetNumber, assetNumber),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(equipment)
+      .set({
+        brand: values.brand,
+        currentEmployeeId: values.currentEmployeeId,
+        deletedAt: null,
+        model: values.model,
+        notes: values.notes,
+        serialNumber: values.serialNumber,
+        status: values.status ?? "available",
+        type: values.type,
+        updatedAt: new Date(),
+      })
+      .where(eq(equipment.id, existing.id));
+    return;
+  }
+
+  await db.insert(equipment).values(values);
+}
+
+async function ensureAccessRecord(
+  employeeId: string,
+  platform: string,
+  values: typeof accessRecords.$inferInsert,
+) {
+  const [existing] = await db
+    .select({ id: accessRecords.id })
+    .from(accessRecords)
+    .where(and(eq(accessRecords.employeeId, employeeId), eq(accessRecords.platform, platform)))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(accessRecords)
+      .set({
+        accessLevel: values.accessLevel,
+        accountIdentifier: values.accountIdentifier,
+        critical: values.critical ?? false,
+        notes: values.notes,
+        removedAt: values.removedAt,
+        responsibleUserId: values.responsibleUserId,
+        reviewDueDate: values.reviewDueDate,
+        status: values.status ?? "active",
+        updatedAt: new Date(),
+      })
+      .where(eq(accessRecords.id, existing.id));
+    return;
+  }
+
+  await db.insert(accessRecords).values(values);
+}
+
+async function ensureSaasSubscription(
+  name: string,
+  values: typeof saasSubscriptions.$inferInsert,
+) {
+  const [existing] = await db
+    .select()
+    .from(saasSubscriptions)
+    .where(
+      and(
+        eq(saasSubscriptions.organizationId, values.organizationId),
+        eq(saasSubscriptions.name, name),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    const [updated] = await db
+      .update(saasSubscriptions)
+      .set({
+        category: values.category,
+        deletedAt: null,
+        monthlyCost: values.monthlyCost,
+        notes: values.notes,
+        provider: values.provider,
+        renewalDate: values.renewalDate,
+        responsibleUserId: values.responsibleUserId,
+        status: values.status ?? "active",
+        updatedAt: new Date(),
+      })
+      .where(eq(saasSubscriptions.id, existing.id))
+      .returning();
+
+    return updated;
+  }
+
+  const [created] = await db.insert(saasSubscriptions).values(values).returning();
+
+  return created;
+}
+
+async function ensureSaasSubscriptionUser(subscriptionId: string, employeeId: string) {
+  const [existing] = await db
+    .select()
+    .from(saasSubscriptionUsers)
+    .where(
+      and(
+        eq(saasSubscriptionUsers.subscriptionId, subscriptionId),
+        eq(saasSubscriptionUsers.employeeId, employeeId),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(saasSubscriptionUsers)
+      .set({
+        status: "active",
+        unlinkedAt: null,
+      })
+      .where(
+        and(
+          eq(saasSubscriptionUsers.subscriptionId, subscriptionId),
+          eq(saasSubscriptionUsers.employeeId, employeeId),
+        ),
+      );
+    return;
+  }
+
+  await db.insert(saasSubscriptionUsers).values({
+    subscriptionId,
+    employeeId,
+    status: "active",
+  });
+}
+
+async function ensureLifecycleChecklist(
+  values: typeof lifecycleChecklists.$inferInsert,
+  items: (Omit<typeof lifecycleChecklistItems.$inferInsert, "checklistId"> & {
+    key: string;
+  })[],
+) {
+  const [existing] = await db
+    .select()
+    .from(lifecycleChecklists)
+    .where(
+      and(
+        eq(lifecycleChecklists.organizationId, values.organizationId),
+        eq(lifecycleChecklists.employeeId, values.employeeId),
+        eq(lifecycleChecklists.type, values.type),
+        eq(lifecycleChecklists.status, values.status ?? "open"),
+        isNull(lifecycleChecklists.deletedAt),
+      ),
+    )
+    .limit(1);
+  const checklist =
+    existing ??
+    (
+      await db
+        .insert(lifecycleChecklists)
+        .values(values)
+        .returning()
+    )[0];
+
+  if (existing) {
+    await db
+      .update(lifecycleChecklists)
+      .set({
+        dueDate: values.dueDate,
+        notes: values.notes,
+        updatedAt: new Date(),
+      })
+      .where(eq(lifecycleChecklists.id, checklist.id));
+  }
+
+  for (const item of items) {
+    await db
+      .insert(lifecycleChecklistItems)
+      .values({
+        ...item,
+        checklistId: checklist.id,
+      })
+      .onConflictDoUpdate({
+        target: [lifecycleChecklistItems.checklistId, lifecycleChecklistItems.key],
+        set: {
+          dueDate: item.dueDate,
+          notes: item.notes,
+          required: item.required ?? true,
+          responsibleUserId: item.responsibleUserId,
+          sortOrder: item.sortOrder ?? 0,
+          status: item.status ?? "pending",
+          title: item.title,
+          updatedAt: new Date(),
+        },
+      });
+  }
+}
+
 async function ensureFile(
   storageProvider: string,
   storageKey: string,
@@ -863,10 +1469,29 @@ async function ensureProvision(name: string, values: typeof provisions.$inferIns
   await db.insert(provisions).values(values);
 }
 
+async function ensureAppSetting(key: string, values: typeof appSettings.$inferInsert) {
+  await db
+    .insert(appSettings)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [appSettings.organizationId, appSettings.key],
+      set: {
+        description: values.description,
+        updatedAt: new Date(),
+        updatedByUserId: values.updatedByUserId,
+        value: values.value,
+      },
+    });
+}
+
 function typedEntries<T extends Record<string, unknown>>(value: T) {
   return Object.entries(value) as {
     [K in keyof T]: [K, T[K]];
   }[keyof T][];
+}
+
+function getDemoUserPassword() {
+  return getOptionalEnv("DEMO_USER_PASSWORD") ?? "Formula@123";
 }
 
 main().catch((error: unknown) => {

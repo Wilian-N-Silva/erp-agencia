@@ -1,6 +1,7 @@
 "use server";
 
 import { and, eq, isNull } from "drizzle-orm";
+import type { Route } from "next";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -12,12 +13,15 @@ import {
   compensationHistory,
   employeeBenefits,
   employees,
+  lifecycleChecklistItems,
+  lifecycleChecklists,
   positions,
 } from "@/lib/db/schema";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "@/features/finance/rules";
+import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
 
 import {
   employeeStatusLabels,
@@ -104,6 +108,8 @@ const endBenefitSchema = z.object({
 
 export async function createEmployeeAction(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterWithCompensationContext();
+  const shouldCreateOnboardingChecklist = formData.get("createOnboardingChecklist") === "on";
+  const redirectTo = normalizeRedirectPath(formData.get("redirectTo"));
   const input = createEmployeeSchema.parse(formDataToObject(formData));
   await assertAreaPositionAndManager(input, organizationId);
   const registrationNumber = await getNextRegistrationForOrganization(organizationId);
@@ -147,7 +153,54 @@ export async function createEmployeeAction(formData: FormData) {
     after: employee,
   });
 
+  if (shouldCreateOnboardingChecklist) {
+    const [checklist] = await db
+      .insert(lifecycleChecklists)
+      .values({
+        organizationId,
+        employeeId: employee.id,
+        type: "onboarding",
+        status: "open",
+        dueDate: input.startDate,
+        createdByUserId: context.userId,
+        notes: input.internalNotes,
+      })
+      .returning();
+    const checklistItems = defaultLifecycleChecklistItems.onboarding;
+
+    await db.insert(lifecycleChecklistItems).values(
+      checklistItems.map((item, index) => ({
+        checklistId: checklist.id,
+        key: item.key,
+        title: item.title,
+        required: item.required,
+        responsibleUserId: context.userId,
+        dueDate: input.startDate,
+        sortOrder: index,
+      })),
+    );
+
+    await writeAuditLog(context, {
+      action: "create",
+      entityType: "lifecycle_checklist",
+      entityId: checklist.id,
+      after: checklist,
+      metadata: {
+        employeeId: employee.id,
+        itemCount: checklistItems.length,
+        source: "employee_create",
+        type: "onboarding",
+      },
+    });
+  }
+
   revalidatePath("/app/colaboradores");
+  revalidatePath("/app/colaboradores/admissoes");
+
+  if (redirectTo) {
+    redirect(redirectTo as Route);
+  }
+
   redirect(`/app/colaboradores/${employee.id}`);
 }
 
@@ -505,4 +558,8 @@ function optionalMoneySchema() {
     .trim()
     .optional()
     .transform((value) => (value ? normalizeMoneyInput(value) : null));
+}
+
+function normalizeRedirectPath(value: FormDataEntryValue | null) {
+  return typeof value === "string" && value.startsWith("/app/") ? value : null;
 }

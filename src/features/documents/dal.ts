@@ -119,6 +119,9 @@ export async function getDocumentForAccess(context: AccessContext, id: string) {
       ownerEmployeeId: files.ownerEmployeeId,
       sensitivity: files.sensitivity,
       visibility: documents.visibility,
+      bucket: files.bucket,
+      mimeType: files.mimeType,
+      storageProvider: files.storageProvider,
       storageKey: files.storageKey,
       originalName: files.originalName,
     })

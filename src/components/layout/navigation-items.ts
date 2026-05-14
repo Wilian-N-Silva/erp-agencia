@@ -14,6 +14,9 @@ export type NavigationIcon =
   | "equipment"
   | "access"
   | "saas"
+  | "onboarding"
+  | "offboarding"
+  | "alerts"
   | "audit"
   | "settings"
   | "portal";
@@ -73,6 +76,59 @@ export const navigationItems: NavigationItem[] = [
     label: "Reembolsos",
     icon: "reimbursements",
     permissions: ["reimbursements.read", "reimbursements.approve_team", "reimbursements.approve_finance"],
+  },
+  {
+    href: "/app/equipamentos",
+    label: "Equipamentos",
+    icon: "equipment",
+    permissions: ["equipment.read", "equipment.write", "equipment.read_team", "equipment.configure"],
+  },
+  {
+    href: "/app/acessos",
+    label: "Acessos",
+    icon: "access",
+    permissions: [
+      "access_records.read",
+      "access_records.write",
+      "access_records.read_team",
+      "access_records.configure",
+    ],
+  },
+  {
+    href: "/app/assinaturas",
+    label: "Assinaturas",
+    icon: "saas",
+    permissions: ["saas.read", "saas.write", "saas.configure"],
+  },
+  {
+    href: "/app/colaboradores/admissoes",
+    label: "Admissoes",
+    icon: "onboarding",
+    permissions: ["lifecycle.read", "lifecycle.write"],
+  },
+  {
+    href: "/app/colaboradores/desligamentos",
+    label: "Desligamentos",
+    icon: "offboarding",
+    permissions: ["lifecycle.read", "lifecycle.write"],
+  },
+  {
+    href: "/app/alertas",
+    label: "Alertas",
+    icon: "alerts",
+    permissions: ["alerts.read", "alerts.write"],
+  },
+  {
+    href: "/app/auditoria",
+    label: "Auditoria",
+    icon: "audit",
+    permissions: ["audit.read", "audit.read_limited"],
+  },
+  {
+    href: "/app/configuracoes",
+    label: "Configuracoes",
+    icon: "settings",
+    permissions: ["settings.read", "settings.manage"],
   },
   {
     href: "/portal",

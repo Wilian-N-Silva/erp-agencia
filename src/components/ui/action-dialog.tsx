@@ -6,12 +6,14 @@ import { useRef } from "react";
 
 export function ActionDialog({
   children,
+  disabled = false,
   title,
   trigger,
   triggerClassName,
   triggerLabel,
 }: {
   children: ReactNode;
+  disabled?: boolean;
   title: string;
   trigger?: ReactNode;
   triggerClassName: string;
@@ -24,6 +26,7 @@ export function ActionDialog({
       <button
         aria-label={triggerLabel}
         className={triggerClassName}
+        disabled={disabled}
         onClick={() => dialogRef.current?.showModal()}
         type="button"
       >

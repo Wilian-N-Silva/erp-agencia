@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   CreditCard,
+  Pencil,
   PauseCircle,
   Plus,
   ReceiptText,
@@ -18,6 +19,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ActionDialog } from "@/components/ui/action-dialog";
 import {
   generateClientExpectedEntryAction,
   markClientPaymentReceivedAction,
@@ -397,24 +399,25 @@ function BillingTab({
   return (
     <div className="grid gap-6">
       <section className="rounded-lg border bg-card p-4">
-        <form action={generateClientExpectedEntryAction} className="grid gap-3 md:grid-cols-[minmax(10rem,0.4fr)_1fr_auto]">
-          <input name="clientId" type="hidden" value={clientId} />
-          <label className={fieldClassName}>
-            Competencia
-            <input className={inputClassName} defaultValue={currentCompetence()} name="competence" type="month" />
-          </label>
-          <div className="self-end text-sm text-muted-foreground">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm text-muted-foreground">
             Proximo vencimento: {formatDate(summary.nextDueDate)}
-          </div>
-          <button
-            className={`${primaryButtonClassName} self-end sm:w-auto`}
+          </p>
+          <ActionDialog
             disabled={!summary.canGenerateExpectedEntry}
-            type="submit"
+            title="Gerar entrada prevista"
+            trigger={
+              <>
+                <Plus className="size-4" aria-hidden="true" />
+                Gerar entrada prevista
+              </>
+            }
+            triggerClassName={`${primaryButtonClassName} sm:w-auto`}
+            triggerLabel="Gerar entrada prevista"
           >
-            <Plus className="size-4" aria-hidden="true" />
-            Gerar entrada prevista
-          </button>
-        </form>
+            <GenerateExpectedEntryForm clientId={clientId} />
+          </ActionDialog>
+        </div>
       </section>
 
       <section className="rounded-lg border bg-card">
@@ -515,6 +518,24 @@ function BillingTab({
   );
 }
 
+function GenerateExpectedEntryForm({ clientId }: { clientId: string }) {
+  return (
+    <form action={generateClientExpectedEntryAction} className="grid gap-4">
+      <input name="clientId" type="hidden" value={clientId} />
+      <label className={fieldClassName}>
+        Competencia
+        <input className={inputClassName} defaultValue={currentCompetence()} name="competence" required type="month" />
+      </label>
+      <div className="flex justify-end">
+        <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+          <Plus className="size-4" aria-hidden="true" />
+          Gerar entrada prevista
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ContractsTab() {
   return (
     <section className="rounded-lg border bg-card">
@@ -563,24 +584,41 @@ function InternalNotesTab({
 }) {
   return (
     <section className="rounded-lg border bg-card">
-      <div className="border-b px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <h2 className="text-base font-semibold">Observacoes internas</h2>
+        {canWriteClient ? (
+          <ActionDialog
+            title="Editar observacoes internas"
+            trigger={
+              <>
+                <Pencil className="size-4" aria-hidden="true" />
+                Editar
+              </>
+            }
+            triggerClassName={secondaryButtonClassName}
+            triggerLabel="Editar observacoes internas"
+          >
+            <InternalNotesForm clientId={clientId} notes={notes} />
+          </ActionDialog>
+        ) : null}
       </div>
-      {canWriteClient ? (
-        <form action={updateClientInternalNotesAction} className="grid gap-4 p-4">
-          <input name="id" type="hidden" value={clientId} />
-          <textarea className={textareaClassName} defaultValue={notes ?? ""} maxLength={2000} name="notes" rows={10} />
-          <div className="flex justify-end">
-            <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-              <Save className="size-4" aria-hidden="true" />
-              Salvar observacoes
-            </button>
-          </div>
-        </form>
-      ) : (
-        <p className="whitespace-pre-wrap p-4 text-sm text-muted-foreground">{notes || "-"}</p>
-      )}
+      <p className="whitespace-pre-wrap p-4 text-sm text-muted-foreground">{notes || "-"}</p>
     </section>
+  );
+}
+
+function InternalNotesForm({ clientId, notes }: { clientId: string; notes: string | null }) {
+  return (
+    <form action={updateClientInternalNotesAction} className="grid gap-4">
+      <input name="id" type="hidden" value={clientId} />
+      <textarea className={textareaClassName} defaultValue={notes ?? ""} maxLength={2000} name="notes" rows={10} />
+      <div className="flex justify-end">
+        <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+          <Save className="size-4" aria-hidden="true" />
+          Salvar observacoes
+        </button>
+      </div>
+    </form>
   );
 }
 

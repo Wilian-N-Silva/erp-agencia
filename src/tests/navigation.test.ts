@@ -46,10 +46,14 @@ describe("permission-filtered navigation", () => {
     expect(hrefs).toContain("/app/documentos");
     expect(hrefs).toContain("/app/nfs");
     expect(hrefs).toContain("/app/reembolsos");
-    expect(hrefs).not.toContain("/app/auditoria");
-    expect(hrefs).not.toContain("/app/equipamentos");
-    expect(hrefs).not.toContain("/app/acessos");
+    expect(hrefs).toContain("/app/equipamentos");
+    expect(hrefs).toContain("/app/acessos");
+    expect(hrefs).toContain("/app/assinaturas");
+    expect(hrefs).toContain("/app/colaboradores/admissoes");
+    expect(hrefs).toContain("/app/colaboradores/desligamentos");
+    expect(hrefs).toContain("/app/alertas");
+    expect(hrefs).toContain("/app/auditoria");
+    expect(hrefs).toContain("/app/configuracoes");
     expect(hrefs).not.toContain("/app/saas");
-    expect(hrefs).not.toContain("/app/configuracoes");
   });
 });

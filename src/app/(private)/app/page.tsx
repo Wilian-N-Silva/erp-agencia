@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 
+import { listAccessReviewAlerts } from "@/features/accesses/dal";
 import { listClientPaymentAlerts } from "@/features/clients/dal";
 import { clientReminderKindLabels } from "@/features/clients/rules";
+import { listEquipmentReturnAlerts } from "@/features/equipment/dal";
 import { formatDate } from "@/features/finance/rules";
+import { listLifecycleDashboardItems } from "@/features/lifecycle/dal";
+import { lifecycleTypeLabels } from "@/features/lifecycle/rules";
+import { listSaasRenewalAlerts } from "@/features/saas/dal";
 import { getCurrentAccessContext } from "@/lib/dal";
-import { can } from "@/lib/rbac";
+import { can, canAny } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +20,26 @@ export default async function AppHomePage() {
     redirect("/login");
   }
 
-  const paymentAlerts = can("finance.read", context)
-    ? await listClientPaymentAlerts(context, { limit: 8 })
-    : [];
+  const [paymentAlerts, equipmentAlerts, accessAlerts, saasAlerts, lifecycleItems] = await Promise.all([
+    can("finance.read", context) ? listClientPaymentAlerts(context, { limit: 8 }) : Promise.resolve([]),
+    canAny(["equipment.read", "equipment.write", "equipment.configure", "equipment.read_team"], context)
+      ? listEquipmentReturnAlerts(context, { limit: 4 })
+      : Promise.resolve([]),
+    canAny(["access_records.read", "access_records.write", "access_records.configure", "access_records.read_team"], context)
+      ? listAccessReviewAlerts(context, { limit: 4 })
+      : Promise.resolve([]),
+    canAny(["saas.read", "saas.write", "saas.configure"], context)
+      ? listSaasRenewalAlerts(context, { limit: 4 })
+      : Promise.resolve([]),
+    canAny(["lifecycle.read", "lifecycle.write"], context)
+      ? listLifecycleDashboardItems(context, { limit: 4 })
+      : Promise.resolve([]),
+  ]);
+  const governanceAlerts = equipmentAlerts.length + accessAlerts.length + saasAlerts.length;
+  const operationalAlerts = governanceAlerts + lifecycleItems.length;
   const summaryItems = [
-    { label: "Pendencias", value: String(paymentAlerts.length) },
-    { label: "Alertas", value: String(paymentAlerts.length) },
+    { label: "Pendencias", value: String(paymentAlerts.length + operationalAlerts) },
+    { label: "Alertas", value: String(paymentAlerts.length + operationalAlerts) },
     { label: "Aprovacoes", value: "0" },
     { label: "Vencimentos", value: String(paymentAlerts.filter((alert) => alert.kind === "due_today").length) },
   ];
@@ -70,12 +89,54 @@ export default async function AppHomePage() {
 
         <section className="rounded-lg border bg-card p-4">
           <h2 className="text-base font-semibold">Eventos proximos</h2>
-          <div className="mt-4 rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-            Sem eventos proximos
-          </div>
+          {operationalAlerts === 0 ? (
+            <div className="mt-4 rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              Sem eventos proximos
+            </div>
+          ) : (
+            <div className="mt-4 divide-y rounded-md border">
+              {lifecycleItems.map((item) => (
+                <EventItem
+                  description={`${item.employeeName} - prazo ${formatDate(item.dueDate)} - ${item.progress.requiredResolved}/${item.progress.requiredTotal}`}
+                  key={`lifecycle:${item.id}`}
+                  title={`${lifecycleTypeLabels[item.type]} em aberto`}
+                />
+              ))}
+              {equipmentAlerts.map((item) => (
+                <EventItem
+                  description={`${item.currentEmployeeName ?? "Sem responsavel"} - ${item.type}`}
+                  key={`equipment:${item.id}`}
+                  title={`${item.assetNumber}: devolucao pendente`}
+                />
+              ))}
+              {accessAlerts.map((item) => (
+                <EventItem
+                  description={`${item.employeeName} - revisao ${formatDate(item.reviewDueDate)}`}
+                  key={`access:${item.id}`}
+                  title={`${item.platform}: acesso critico`}
+                />
+              ))}
+              {saasAlerts.map((item) => (
+                <EventItem
+                  description={`Renovacao ${formatDate(item.renewalDate)}`}
+                  key={`saas:${item.id}`}
+                  title={`${item.name}: assinatura a revisar`}
+                />
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </section>
+  );
+}
+
+function EventItem({ description, title }: { description: string; title: string }) {
+  return (
+    <div className="grid gap-1 px-3 py-2 text-sm">
+      <p className="font-medium">{title}</p>
+      <p className="text-muted-foreground">{description}</p>
+    </div>
   );
 }
 
