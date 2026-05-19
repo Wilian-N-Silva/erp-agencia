@@ -65,42 +65,52 @@ async function main() {
 
   await seedRolePermissions(roleByKey, permissionByKey);
   const adminUser = await seedInitialAdmin(organization.id, roleByKey);
-  const demoUsers = await seedRoleTestUsers(organization.id, roleByKey, adminUser?.id);
+  const shouldSeedDemo = shouldSeedDemoData();
+  const demoUsers = shouldSeedDemo
+    ? await seedRoleTestUsers(organization.id, roleByKey, adminUser?.id)
+    : {};
   const seedActorUserId = adminUser?.id ?? demoUsers.all_roles?.id;
   await seedAppSettings(organization.id, seedActorUserId);
   const ownerEmployeeId = adminUser
     ? await seedInitialEmployee(organization.id, adminUser.id)
     : null;
-  const leadershipEmployeeId = await seedLeadershipDemoEmployee(
-    organization.id,
-    demoUsers.leadership?.id,
-  );
 
-  const demoEmployeeId = await seedPeopleDemoData(
-    organization.id,
-    seedActorUserId,
-    leadershipEmployeeId ?? ownerEmployeeId,
-    demoUsers.employee?.id,
-  );
-  await seedFinanceClientDemoData(
-    organization.id,
-    seedActorUserId,
-    ownerEmployeeId ?? leadershipEmployeeId,
-  );
-  await seedGovernanceDemoData(
-    organization.id,
-    seedActorUserId,
-    ownerEmployeeId ?? leadershipEmployeeId,
-    demoEmployeeId,
-  );
-  await seedLifecycleDemoData(organization.id, seedActorUserId, demoEmployeeId);
+  if (shouldSeedDemo) {
+    const leadershipEmployeeId = await seedLeadershipDemoEmployee(
+      organization.id,
+      demoUsers.leadership?.id,
+    );
+
+    const demoEmployeeId = await seedPeopleDemoData(
+      organization.id,
+      seedActorUserId,
+      leadershipEmployeeId ?? ownerEmployeeId,
+      demoUsers.employee?.id,
+    );
+    await seedFinanceClientDemoData(
+      organization.id,
+      seedActorUserId,
+      ownerEmployeeId ?? leadershipEmployeeId,
+    );
+    await seedGovernanceDemoData(
+      organization.id,
+      seedActorUserId,
+      ownerEmployeeId ?? leadershipEmployeeId,
+      demoEmployeeId,
+    );
+    await seedLifecycleDemoData(organization.id, seedActorUserId, demoEmployeeId);
+  }
 
   console.log("Seed complete:");
   console.log(`- organization: ${organization.name}`);
   console.log(`- roles: ${Object.keys(roleByKey).length}`);
   console.log(`- permissions: ${Object.keys(permissionByKey).length}`);
   console.log(`- admin: ${adminUser?.email ?? "skipped"}`);
-  console.log(`- demo users: ${Object.keys(demoUsers).length} (password: ${getDemoUserPassword()})`);
+  console.log(
+    shouldSeedDemo
+      ? `- demo users: ${Object.keys(demoUsers).length} (password: ${getDemoUserPassword()})`
+      : "- demo data: skipped (set SEED_DEMO_DATA=true to enable)",
+  );
 }
 
 async function seedOrganization() {
@@ -1491,7 +1501,15 @@ function typedEntries<T extends Record<string, unknown>>(value: T) {
 }
 
 function getDemoUserPassword() {
-  return getOptionalEnv("DEMO_USER_PASSWORD") ?? "Formula@123";
+  const password = getOptionalEnv("DEMO_USER_PASSWORD");
+  if (!password) {
+    throw new Error("DEMO_USER_PASSWORD is required when SEED_DEMO_DATA=true");
+  }
+  return password;
+}
+
+function shouldSeedDemoData() {
+  return getOptionalEnv("SEED_DEMO_DATA") === "true";
 }
 
 main().catch((error: unknown) => {

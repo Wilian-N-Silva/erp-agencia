@@ -40,7 +40,11 @@ variaveis nao forem definidas.
 2. Suba o banco com `docker compose up -d postgres`.
 3. Rode `npm.cmd run db:migrate`.
 4. Rode `npm.cmd run db:seed`.
-5. Acesse `/login` e entre com `admin@formula.local` / `Admin123!`.
+5. Acesse `/login` e entre com `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` definidos no `.env`.
+
+Para carregar usuarios e registros de demonstracao locais usados nos testes E2E,
+defina `SEED_DEMO_DATA=true` antes de executar `npm.cmd run db:seed`. A senha
+padrao desses usuarios e controlada por `DEMO_USER_PASSWORD`.
 
 Para validar migrations localmente com Docker, use uma URL como:
 
