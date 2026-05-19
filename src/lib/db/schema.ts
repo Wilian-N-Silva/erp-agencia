@@ -85,6 +85,11 @@ export const timeOffStatusEnum = pgEnum("time_off_status", [
   "cancelled",
 ]);
 
+export const vacationBalanceStatusEnum = pgEnum("vacation_balance_status", [
+  "active",
+  "closed",
+]);
+
 export const fileSensitivityEnum = pgEnum("file_sensitivity", [
   "public_internal",
   "restricted",
@@ -778,6 +783,39 @@ export const timeOffRequests = pgTable(
   (table) => ({
     employeeIdx: index("time_off_employee_idx").on(table.employeeId),
     dateIdx: index("time_off_date_idx").on(table.organizationId, table.startDate),
+  }),
+);
+
+export const vacationBalances = pgTable(
+  "vacation_balances",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    concessionDeadline: date("concession_deadline").notNull(),
+    daysAcquired: integer("days_acquired").notNull().default(30),
+    daysSold: integer("days_sold").notNull().default(0),
+    status: vacationBalanceStatusEnum("status").notNull().default("active"),
+    notes: text("notes"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    employeePeriodIdx: uniqueIndex("vacation_balances_employee_period_idx").on(
+      table.employeeId,
+      table.periodStart,
+    ),
+    statusIdx: index("vacation_balances_status_idx").on(table.organizationId, table.status),
   }),
 );
 
