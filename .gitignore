@@ -8,3 +8,13 @@ playwright-report
 test-results
 *.log
 *.tsbuildinfo
+uploads
+storage-local
+
+# Auto-generated codesight wiki/snapshot — regenerate with `npx codesight --wiki`
+.codesight/
+
+# Agent instruction duplicates — AGENTS.md is the canonical source
+CLAUDE.md
+codex.md
+.cursorrules

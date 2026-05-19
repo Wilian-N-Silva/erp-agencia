@@ -1,0 +1,673 @@
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+import {
+  accessRecords,
+  alerts,
+  clientBillingProfiles,
+  clients,
+  employees,
+  equipment,
+  financialEntries,
+  financialExpenses,
+  invoiceRequests,
+  lifecycleChecklists,
+  reimbursementRequests,
+  saasSubscriptionUsers,
+  saasSubscriptions,
+  timeOffRequests,
+  users,
+} from "@/lib/db/schema";
+import type { AccessContext } from "@/lib/dal";
+import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+
+import { buildClientReminderCandidates } from "@/features/clients/rules";
+import {
+  addDaysToDateKey,
+  getFinancialExpenseEffectiveStatus,
+  toDateKey,
+} from "@/features/finance/rules";
+import { getLifecycleChecklistState } from "@/features/lifecycle/rules";
+import { hasInvoiceDivergence, type InvoiceRequestStatus, type ReimbursementStatus } from "@/features/portal/rules";
+import {
+  getAccessReviewState,
+  isTerminatedEmployeeAccessAlert,
+  type AccessRecordStatus,
+} from "@/features/accesses/rules";
+import { isEquipmentReturnAlert, type EquipmentStatus } from "@/features/equipment/rules";
+import { getSaasRenewalState, type SaasSubscriptionStatus } from "@/features/saas/rules";
+
+import {
+  applyAlertFilters,
+  dedupeAlertCandidates,
+  mapReminderSeverity,
+  sortAlertCandidates,
+  type AlertCandidate,
+  type AlertFilters,
+  type AlertSeverity,
+  type AlertStatus,
+} from "./rules";
+
+export type StoredAlertListItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  severity: AlertSeverity;
+  entityType: string;
+  entityId: string | null;
+  status: AlertStatus;
+  dueDate: string | null;
+  resolvedByUserName: string | null;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export async function listStoredAlerts(
+  context: AccessContext,
+  filters: AlertFilters = {},
+): Promise<StoredAlertListItem[]> {
+  assertCanAny(["alerts.read", "alerts.write"], context);
+  const organizationId = requireOrganizationId(context);
+  const rows = await db
+    .select({
+      id: alerts.id,
+      title: alerts.title,
+      description: alerts.description,
+      severity: alerts.severity,
+      entityType: alerts.entityType,
+      entityId: alerts.entityId,
+      status: alerts.status,
+      dueDate: alerts.dueDate,
+      resolvedByUserName: users.name,
+      resolvedAt: alerts.resolvedAt,
+      createdAt: alerts.createdAt,
+      updatedAt: alerts.updatedAt,
+    })
+    .from(alerts)
+    .leftJoin(users, eq(alerts.resolvedByUserId, users.id))
+    .where(eq(alerts.organizationId, organizationId))
+    .orderBy(desc(alerts.createdAt));
+
+  return applyAlertFilters(
+    rows.map((row) => ({
+      ...row,
+      severity: row.severity as AlertSeverity,
+      status: row.status as AlertStatus,
+    })),
+    filters,
+  );
+}
+
+export async function listAlertCandidates(
+  context: AccessContext,
+  filters: AlertFilters = {},
+): Promise<AlertCandidate[]> {
+  assertCanAny(["alerts.read", "alerts.write"], context);
+  const organizationId = requireOrganizationId(context);
+  const candidates = await generateAlertCandidatesForOrganization(organizationId);
+
+  return applyAlertFilters(
+    sortAlertCandidates(dedupeAlertCandidates(candidates)),
+    {
+      ...filters,
+      status: "all",
+    },
+  );
+}
+
+export async function generateAlertCandidatesForOrganization(
+  organizationId: string,
+  asOf: string | Date = new Date(),
+): Promise<AlertCandidate[]> {
+  const asOfKey = toDateKey(asOf);
+  const [
+    clientCandidates,
+    expenseCandidates,
+    invoiceCandidates,
+    reimbursementCandidates,
+    timeOffCandidates,
+    lifecycleCandidates,
+    equipmentCandidates,
+    accessCandidates,
+    saasCandidates,
+  ] = await Promise.all([
+    buildClientPaymentAlertCandidates(organizationId, asOfKey),
+    buildFinancialExpenseAlertCandidates(organizationId, asOfKey),
+    buildInvoiceAlertCandidates(organizationId),
+    buildReimbursementAlertCandidates(organizationId),
+    buildTimeOffAlertCandidates(organizationId, asOfKey),
+    buildLifecycleAlertCandidates(organizationId, asOfKey),
+    buildEquipmentAlertCandidates(organizationId),
+    buildAccessAlertCandidates(organizationId, asOfKey),
+    buildSaasAlertCandidates(organizationId, asOfKey),
+  ]);
+
+  return sortAlertCandidates(
+    dedupeAlertCandidates([
+      ...clientCandidates,
+      ...expenseCandidates,
+      ...invoiceCandidates,
+      ...reimbursementCandidates,
+      ...timeOffCandidates,
+      ...lifecycleCandidates,
+      ...equipmentCandidates,
+      ...accessCandidates,
+      ...saasCandidates,
+    ]),
+  );
+}
+
+async function buildClientPaymentAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      clientId: clients.id,
+      clientName: clients.name,
+      reminderBeforeDays: clientBillingProfiles.reminderBeforeDays,
+      entryId: financialEntries.id,
+      amount: financialEntries.amount,
+      receivedAmount: financialEntries.receivedAmount,
+      dueDate: financialEntries.dueDate,
+      receivedDate: financialEntries.receivedDate,
+      status: financialEntries.status,
+    })
+    .from(financialEntries)
+    .innerJoin(clients, eq(financialEntries.clientId, clients.id))
+    .leftJoin(
+      clientBillingProfiles,
+      and(eq(clientBillingProfiles.clientId, clients.id), isNull(clientBillingProfiles.deletedAt)),
+    )
+    .where(
+      and(
+        eq(financialEntries.organizationId, organizationId),
+        isNull(financialEntries.deletedAt),
+        isNull(clients.deletedAt),
+      ),
+    )
+    .orderBy(asc(financialEntries.dueDate));
+  const grouped = new Map<
+    string,
+    {
+      clientName: string;
+      reminderBeforeDays: number | null;
+      payments: {
+        id: string;
+        clientName: string;
+        amount: string;
+        receivedAmount: string | null;
+        dueDate: string;
+        receivedDate: string | null;
+        status: "planned" | "received" | "overdue" | "cancelled";
+      }[];
+    }
+  >();
+
+  for (const row of rows) {
+    const group = grouped.get(row.clientId) ?? {
+      clientName: row.clientName,
+      reminderBeforeDays: row.reminderBeforeDays,
+      payments: [],
+    };
+
+    group.payments.push({
+      id: row.entryId,
+      clientName: row.clientName,
+      amount: row.amount,
+      receivedAmount: row.receivedAmount,
+      dueDate: row.dueDate,
+      receivedDate: row.receivedDate,
+      status: row.status,
+    });
+    grouped.set(row.clientId, group);
+  }
+
+  return [...grouped.entries()].flatMap(([clientId, group]) =>
+    buildClientReminderCandidates({
+      asOf,
+      reminderBeforeDays: group.reminderBeforeDays,
+      payments: group.payments,
+    }).map((candidate) => ({
+      description: candidate.description,
+      dueDate: candidate.dueDate,
+      entityId: candidate.financialEntryId ?? clientId,
+      entityType: candidate.financialEntryId ? "financial_entry" : "client",
+      kind: "client_payment",
+      severity: mapReminderSeverity(candidate.severity),
+      title: candidate.title,
+    })),
+  );
+}
+
+async function buildFinancialExpenseAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: financialExpenses.id,
+      supplier: financialExpenses.supplier,
+      description: financialExpenses.description,
+      dueDate: financialExpenses.dueDate,
+      paidDate: financialExpenses.paidDate,
+      status: financialExpenses.status,
+    })
+    .from(financialExpenses)
+    .where(and(eq(financialExpenses.organizationId, organizationId), isNull(financialExpenses.deletedAt)));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      const status = getFinancialExpenseEffectiveStatus(row, asOf);
+
+      if (status !== "overdue") {
+        return null;
+      }
+
+      return {
+        kind: "financial_expense",
+        title: `${row.supplier}: conta atrasada`,
+        description: row.description,
+        severity: "high",
+        entityType: "financial_expense",
+        entityId: row.id,
+        dueDate: row.dueDate,
+      };
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildInvoiceAlertCandidates(organizationId: string): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: invoiceRequests.id,
+      employeeName: employees.fullName,
+      competence: invoiceRequests.competence,
+      dueDate: invoiceRequests.dueDate,
+      expectedAmount: invoiceRequests.expectedAmount,
+      issuedAmount: invoiceRequests.issuedAmount,
+      status: invoiceRequests.status,
+    })
+    .from(invoiceRequests)
+    .innerJoin(employees, eq(invoiceRequests.employeeId, employees.id))
+    .where(and(eq(invoiceRequests.organizationId, organizationId), isNull(invoiceRequests.deletedAt)));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      const status = row.status as InvoiceRequestStatus;
+
+      if (hasInvoiceDivergence(row.expectedAmount, row.issuedAmount)) {
+        return {
+          kind: "invoice_pending",
+          title: `${row.employeeName}: NF com divergencia`,
+          description: `Competencia ${row.competence} com valor emitido diferente do esperado.`,
+          severity: "high",
+          entityType: "invoice_request",
+          entityId: row.id,
+          dueDate: row.dueDate,
+        };
+      }
+
+      if (status === "published" || status === "adjustment_requested") {
+        return {
+          kind: "invoice_pending",
+          title: `${row.employeeName}: NF aguardando envio`,
+          description: `Competencia ${row.competence} ainda nao enviada pelo colaborador.`,
+          severity: "medium",
+          entityType: "invoice_request",
+          entityId: row.id,
+          dueDate: row.dueDate,
+        };
+      }
+
+      if (status === "submitted" || status === "under_review") {
+        return {
+          kind: "invoice_pending",
+          title: `${row.employeeName}: NF aguardando financeiro`,
+          description: `Competencia ${row.competence} precisa de conferencia.`,
+          severity: "medium",
+          entityType: "invoice_request",
+          entityId: row.id,
+          dueDate: row.dueDate,
+        };
+      }
+
+      return null;
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildReimbursementAlertCandidates(organizationId: string): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: reimbursementRequests.id,
+      employeeName: employees.fullName,
+      title: reimbursementRequests.title,
+      expenseDate: reimbursementRequests.expenseDate,
+      status: reimbursementRequests.status,
+    })
+    .from(reimbursementRequests)
+    .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))
+    .where(eq(reimbursementRequests.organizationId, organizationId));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      const status = row.status as ReimbursementStatus;
+
+      if (!["submitted", "manager_approved", "finance_approved"].includes(status)) {
+        return null;
+      }
+
+      return {
+        kind: "reimbursement_pending",
+        title: `${row.employeeName}: reembolso pendente`,
+        description: `${row.title} esta em status ${status}.`,
+        severity: status === "finance_approved" ? "medium" : "low",
+        entityType: "reimbursement_request",
+        entityId: row.id,
+        dueDate: row.expenseDate,
+      };
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildTimeOffAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: timeOffRequests.id,
+      employeeName: employees.fullName,
+      startDate: timeOffRequests.startDate,
+      status: timeOffRequests.status,
+      type: timeOffRequests.type,
+    })
+    .from(timeOffRequests)
+    .innerJoin(employees, eq(timeOffRequests.employeeId, employees.id))
+    .where(eq(timeOffRequests.organizationId, organizationId));
+  const dueSoonLimit = addDaysToDateKey(asOf, 30);
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      if (row.status === "requested" && row.startDate < asOf) {
+        return {
+          kind: "timeoff_pending",
+          title: `${row.employeeName}: solicitacao de ferias/pausa vencida`,
+          description: `${row.type} tem inicio anterior a hoje e ainda nao foi aprovada.`,
+          severity: "high",
+          entityType: "time_off_request",
+          entityId: row.id,
+          dueDate: row.startDate,
+        };
+      }
+
+      if (row.status === "approved" && row.startDate >= asOf && row.startDate <= dueSoonLimit) {
+        return {
+          kind: "timeoff_pending",
+          title: `${row.employeeName}: ferias/pausa proxima`,
+          description: `${row.type} com inicio dentro dos proximos 30 dias.`,
+          severity: "low",
+          entityType: "time_off_request",
+          entityId: row.id,
+          dueDate: row.startDate,
+        };
+      }
+
+      return null;
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildLifecycleAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: lifecycleChecklists.id,
+      employeeName: employees.fullName,
+      type: lifecycleChecklists.type,
+      status: lifecycleChecklists.status,
+      dueDate: lifecycleChecklists.dueDate,
+    })
+    .from(lifecycleChecklists)
+    .innerJoin(employees, eq(lifecycleChecklists.employeeId, employees.id))
+    .where(and(eq(lifecycleChecklists.organizationId, organizationId), isNull(lifecycleChecklists.deletedAt)));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      if (row.status !== "open") {
+        return null;
+      }
+
+      const state = getLifecycleChecklistState({
+        dueDate: row.dueDate,
+        status: "open",
+      }, asOf);
+
+      return {
+        kind: "lifecycle_pending",
+        title: `${row.employeeName}: checklist de ${row.type} em aberto`,
+        description: state === "overdue" ? "Checklist esta atrasado." : "Checklist possui pendencias.",
+        severity: state === "overdue" ? "high" : "medium",
+        entityType: "lifecycle_checklist",
+        entityId: row.id,
+        dueDate: row.dueDate,
+      };
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildEquipmentAlertCandidates(organizationId: string): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: equipment.id,
+      assetNumber: equipment.assetNumber,
+      type: equipment.type,
+      status: equipment.status,
+      currentEmployeeId: equipment.currentEmployeeId,
+      employeeName: employees.fullName,
+      employeeStatus: employees.status,
+    })
+    .from(equipment)
+    .leftJoin(employees, eq(equipment.currentEmployeeId, employees.id))
+    .where(and(eq(equipment.organizationId, organizationId), isNull(equipment.deletedAt)));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      const target = {
+        currentEmployeeId: row.currentEmployeeId,
+        currentEmployeeStatus: row.employeeStatus,
+        status: row.status as EquipmentStatus,
+      };
+
+      if (!isEquipmentReturnAlert(target)) {
+        return null;
+      }
+
+      return {
+        kind: "equipment_return",
+        title: `${row.assetNumber}: equipamento pendente`,
+        description: `${row.type} vinculado a ${row.employeeName ?? "sem responsavel valido"}.`,
+        severity: row.employeeStatus === "terminated" ? "critical" : "high",
+        entityType: "equipment",
+        entityId: row.id,
+        dueDate: null,
+      };
+    })
+    .filter(isAlertCandidate);
+}
+
+async function buildAccessAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: accessRecords.id,
+      employeeId: accessRecords.employeeId,
+      employeeName: employees.fullName,
+      employeeStatus: employees.status,
+      platform: accessRecords.platform,
+      critical: accessRecords.critical,
+      reviewDueDate: accessRecords.reviewDueDate,
+      status: accessRecords.status,
+    })
+    .from(accessRecords)
+    .innerJoin(employees, eq(accessRecords.employeeId, employees.id))
+    .where(eq(accessRecords.organizationId, organizationId));
+
+  return rows
+    .flatMap((row): AlertCandidate[] => {
+      const target = {
+        critical: row.critical,
+        employeeId: row.employeeId,
+        employeeStatus: row.employeeStatus,
+        reviewDueDate: row.reviewDueDate,
+        status: row.status as AccessRecordStatus,
+      };
+      const candidates: AlertCandidate[] = [];
+
+      if (isTerminatedEmployeeAccessAlert(target)) {
+        candidates.push({
+          kind: "access_review",
+          title: `${row.employeeName}: acesso ativo apos desligamento`,
+          description: `${row.platform} continua ativo para colaborador desligado.`,
+          severity: "critical",
+          entityType: "access_record",
+          entityId: row.id,
+          dueDate: row.reviewDueDate,
+        });
+      }
+
+      const reviewState = getAccessReviewState(target, asOf);
+
+      if (reviewState === "missing" || reviewState === "overdue" || reviewState === "due_soon") {
+        candidates.push({
+          kind: "access_review",
+          title: `${row.platform}: revisao de acesso critico`,
+          description: reviewState === "missing" ? "Acesso critico sem data de revisao." : "Acesso critico requer revisao.",
+          severity: reviewState === "overdue" || reviewState === "missing" ? "high" : "medium",
+          entityType: "access_record",
+          entityId: row.id,
+          dueDate: row.reviewDueDate,
+        });
+      }
+
+      return candidates;
+    });
+}
+
+async function buildSaasAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const subscriptions = await db
+    .select({
+      id: saasSubscriptions.id,
+      name: saasSubscriptions.name,
+      provider: saasSubscriptions.provider,
+      renewalDate: saasSubscriptions.renewalDate,
+      responsibleUserId: saasSubscriptions.responsibleUserId,
+      status: saasSubscriptions.status,
+    })
+    .from(saasSubscriptions)
+    .where(and(eq(saasSubscriptions.organizationId, organizationId), isNull(saasSubscriptions.deletedAt)));
+  const links = await db
+    .select({
+      subscriptionId: saasSubscriptionUsers.subscriptionId,
+      employeeName: employees.fullName,
+      employeeStatus: employees.status,
+      status: saasSubscriptionUsers.status,
+    })
+    .from(saasSubscriptionUsers)
+    .innerJoin(employees, eq(saasSubscriptionUsers.employeeId, employees.id));
+  const linksBySubscription = new Map<string, typeof links>();
+
+  for (const link of links) {
+    const current = linksBySubscription.get(link.subscriptionId) ?? [];
+
+    current.push(link);
+    linksBySubscription.set(link.subscriptionId, current);
+  }
+
+  return subscriptions.flatMap((subscription): AlertCandidate[] => {
+    const status = subscription.status as SaasSubscriptionStatus;
+    const subscriptionLinks = linksBySubscription.get(subscription.id) ?? [];
+    const activeLinks = subscriptionLinks.filter((link) => link.status === "active");
+    const candidates: AlertCandidate[] = [];
+    const renewalState = getSaasRenewalState(
+      {
+        renewalDate: subscription.renewalDate,
+        status,
+      },
+      asOf,
+    );
+
+    if (renewalState === "overdue" || renewalState === "due_soon") {
+      candidates.push({
+        kind: "saas_renewal",
+        title: `${subscription.name}: renovacao de assinatura`,
+        description: renewalState === "overdue" ? "Assinatura com renovacao vencida." : "Assinatura proxima da renovacao.",
+        severity: renewalState === "overdue" ? "high" : "medium",
+        entityType: "saas_subscription",
+        entityId: subscription.id,
+        dueDate: subscription.renewalDate,
+      });
+    }
+
+    if (status === "active" && activeLinks.length === 0) {
+      candidates.push({
+        kind: "saas_license",
+        title: `${subscription.name}: sem usuario ativo`,
+        description: "Assinatura ativa nao possui usuarios vinculados ativos.",
+        severity: "medium",
+        entityType: "saas_subscription",
+        entityId: subscription.id,
+        dueDate: subscription.renewalDate,
+      });
+    }
+
+    for (const link of activeLinks) {
+      if (link.employeeStatus === "terminated") {
+        candidates.push({
+          kind: "saas_license",
+          title: `${subscription.name}: licenca de colaborador desligado`,
+          description: `${link.employeeName} esta desligado e ainda possui licenca ativa.`,
+          severity: "critical",
+          entityType: "saas_subscription",
+          entityId: subscription.id,
+          dueDate: subscription.renewalDate,
+        });
+      }
+    }
+
+    if (!subscription.responsibleUserId && status === "active") {
+      candidates.push({
+        kind: "saas_license",
+        title: `${subscription.name}: sem responsavel`,
+        description: "Assinatura ativa nao possui responsavel interno.",
+        severity: "medium",
+        entityType: "saas_subscription",
+        entityId: subscription.id,
+        dueDate: subscription.renewalDate,
+      });
+    }
+
+    return candidates;
+  });
+}
+
+function isAlertCandidate(value: AlertCandidate | null): value is AlertCandidate {
+  return value !== null;
+}
+
+function requireOrganizationId(context: AccessContext) {
+  if (!context.organizationId) {
+    throw new AccessDeniedError();
+  }
+
+  return context.organizationId;
+}

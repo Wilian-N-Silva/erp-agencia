@@ -6,6 +6,8 @@ import {
   normalizeOrigin,
   parseTrustedOrigins,
   getAuthSecret,
+  isEmailPasswordAuthEnabled,
+  isEmailPasswordSignUpEnabled,
 } from "@/lib/auth/config";
 
 describe("auth config helpers", () => {
@@ -39,5 +41,20 @@ describe("auth config helpers", () => {
     process.env.npm_lifecycle_event = "test";
 
     expect(getAuthSecret()).toBeUndefined();
+  });
+
+  it("defaults email password auth to non-production environments", () => {
+    delete process.env.ENABLE_EMAIL_PASSWORD_AUTH;
+    delete process.env.ENABLE_EMAIL_PASSWORD_SIGN_UP;
+    expect(isEmailPasswordAuthEnabled()).toBe(true);
+    expect(isEmailPasswordSignUpEnabled()).toBe(true);
+  });
+
+  it("allows email password auth to be disabled explicitly", () => {
+    process.env.ENABLE_EMAIL_PASSWORD_AUTH = "false";
+    process.env.ENABLE_EMAIL_PASSWORD_SIGN_UP = "true";
+
+    expect(isEmailPasswordAuthEnabled()).toBe(false);
+    expect(isEmailPasswordSignUpEnabled()).toBe(false);
   });
 });

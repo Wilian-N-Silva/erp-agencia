@@ -31,14 +31,29 @@ describe("permission-filtered navigation", () => {
     );
   });
 
-  it("shows audit navigation for directors", () => {
+  it("shows only implemented back-office routes", () => {
     const context = createAccessContext({
       userId: "director_1",
       roles: ["director"],
     });
+    const hrefs = getVisibleNavigationItems(context).map((item) => item.href);
 
-    expect(getVisibleNavigationItems(context).map((item) => item.href)).toContain(
-      "/app/auditoria",
-    );
+    expect(hrefs).toContain("/app");
+    expect(hrefs).toContain("/app/financeiro");
+    expect(hrefs).toContain("/app/clientes");
+    expect(hrefs).toContain("/app/colaboradores");
+    expect(hrefs).toContain("/app/ferias");
+    expect(hrefs).toContain("/app/documentos");
+    expect(hrefs).toContain("/app/nfs");
+    expect(hrefs).toContain("/app/reembolsos");
+    expect(hrefs).toContain("/app/equipamentos");
+    expect(hrefs).toContain("/app/acessos");
+    expect(hrefs).toContain("/app/assinaturas");
+    expect(hrefs).toContain("/app/colaboradores/admissoes");
+    expect(hrefs).toContain("/app/colaboradores/desligamentos");
+    expect(hrefs).toContain("/app/alertas");
+    expect(hrefs).toContain("/app/auditoria");
+    expect(hrefs).toContain("/app/configuracoes");
+    expect(hrefs).not.toContain("/app/saas");
   });
 });

@@ -1,14 +1,34 @@
 import { neon } from "@neondatabase/serverless";
+import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 
 import { getRequiredEnv } from "@/lib/env";
 
 import * as schema from "./schema";
 
 function createDatabase() {
-  const client = neon(getRequiredEnv("DATABASE_URL"));
+  const databaseUrl = getRequiredEnv("DATABASE_URL");
+
+  if (isLocalPostgresUrl(databaseUrl)) {
+    return drizzleNodePostgres(new Pool({ connectionString: databaseUrl }), {
+      schema,
+    });
+  }
+
+  const client = neon(databaseUrl);
 
   return drizzle(client, { schema });
+}
+
+function isLocalPostgresUrl(value: string) {
+  try {
+    const { hostname } = new URL(value);
+
+    return ["127.0.0.1", "::1", "localhost"].includes(hostname);
+  } catch {
+    return false;
+  }
 }
 
 let cachedDb: Database | undefined;

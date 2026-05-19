@@ -31,6 +31,8 @@ export type AuditEntityType =
   | "equipment"
   | "access_record"
   | "saas_subscription"
+  | "lifecycle_checklist"
+  | "lifecycle_checklist_item"
   | "alert"
   | (string & {});
 
