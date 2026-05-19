@@ -17,6 +17,7 @@ import {
   saasSubscriptions,
   timeOffRequests,
   users,
+  vacationBalances,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -36,6 +37,14 @@ import {
 } from "@/features/accesses/rules";
 import { isEquipmentReturnAlert, type EquipmentStatus } from "@/features/equipment/rules";
 import { getSaasRenewalState, type SaasSubscriptionStatus } from "@/features/saas/rules";
+import {
+  calculateAvailableBalance,
+  calculatePeriodTakenDays,
+  isVacationExpired,
+  isVacationExpiring,
+  type TimeOffStatus,
+  type VacationBalanceStatus,
+} from "@/features/timeoff/rules";
 
 import {
   applyAlertFilters,
@@ -127,6 +136,7 @@ export async function generateAlertCandidatesForOrganization(
     invoiceCandidates,
     reimbursementCandidates,
     timeOffCandidates,
+    vacationBalanceCandidates,
     lifecycleCandidates,
     equipmentCandidates,
     accessCandidates,
@@ -137,6 +147,7 @@ export async function generateAlertCandidatesForOrganization(
     buildInvoiceAlertCandidates(organizationId),
     buildReimbursementAlertCandidates(organizationId),
     buildTimeOffAlertCandidates(organizationId, asOfKey),
+    buildVacationBalanceAlertCandidates(organizationId, asOfKey),
     buildLifecycleAlertCandidates(organizationId, asOfKey),
     buildEquipmentAlertCandidates(organizationId),
     buildAccessAlertCandidates(organizationId, asOfKey),
@@ -150,12 +161,118 @@ export async function generateAlertCandidatesForOrganization(
       ...invoiceCandidates,
       ...reimbursementCandidates,
       ...timeOffCandidates,
+      ...vacationBalanceCandidates,
       ...lifecycleCandidates,
       ...equipmentCandidates,
       ...accessCandidates,
       ...saasCandidates,
     ]),
   );
+}
+
+async function buildVacationBalanceAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const balances = await db
+    .select({
+      id: vacationBalances.id,
+      employeeId: vacationBalances.employeeId,
+      employeeName: employees.fullName,
+      periodStart: vacationBalances.periodStart,
+      concessionDeadline: vacationBalances.concessionDeadline,
+      daysAcquired: vacationBalances.daysAcquired,
+      daysSold: vacationBalances.daysSold,
+      status: vacationBalances.status,
+    })
+    .from(vacationBalances)
+    .innerJoin(employees, eq(vacationBalances.employeeId, employees.id))
+    .where(and(eq(vacationBalances.organizationId, organizationId), isNull(vacationBalances.deletedAt)));
+
+  if (balances.length === 0) {
+    return [];
+  }
+
+  const employeeIds = Array.from(new Set(balances.map((row) => row.employeeId)));
+  const requestRows = await db
+    .select({
+      employeeId: timeOffRequests.employeeId,
+      startDate: timeOffRequests.startDate,
+      endDate: timeOffRequests.endDate,
+      status: timeOffRequests.status,
+      type: timeOffRequests.type,
+    })
+    .from(timeOffRequests)
+    .where(eq(timeOffRequests.organizationId, organizationId));
+  const requestsByEmployee = new Map<
+    string,
+    { startDate: string; endDate: string; status: TimeOffStatus; type: string }[]
+  >();
+
+  for (const row of requestRows) {
+    if (!employeeIds.includes(row.employeeId)) {
+      continue;
+    }
+
+    const list = requestsByEmployee.get(row.employeeId) ?? [];
+
+    list.push({
+      startDate: row.startDate,
+      endDate: row.endDate,
+      status: row.status as TimeOffStatus,
+      type: row.type,
+    });
+    requestsByEmployee.set(row.employeeId, list);
+  }
+
+  return balances
+    .map((row): AlertCandidate | null => {
+      if ((row.status as VacationBalanceStatus) !== "active") {
+        return null;
+      }
+
+      const requests = requestsByEmployee.get(row.employeeId) ?? [];
+      const daysTaken = calculatePeriodTakenDays(
+        { periodStart: row.periodStart, concessionDeadline: row.concessionDeadline },
+        requests,
+      );
+      const daysAvailable = calculateAvailableBalance({
+        daysAcquired: row.daysAcquired,
+        daysSold: row.daysSold,
+        daysTaken,
+      });
+
+      if (daysAvailable <= 0) {
+        return null;
+      }
+
+      if (isVacationExpired({ concessionDeadline: row.concessionDeadline, availableBalance: daysAvailable, today: asOf })) {
+        return {
+          kind: "vacation_expiring",
+          title: `${row.employeeName}: ferias vencidas`,
+          description: `Saldo de ${daysAvailable} dias com concessao expirada em ${row.concessionDeadline}.`,
+          severity: "high",
+          entityType: "vacation_balance",
+          entityId: row.id,
+          dueDate: row.concessionDeadline,
+        };
+      }
+
+      if (isVacationExpiring({ concessionDeadline: row.concessionDeadline, today: asOf })) {
+        return {
+          kind: "vacation_expiring",
+          title: `${row.employeeName}: ferias proximas do vencimento`,
+          description: `Saldo de ${daysAvailable} dias com concessao ate ${row.concessionDeadline}.`,
+          severity: "medium",
+          entityType: "vacation_balance",
+          entityId: row.id,
+          dueDate: row.concessionDeadline,
+        };
+      }
+
+      return null;
+    })
+    .filter(isAlertCandidate);
 }
 
 async function buildClientPaymentAlertCandidates(

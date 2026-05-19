@@ -7,16 +7,20 @@ import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { employees, timeOffRequests } from "@/lib/db/schema";
+import { employees, timeOffRequests, vacationBalances } from "@/lib/db/schema";
 import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
-import { AccessDeniedError } from "@/lib/rbac";
+import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
   calculateBusinessDays,
   canApproveTimeOff,
   canCreateOwnTimeOff,
+  canManageVacationBalance,
+  computeVacationPeriod,
   timeOffTypeLabels,
+  validateSoldDays,
   type TimeOffStatus,
+  type VacationBalanceStatus,
 } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
@@ -194,4 +198,217 @@ function revalidateTimeOffPaths() {
 
 function formDataToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
+}
+
+const createVacationBalanceSchema = z.object({
+  employeeId: z.string().uuid(),
+  tenureYear: z.coerce.number().int().min(1).max(50),
+  daysAcquired: z.coerce.number().int().min(0).max(60).optional(),
+  daysSold: z.coerce.number().int().min(0).max(60).optional().default(0),
+  notes: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((value) => value || null),
+});
+
+const updateVacationBalanceSchema = z.object({
+  id: z.string().uuid(),
+  daysAcquired: z.coerce.number().int().min(0).max(60),
+  daysSold: z.coerce.number().int().min(0).max(60),
+  notes: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((value) => value || null),
+});
+
+export async function createVacationBalanceAction(formData: FormData) {
+  const context = await requireCurrentContext();
+
+  assertCan("timeoff.write", context);
+
+  if (!canManageVacationBalance(context)) {
+    throw new AccessDeniedError();
+  }
+
+  const input = createVacationBalanceSchema.parse(formDataToObject(formData));
+  const employee = await getEmployeeForVacationBalance(input.employeeId, context.organizationId);
+
+  if (employee.employmentType !== "clt") {
+    throw new Error("Saldo aquisitivo de ferias e exclusivo para CLT.");
+  }
+
+  if (!employee.employmentStartDate) {
+    throw new Error("Colaborador nao possui data de entrada cadastrada.");
+  }
+
+  const period = computeVacationPeriod(employee.employmentStartDate, input.tenureYear);
+  const daysAcquired = input.daysAcquired ?? 30;
+
+  const validation = validateSoldDays({
+    daysAcquired,
+    daysSold: input.daysSold,
+    daysTaken: 0,
+  });
+
+  if (validation) {
+    throw new Error(validation);
+  }
+
+  const [balance] = await db
+    .insert(vacationBalances)
+    .values({
+      organizationId: context.organizationId,
+      employeeId: input.employeeId,
+      periodStart: period.periodStart,
+      periodEnd: period.periodEnd,
+      concessionDeadline: period.concessionDeadline,
+      daysAcquired,
+      daysSold: input.daysSold,
+      status: "active",
+      notes: input.notes,
+      createdByUserId: context.userId,
+    })
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "create",
+    entityType: "vacation_balance",
+    entityId: balance.id,
+    after: balance,
+    metadata: {
+      employeeId: input.employeeId,
+      tenureYear: input.tenureYear,
+    },
+  });
+
+  revalidateVacationBalancePaths(input.employeeId);
+}
+
+export async function updateVacationBalanceAction(formData: FormData) {
+  const context = await requireCurrentContext();
+
+  assertCan("timeoff.write", context);
+
+  if (!canManageVacationBalance(context)) {
+    throw new AccessDeniedError();
+  }
+
+  const input = updateVacationBalanceSchema.parse(formDataToObject(formData));
+  const before = await getVacationBalanceRow(input.id, context.organizationId);
+
+  if (before.status !== "active") {
+    throw new Error("Apenas saldos em vigencia podem ser ajustados.");
+  }
+
+  const validation = validateSoldDays({
+    daysAcquired: input.daysAcquired,
+    daysSold: input.daysSold,
+    daysTaken: 0,
+  });
+
+  if (validation) {
+    throw new Error(validation);
+  }
+
+  const [after] = await db
+    .update(vacationBalances)
+    .set({
+      daysAcquired: input.daysAcquired,
+      daysSold: input.daysSold,
+      notes: input.notes,
+      updatedAt: new Date(),
+    })
+    .where(eq(vacationBalances.id, input.id))
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "vacation_balance",
+    entityId: input.id,
+    before,
+    after,
+  });
+
+  revalidateVacationBalancePaths(before.employeeId);
+}
+
+export async function closeVacationBalanceAction(formData: FormData) {
+  const context = await requireCurrentContext();
+
+  assertCan("timeoff.write", context);
+
+  if (!canManageVacationBalance(context)) {
+    throw new AccessDeniedError();
+  }
+
+  const input = idSchema.parse(formDataToObject(formData));
+  const before = await getVacationBalanceRow(input.id, context.organizationId);
+
+  if (before.status !== "active") {
+    throw new Error("Saldo ja encerrado.");
+  }
+
+  const [after] = await db
+    .update(vacationBalances)
+    .set({ status: "closed", updatedAt: new Date() })
+    .where(eq(vacationBalances.id, input.id))
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "status_change",
+    entityType: "vacation_balance",
+    entityId: input.id,
+    before,
+    after,
+    metadata: {
+      status: "closed",
+    },
+  });
+
+  revalidateVacationBalancePaths(before.employeeId);
+}
+
+async function getEmployeeForVacationBalance(employeeId: string, organizationId: string) {
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      employmentType: employees.employmentType,
+      employmentStartDate: employees.startDate,
+    })
+    .from(employees)
+    .where(and(eq(employees.id, employeeId), eq(employees.organizationId, organizationId)))
+    .limit(1);
+
+  if (!employee) {
+    throw new AccessDeniedError();
+  }
+
+  return employee;
+}
+
+async function getVacationBalanceRow(id: string, organizationId: string) {
+  const [row] = await db
+    .select()
+    .from(vacationBalances)
+    .where(
+      and(eq(vacationBalances.id, id), eq(vacationBalances.organizationId, organizationId)),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new AccessDeniedError();
+  }
+
+  return { ...row, status: row.status as VacationBalanceStatus };
+}
+
+function revalidateVacationBalancePaths(employeeId: string) {
+  revalidatePath(`/app/colaboradores/${employeeId}/ferias`);
+  revalidatePath("/app/ferias");
+  revalidatePath("/portal");
+  revalidatePath("/app");
 }

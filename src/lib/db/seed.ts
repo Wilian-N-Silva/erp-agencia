@@ -44,6 +44,7 @@ import {
   userRoles,
   users,
   organizations,
+  vacationBalances,
 } from "./schema";
 
 const require = createRequire(import.meta.url);
@@ -99,6 +100,7 @@ async function main() {
       demoEmployeeId,
     );
     await seedLifecycleDemoData(organization.id, seedActorUserId, demoEmployeeId);
+    await seedCltVacationDemoData(organization.id, seedActorUserId, leadershipEmployeeId ?? ownerEmployeeId);
   }
 
   console.log("Seed complete:");
@@ -846,6 +848,82 @@ async function seedPeopleDemoData(
   return employee.id;
 }
 
+async function seedCltVacationDemoData(
+  organizationId: string,
+  responsibleUserId?: string,
+  managerEmployeeId?: string | null,
+) {
+  if (!responsibleUserId) {
+    return null;
+  }
+
+  const [area] = await db
+    .insert(areas)
+    .values({ organizationId, name: "Estrategia" })
+    .onConflictDoUpdate({
+      target: [areas.organizationId, areas.name],
+      set: { name: "Estrategia" },
+    })
+    .returning();
+  const [position] = await db
+    .insert(positions)
+    .values({ organizationId, name: "Coordenador" })
+    .onConflictDoUpdate({
+      target: [positions.organizationId, positions.name],
+      set: { name: "Coordenador" },
+    })
+    .returning();
+  const employmentStartDate = "2024-04-01";
+  const [employee] = await db
+    .insert(employees)
+    .values({
+      organizationId,
+      registrationNumber: "FG-00003",
+      fullName: "Colaborador CLT Exemplo",
+      corporateEmail: "clt.exemplo@formula.local",
+      positionId: position.id,
+      areaId: area.id,
+      managerEmployeeId: managerEmployeeId ?? null,
+      employmentType: "clt",
+      startDate: employmentStartDate,
+      status: "active",
+      workModel: "Hibrido",
+      location: "Sao Paulo",
+      currentCompensation: "8500.00",
+      recurringCostAllowance: "0.00",
+      recurringTransport: "0.00",
+    })
+    .onConflictDoUpdate({
+      target: [employees.organizationId, employees.registrationNumber],
+      set: {
+        fullName: "Colaborador CLT Exemplo",
+        corporateEmail: "clt.exemplo@formula.local",
+        positionId: position.id,
+        areaId: area.id,
+        managerEmployeeId: managerEmployeeId ?? null,
+        employmentType: "clt",
+        status: "active",
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  await ensureVacationBalance(employee.id, "2024-04-01", {
+    organizationId,
+    employeeId: employee.id,
+    periodStart: "2024-04-01",
+    periodEnd: "2025-03-31",
+    concessionDeadline: "2026-03-31",
+    daysAcquired: 30,
+    daysSold: 0,
+    status: "active",
+    notes: "Primeiro periodo aquisitivo (demonstracao).",
+    createdByUserId: responsibleUserId,
+  });
+
+  return employee.id;
+}
+
 async function seedGovernanceDemoData(
   organizationId: string,
   responsibleUserId?: string,
@@ -1123,6 +1201,29 @@ async function ensureReimbursementRequest(
   }
 
   await db.insert(reimbursementRequests).values(values);
+}
+
+async function ensureVacationBalance(
+  employeeId: string,
+  periodStart: string,
+  values: typeof vacationBalances.$inferInsert,
+) {
+  const [existing] = await db
+    .select({ id: vacationBalances.id })
+    .from(vacationBalances)
+    .where(
+      and(
+        eq(vacationBalances.employeeId, employeeId),
+        eq(vacationBalances.periodStart, periodStart),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    return;
+  }
+
+  await db.insert(vacationBalances).values(values);
 }
 
 async function ensureTimeOffRequest(
