@@ -13,6 +13,7 @@ import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
+  canEditInvoiceComposition,
   canReadInvoiceRequest,
   canReadReimbursement,
   getReimbursementScope,
@@ -253,6 +254,51 @@ export async function listInvoiceEmployeeOptions(
       ),
     )
     .orderBy(asc(employees.fullName));
+}
+
+export type OpenInvoiceOption = {
+  id: string;
+  competence: string;
+  dueDate: string;
+  expectedAmount: string;
+  status: InvoiceRequestStatus;
+};
+
+export async function listOpenInvoicesForEmployee(
+  context: AccessContext,
+  employeeId: string,
+): Promise<OpenInvoiceOption[]> {
+  const organizationId = requireOrganizationId(context);
+
+  assertCanAny(["invoices.write"], context);
+
+  const rows = await db
+    .select({
+      id: invoiceRequests.id,
+      competence: invoiceRequests.competence,
+      dueDate: invoiceRequests.dueDate,
+      expectedAmount: invoiceRequests.expectedAmount,
+      status: invoiceRequests.status,
+    })
+    .from(invoiceRequests)
+    .where(
+      and(
+        eq(invoiceRequests.organizationId, organizationId),
+        eq(invoiceRequests.employeeId, employeeId),
+        isNull(invoiceRequests.deletedAt),
+      ),
+    )
+    .orderBy(desc(invoiceRequests.competence));
+
+  return rows
+    .filter((row) => canEditInvoiceComposition(row.status as InvoiceRequestStatus))
+    .map((row) => ({
+      id: row.id,
+      competence: row.competence,
+      dueDate: row.dueDate,
+      expectedAmount: row.expectedAmount,
+      status: row.status as InvoiceRequestStatus,
+    }));
 }
 
 async function loadInvoiceItems(invoiceRequestIds: readonly string[]) {
