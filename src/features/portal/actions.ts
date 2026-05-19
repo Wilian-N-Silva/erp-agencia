@@ -42,6 +42,8 @@ import {
   calculateInvoiceExpectedAmount,
   canApproveReimbursementByFinance,
   canApproveReimbursementByManager,
+  canExcludeReimbursementFromInvoice,
+  canIncludeReimbursementInInvoice,
   canMarkInvoicePaid,
   canMarkReimbursementPaid,
   canReviewInvoice,
@@ -314,6 +316,17 @@ export async function markInvoicePaidAction(formData: FormData) {
     .where(eq(invoiceRequests.id, input.id))
     .returning();
 
+  const paidReimbursements = await db
+    .update(reimbursementRequests)
+    .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(reimbursementRequests.includedInvoiceRequestId, input.id),
+        eq(reimbursementRequests.status, "included_in_invoice"),
+      ),
+    )
+    .returning();
+
   await writeAuditLog(context, {
     action: "status_change",
     entityType: "invoice_request",
@@ -322,10 +335,25 @@ export async function markInvoicePaidAction(formData: FormData) {
     after,
     metadata: {
       status: "paid",
+      cascadedReimbursementIds: paidReimbursements.map((row) => row.id),
     },
   });
 
+  for (const reimbursement of paidReimbursements) {
+    await writeAuditLog(context, {
+      action: "status_change",
+      entityType: "reimbursement_request",
+      entityId: reimbursement.id,
+      metadata: {
+        status: "paid",
+        reason: "invoice_paid_cascade",
+        invoiceRequestId: input.id,
+      },
+    });
+  }
+
   revalidateInvoicePaths();
+  revalidateReimbursementPaths();
 }
 
 export async function createReimbursementAction(formData: FormData) {
@@ -461,6 +489,136 @@ export async function rejectReimbursementByFinanceAction(formData: FormData) {
   await updateReimbursementStatus(context, before, "finance_rejected", "reject", {
     financeApproverUserId: context.userId,
   });
+}
+
+const includeReimbursementSchema = z.object({
+  reimbursementId: z.string().uuid(),
+  invoiceRequestId: z.string().uuid(),
+});
+
+const excludeReimbursementSchema = z.object({
+  reimbursementId: z.string().uuid(),
+});
+
+export async function includeReimbursementInInvoiceAction(formData: FormData) {
+  const { context, organizationId } = await requireInvoiceWriterContext();
+  const input = includeReimbursementSchema.parse(formDataToObject(formData));
+  const reimbursementBefore = await getReimbursementForWrite(input.reimbursementId, organizationId);
+  const invoiceBefore = await getInvoiceForWrite(input.invoiceRequestId, organizationId);
+
+  if (
+    !canIncludeReimbursementInInvoice(
+      context,
+      { employeeId: reimbursementBefore.employeeId, status: reimbursementBefore.status },
+      {
+        employeeId: invoiceBefore.employeeId,
+        status: invoiceBefore.status as InvoiceRequestStatus,
+      },
+    )
+  ) {
+    throw new AccessDeniedError();
+  }
+
+  const reimbursementRow = await getReimbursementCompositionDetails(
+    input.reimbursementId,
+    organizationId,
+  );
+
+  const nextSortOrder = await getNextInvoiceItemSortOrder(input.invoiceRequestId);
+
+  await db.insert(invoiceRequestItems).values({
+    invoiceRequestId: input.invoiceRequestId,
+    label: reimbursementRow.title,
+    amount: reimbursementRow.amount,
+    kind: "reimbursement",
+    sortOrder: nextSortOrder,
+    sourceReimbursementId: input.reimbursementId,
+  });
+
+  const newExpectedAmount = await recomputeInvoiceExpectedAmount(input.invoiceRequestId);
+
+  const [invoiceAfter] = await db
+    .update(invoiceRequests)
+    .set({ expectedAmount: newExpectedAmount, updatedAt: new Date() })
+    .where(eq(invoiceRequests.id, input.invoiceRequestId))
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "invoice_request",
+    entityId: input.invoiceRequestId,
+    before: invoiceBefore,
+    after: invoiceAfter,
+    metadata: {
+      reimbursementId: input.reimbursementId,
+      reason: "include_reimbursement",
+    },
+  });
+
+  await updateReimbursementStatus(
+    context,
+    reimbursementBefore,
+    "included_in_invoice",
+    "status_change",
+    { includedInvoiceRequestId: input.invoiceRequestId },
+  );
+}
+
+export async function excludeReimbursementFromInvoiceAction(formData: FormData) {
+  const { context, organizationId } = await requireInvoiceWriterContext();
+  const input = excludeReimbursementSchema.parse(formDataToObject(formData));
+  const reimbursementBefore = await getReimbursementForWrite(input.reimbursementId, organizationId);
+
+  if (!reimbursementBefore.includedInvoiceRequestId) {
+    throw new Error("Reimbursement is not linked to an invoice request.");
+  }
+
+  const invoiceBefore = await getInvoiceForWrite(
+    reimbursementBefore.includedInvoiceRequestId,
+    organizationId,
+  );
+
+  if (
+    !canExcludeReimbursementFromInvoice(
+      context,
+      { status: reimbursementBefore.status },
+      { status: invoiceBefore.status as InvoiceRequestStatus },
+    )
+  ) {
+    throw new AccessDeniedError();
+  }
+
+  await db
+    .delete(invoiceRequestItems)
+    .where(eq(invoiceRequestItems.sourceReimbursementId, input.reimbursementId));
+
+  const newExpectedAmount = await recomputeInvoiceExpectedAmount(invoiceBefore.id);
+
+  const [invoiceAfter] = await db
+    .update(invoiceRequests)
+    .set({ expectedAmount: newExpectedAmount, updatedAt: new Date() })
+    .where(eq(invoiceRequests.id, invoiceBefore.id))
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "invoice_request",
+    entityId: invoiceBefore.id,
+    before: invoiceBefore,
+    after: invoiceAfter,
+    metadata: {
+      reimbursementId: input.reimbursementId,
+      reason: "exclude_reimbursement",
+    },
+  });
+
+  await updateReimbursementStatus(
+    context,
+    reimbursementBefore,
+    "finance_approved",
+    "status_change",
+    { includedInvoiceRequestId: null },
+  );
 }
 
 export async function markReimbursementPaidAction(formData: FormData) {
@@ -619,6 +777,7 @@ async function getReimbursementForWrite(id: string, organizationId: string | nul
       employeeId: reimbursementRequests.employeeId,
       managerEmployeeId: employees.managerEmployeeId,
       status: reimbursementRequests.status,
+      includedInvoiceRequestId: reimbursementRequests.includedInvoiceRequestId,
     })
     .from(reimbursementRequests)
     .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))
@@ -633,6 +792,51 @@ async function getReimbursementForWrite(id: string, organizationId: string | nul
     ...row,
     status: row.status as ReimbursementStatus,
   };
+}
+
+async function getReimbursementCompositionDetails(id: string, organizationId: string) {
+  const [row] = await db
+    .select({
+      title: reimbursementRequests.title,
+      amount: reimbursementRequests.amount,
+    })
+    .from(reimbursementRequests)
+    .where(
+      and(
+        eq(reimbursementRequests.id, id),
+        eq(reimbursementRequests.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new AccessDeniedError();
+  }
+
+  return row;
+}
+
+async function getNextInvoiceItemSortOrder(invoiceRequestId: string) {
+  const rows = await db
+    .select({ sortOrder: invoiceRequestItems.sortOrder })
+    .from(invoiceRequestItems)
+    .where(eq(invoiceRequestItems.invoiceRequestId, invoiceRequestId));
+
+  const maxSortOrder = rows.reduce((max, row) => Math.max(max, row.sortOrder), -1);
+
+  return maxSortOrder + 1;
+}
+
+async function recomputeInvoiceExpectedAmount(invoiceRequestId: string) {
+  const rows = await db
+    .select({
+      amount: invoiceRequestItems.amount,
+      kind: invoiceRequestItems.kind,
+    })
+    .from(invoiceRequestItems)
+    .where(eq(invoiceRequestItems.invoiceRequestId, invoiceRequestId));
+
+  return calculateInvoiceExpectedAmount(rows);
 }
 
 async function updateReimbursementStatus(

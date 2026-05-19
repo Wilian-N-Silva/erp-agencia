@@ -43,6 +43,13 @@
       "when": 1778786276982,
       "tag": "0005_early_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779207756050,
+      "tag": "0006_light_joseph",
+      "breakpoints": true
     }
   ]
 }
