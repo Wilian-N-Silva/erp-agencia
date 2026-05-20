@@ -95,6 +95,35 @@ export function canMarkInvoicePaid(status: InvoiceRequestStatus) {
   return status === "approved";
 }
 
+export function canEditInvoiceComposition(status: InvoiceRequestStatus) {
+  return status === "draft" || status === "published" || status === "adjustment_requested";
+}
+
+export function canIncludeReimbursementInInvoice(
+  context: AccessContext,
+  reimbursement: { employeeId: string; status: ReimbursementStatus },
+  invoice: { employeeId: string; status: InvoiceRequestStatus },
+) {
+  return (
+    can("invoices.write", context) &&
+    reimbursement.status === "finance_approved" &&
+    reimbursement.employeeId === invoice.employeeId &&
+    canEditInvoiceComposition(invoice.status)
+  );
+}
+
+export function canExcludeReimbursementFromInvoice(
+  context: AccessContext,
+  reimbursement: { status: ReimbursementStatus },
+  invoice: { status: InvoiceRequestStatus },
+) {
+  return (
+    can("invoices.write", context) &&
+    reimbursement.status === "included_in_invoice" &&
+    canEditInvoiceComposition(invoice.status)
+  );
+}
+
 export function buildSuggestedInvoiceDescription(input: {
   areaName: string;
   competence: string;

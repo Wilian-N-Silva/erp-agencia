@@ -1,5 +1,5 @@
 {
-  "id": "33ca273f-12f2-47e2-b24a-b87156113c4a",
+  "id": "b2b84784-ac05-4a33-894d-802020f9331f",
   "prevId": "de3658a3-c2e2-4edd-93cb-03463e974c4e",
   "version": "7",
   "dialect": "postgresql",
@@ -3201,6 +3201,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "source_reimbursement_id": {
+          "name": "source_reimbursement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -3209,6 +3215,21 @@
           "columns": [
             {
               "expression": "invoice_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invoice_request_items_reimbursement_idx": {
+          "name": "invoice_request_items_reimbursement_idx",
+          "columns": [
+            {
+              "expression": "source_reimbursement_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5242,193 +5263,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.vacation_balances": {
-      "name": "vacation_balances",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period_start": {
-          "name": "period_start",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period_end": {
-          "name": "period_end",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "concession_deadline": {
-          "name": "concession_deadline",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "days_acquired": {
-          "name": "days_acquired",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 30
-        },
-        "days_sold": {
-          "name": "days_sold",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "status": {
-          "name": "status",
-          "type": "vacation_balance_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'active'"
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "vacation_balances_employee_period_idx": {
-          "name": "vacation_balances_employee_period_idx",
-          "columns": [
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "period_start",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "vacation_balances_status_idx": {
-          "name": "vacation_balances_status_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "vacation_balances_organization_id_organizations_id_fk": {
-          "name": "vacation_balances_organization_id_organizations_id_fk",
-          "tableFrom": "vacation_balances",
-          "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "vacation_balances_employee_id_employees_id_fk": {
-          "name": "vacation_balances_employee_id_employees_id_fk",
-          "tableFrom": "vacation_balances",
-          "tableTo": "employees",
-          "columnsFrom": [
-            "employee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "vacation_balances_created_by_user_id_user_id_fk": {
-          "name": "vacation_balances_created_by_user_id_user_id_fk",
-          "tableFrom": "vacation_balances",
-          "tableTo": "user",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.verification": {
       "name": "verification",
       "schema": "",
@@ -5594,14 +5428,6 @@
         "approved",
         "rejected",
         "cancelled"
-      ]
-    },
-    "public.vacation_balance_status": {
-      "name": "vacation_balance_status",
-      "schema": "public",
-      "values": [
-        "active",
-        "closed"
       ]
     }
   },

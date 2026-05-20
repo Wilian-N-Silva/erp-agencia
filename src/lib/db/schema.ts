@@ -718,9 +718,13 @@ export const invoiceRequestItems = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     kind: text("kind").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    sourceReimbursementId: uuid("source_reimbursement_id"),
   },
   (table) => ({
     invoiceIdx: index("invoice_request_items_invoice_idx").on(table.invoiceRequestId),
+    sourceReimbursementIdx: index("invoice_request_items_reimbursement_idx").on(
+      table.sourceReimbursementId,
+    ),
   }),
 );
 

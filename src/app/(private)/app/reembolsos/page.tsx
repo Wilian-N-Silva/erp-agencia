@@ -1,23 +1,33 @@
-import { Ban, CheckCircle2, DollarSign, type LucideIcon } from "lucide-react";
+import { Ban, CheckCircle2, DollarSign, FilePlus2, FileMinus2, type LucideIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 
+import { ActionDialog } from "@/components/ui/action-dialog";
 import {
   approveReimbursementByFinanceAction,
   approveReimbursementByManagerAction,
+  excludeReimbursementFromInvoiceAction,
+  includeReimbursementInInvoiceAction,
   markReimbursementPaidAction,
   rejectReimbursementByFinanceAction,
   rejectReimbursementByManagerAction,
 } from "@/features/portal/actions";
-import { listReimbursements, type ReimbursementListItem } from "@/features/portal/dal";
+import {
+  listOpenInvoicesForEmployee,
+  listReimbursements,
+  type OpenInvoiceOption,
+  type ReimbursementListItem,
+} from "@/features/portal/dal";
 import {
   canApproveReimbursementByFinance,
   canApproveReimbursementByManager,
+  canIncludeReimbursementInInvoice,
   canMarkReimbursementPaid,
+  invoiceRequestStatusLabels,
   reimbursementStatusLabels,
 } from "@/features/portal/rules";
-import { formatDate, formatMoney } from "@/features/finance/rules";
+import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
-import { canAny } from "@/lib/rbac";
+import { can, canAny } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +52,7 @@ export default async function ReimbursementsPage() {
   }
 
   const reimbursements = await listReimbursements(context);
+  const openInvoicesByEmployee = await loadOpenInvoicesForReimbursements(context, reimbursements);
 
   return (
     <section className="flex w-full flex-col gap-6">
@@ -79,6 +90,7 @@ export default async function ReimbursementsPage() {
                   <ReimbursementRow
                     context={context}
                     key={reimbursement.id}
+                    openInvoices={openInvoicesByEmployee.get(reimbursement.employeeId) ?? []}
                     reimbursement={reimbursement}
                   />
                 ))
@@ -91,11 +103,38 @@ export default async function ReimbursementsPage() {
   );
 }
 
+async function loadOpenInvoicesForReimbursements(
+  context: AccessContext,
+  reimbursements: readonly ReimbursementListItem[],
+): Promise<Map<string, OpenInvoiceOption[]>> {
+  const result = new Map<string, OpenInvoiceOption[]>();
+
+  if (!can("invoices.write", context)) {
+    return result;
+  }
+
+  const employeeIds = new Set<string>();
+
+  for (const reimbursement of reimbursements) {
+    if (reimbursement.status === "finance_approved") {
+      employeeIds.add(reimbursement.employeeId);
+    }
+  }
+
+  for (const employeeId of employeeIds) {
+    result.set(employeeId, await listOpenInvoicesForEmployee(context, employeeId));
+  }
+
+  return result;
+}
+
 function ReimbursementRow({
   context,
+  openInvoices,
   reimbursement,
 }: {
   context: AccessContext;
+  openInvoices: OpenInvoiceOption[];
   reimbursement: ReimbursementListItem;
 }) {
   const target = {
@@ -106,6 +145,16 @@ function ReimbursementRow({
   const canManagerApprove = canApproveReimbursementByManager(context, target);
   const canFinanceApprove = canApproveReimbursementByFinance(context, target);
   const canPay = canMarkReimbursementPaid(context, target);
+  const eligibleInvoices = openInvoices.filter((invoice) =>
+    canIncludeReimbursementInInvoice(
+      context,
+      { employeeId: reimbursement.employeeId, status: reimbursement.status },
+      { employeeId: reimbursement.employeeId, status: invoice.status },
+    ),
+  );
+  const showIncludeAction = reimbursement.status === "finance_approved" && eligibleInvoices.length > 0;
+  const showExcludeAction =
+    reimbursement.status === "included_in_invoice" && can("invoices.write", context);
 
   return (
     <tr className="border-b last:border-b-0">
@@ -152,9 +201,76 @@ function ReimbursementRow({
               <IconButton icon={DollarSign} label="Marcar pago" tone="primary" />
             </form>
           ) : null}
+          {showIncludeAction ? (
+            <IncludeInInvoiceDialog
+              eligibleInvoices={eligibleInvoices}
+              reimbursementId={reimbursement.id}
+            />
+          ) : null}
+          {showExcludeAction ? (
+            <form action={excludeReimbursementFromInvoiceAction}>
+              <input name="reimbursementId" type="hidden" value={reimbursement.id} />
+              <IconButton icon={FileMinus2} label="Remover da NF" tone="destructive" />
+            </form>
+          ) : null}
         </div>
       </td>
     </tr>
+  );
+}
+
+function IncludeInInvoiceDialog({
+  eligibleInvoices,
+  reimbursementId,
+}: {
+  eligibleInvoices: OpenInvoiceOption[];
+  reimbursementId: string;
+}) {
+  return (
+    <ActionDialog
+      title="Incluir reembolso em NF"
+      trigger={<FilePlus2 className="size-4" aria-hidden="true" />}
+      triggerClassName="inline-flex size-8 items-center justify-center rounded-md border border-primary/30 text-primary transition-colors hover:bg-primary/10"
+      triggerLabel="Incluir na NF"
+    >
+      <form action={includeReimbursementInInvoiceAction} className="flex flex-col gap-3">
+        <input name="reimbursementId" type="hidden" value={reimbursementId} />
+        <p className="text-sm text-muted-foreground">
+          Selecione a NF do colaborador para somar este reembolso na composicao.
+        </p>
+        <div className="flex flex-col gap-2">
+          {eligibleInvoices.map((invoice) => (
+            <label
+              className="flex cursor-pointer items-center gap-3 rounded-md border bg-background px-3 py-2 hover:bg-muted"
+              key={invoice.id}
+            >
+              <input
+                name="invoiceRequestId"
+                required
+                type="radio"
+                value={invoice.id}
+              />
+              <div className="flex flex-1 flex-col">
+                <span className="text-sm font-medium">
+                  {formatCompetence(invoice.competence)} - {invoiceRequestStatusLabels[invoice.status]}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Vencimento {formatDate(invoice.dueDate)} - Valor esperado {formatMoney(invoice.expectedAmount)}
+                </span>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            className="inline-flex items-center justify-center rounded-md border bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            type="submit"
+          >
+            Incluir na NF
+          </button>
+        </div>
+      </form>
+    </ActionDialog>
   );
 }
 

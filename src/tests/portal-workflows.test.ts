@@ -5,6 +5,9 @@ import {
   calculateInvoiceExpectedAmount,
   canApproveReimbursementByFinance,
   canApproveReimbursementByManager,
+  canEditInvoiceComposition,
+  canExcludeReimbursementFromInvoice,
+  canIncludeReimbursementInInvoice,
   canReadInvoiceRequest,
   canSubmitInvoice,
   canSubmitInvoiceRequest,
@@ -134,5 +137,115 @@ describe("reimbursement workflow rules", () => {
         status: "manager_approved",
       }),
     ).toBe(true);
+  });
+});
+
+describe("reimbursement inclusion in invoice composition", () => {
+  const financeContext = createAccessContext({
+    userId: "finance_1",
+    roles: ["finance"],
+  });
+  const employeeContext = createAccessContext({
+    userId: "employee_1",
+    employeeId: "employee_1",
+    roles: ["employee"],
+  });
+
+  it("treats only pre-approval invoice statuses as composition-editable", () => {
+    expect(canEditInvoiceComposition("draft")).toBe(true);
+    expect(canEditInvoiceComposition("published")).toBe(true);
+    expect(canEditInvoiceComposition("adjustment_requested")).toBe(true);
+    expect(canEditInvoiceComposition("submitted")).toBe(false);
+    expect(canEditInvoiceComposition("approved")).toBe(false);
+    expect(canEditInvoiceComposition("paid")).toBe(false);
+  });
+
+  it("allows finance to include a finance-approved reimbursement in an editable invoice for the same employee", () => {
+    expect(
+      canIncludeReimbursementInInvoice(
+        financeContext,
+        { employeeId: "employee_1", status: "finance_approved" },
+        { employeeId: "employee_1", status: "published" },
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects inclusion when employees do not match", () => {
+    expect(
+      canIncludeReimbursementInInvoice(
+        financeContext,
+        { employeeId: "employee_1", status: "finance_approved" },
+        { employeeId: "employee_2", status: "published" },
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects inclusion when the invoice is no longer editable", () => {
+    expect(
+      canIncludeReimbursementInInvoice(
+        financeContext,
+        { employeeId: "employee_1", status: "finance_approved" },
+        { employeeId: "employee_1", status: "approved" },
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects inclusion when the reimbursement is not finance-approved", () => {
+    expect(
+      canIncludeReimbursementInInvoice(
+        financeContext,
+        { employeeId: "employee_1", status: "manager_approved" },
+        { employeeId: "employee_1", status: "published" },
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects inclusion for users without invoices.write permission", () => {
+    expect(
+      canIncludeReimbursementInInvoice(
+        employeeContext,
+        { employeeId: "employee_1", status: "finance_approved" },
+        { employeeId: "employee_1", status: "published" },
+      ),
+    ).toBe(false);
+  });
+
+  it("allows exclusion only while the invoice is still editable", () => {
+    expect(
+      canExcludeReimbursementFromInvoice(
+        financeContext,
+        { status: "included_in_invoice" },
+        { status: "published" },
+      ),
+    ).toBe(true);
+    expect(
+      canExcludeReimbursementFromInvoice(
+        financeContext,
+        { status: "included_in_invoice" },
+        { status: "approved" },
+      ),
+    ).toBe(false);
+    expect(
+      canExcludeReimbursementFromInvoice(
+        financeContext,
+        { status: "finance_approved" },
+        { status: "published" },
+      ),
+    ).toBe(false);
+  });
+
+  it("recomputes expected amount when reimbursements are added", () => {
+    const before = calculateInvoiceExpectedAmount([
+      { amount: "5000.00", kind: "base" },
+      { amount: "100.00", kind: "transport" },
+    ]);
+    const after = calculateInvoiceExpectedAmount([
+      { amount: "5000.00", kind: "base" },
+      { amount: "100.00", kind: "transport" },
+      { amount: "250.00", kind: "reimbursement" },
+    ]);
+
+    expect(before).toBe("5100.00");
+    expect(after).toBe("5350.00");
   });
 });

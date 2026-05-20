@@ -1,0 +1,2 @@
+ALTER TABLE "invoice_request_items" ADD COLUMN "source_reimbursement_id" uuid;--> statement-breakpoint
+CREATE INDEX "invoice_request_items_reimbursement_idx" ON "invoice_request_items" USING btree ("source_reimbursement_id");
