@@ -6,10 +6,11 @@ This document is the authoritative cold-start summary for "what blocks v1.0 laun
 
 ## Status snapshot
 
-- Active branch: `development` at `2704e43` (8 commits ahead of `origin/development`, unpushed)
+- Active branch: `development` at `6aed6e7` (11 commits ahead of `origin/development`, unpushed).
 - No open feature branches — NF inclusion (`feature/nf-include-reimbursement`) and CLT vacation balance (`feature/clt-vacation-balance`) are both merged.
-- Last release on `main`: `ae73c49 docs: add project requirements and workflow` (release branch behind reality)
+- Last release on `main`: `ae73c49 docs: add project requirements and workflow` (release branch behind reality).
 - Migrations are linear `0000` → `0007`; the `0006`/`0007` collision was resolved by regeneration during the vacation-branch merge.
+- Validation as of last check: typecheck clean, lint clean, vitest 119/119, build green, Playwright E2E 2/2 green.
 
 ## PRD §14 acceptance criteria — 18 of 20 done
 
@@ -74,13 +75,108 @@ These block configuration, not implementation. Lock them and seed the values.
 6. Once §14 items are green: promote `development` → `main` for the v1.0 release.
 7. Tag the release commit on `main`.
 
-## Recommended next-session order
+## Next steps to launch v1.0
 
-1. **Security test expansion** (§14.4) — broader coverage of PRD §9.4. Highest remaining test effort and the last code-level §14 blocker.
-2. **Backup drill** (§14.13) — half day, mostly process.
-3. **§22 product decisions** — get them locked, then seed.
-4. **Staging** (§14.14) — depends on infra.
-5. **Smaller feature gaps** in order of customer-visible value (aniversário alerts → XLSX → terminated-employee access alert verification → recurring client entry automation).
+Each block is self-contained so any session can pick one and start. Order is recommended but not strict — the only hard dependency is that §14.4 security tests should land before promoting to `main`.
+
+### 1. Security test expansion (closes §14.4) — last code-level blocker
+
+**Branch**: `feature/security-tests-prd-9-4` from `development`.
+**Effort**: ~2 days.
+**Scope** — extend `src/tests/security-critical-flows.test.ts` (currently 6 tests) to cover PRD §9.4's 15-item list. Group new tests by category:
+
+- **IDOR**: try to read/update a `documents` row owned by another employee via the download route (`/app/documentos/[id]/download`) and via direct DAL calls. Repeat for `reimbursement_requests`, `invoice_requests`, `vacation_balances`, `time_off_requests`. Each should return 403/AccessDeniedError.
+- **Vertical escalation**: employee context attempts finance actions (`approveInvoiceRequestAction`, `createFinancialEntry`, `updateEmployeeCompensationAction`). All should throw `AccessDeniedError`.
+- **Status payload tamper**: send `formData` to `submitInvoiceRequestAction` with `status=approved` injected. Server-side enums + Zod should strip; the action ignores client-sent status.
+- **`employee_id` payload tamper**: collaborator submits a reimbursement with a different `employeeId` in the form. Action should bind to `context.employeeId`, not formData.
+- **XSS in observação**: insert `<script>alert(1)</script>` into reimbursement notes; render path must escape (React does this by default — test asserts the literal string appears, not executed).
+- **SQL injection in filters**: hit `/app/financeiro?q=' OR 1=1--` and `/app/clientes?status=active' UNION SELECT…`. Drizzle parameterizes — assert the query runs without leaking.
+- **CSRF on mutating actions**: try a server action without the Next.js form CSRF token (cross-origin POST). Should reject.
+- **Rate limit on login**: hit `/api/auth/sign-in/email` rapidly; Better Auth's default rate limiter should kick in.
+- **Manipulating financial status in payload**: send `status=received` directly on `createFinancialEntry`; action should ignore and compute status from rules.
+- **Export without permission**: request `/app/auditoria/exportar` as a `audit.read_limited` user; should 403.
+- **Session after logout**: sign out, then try a private route with the now-stale cookie; should redirect to `/login`.
+
+**Acceptance**: vitest count goes from 119 to 130+. All green. No new RBAC code needed — these are *negative* tests proving existing guards work. If a test exposes a real gap, fix the guard in the same branch.
+
+**Files likely touched**:
+- `src/tests/security-critical-flows.test.ts` (heavy)
+- Possibly new test fixtures helper for building auth-stamped requests
+
+### 2. Backup/restore drill (closes §14.13)
+
+**Branch**: `chore/backup-restore-drill` from `development`, or document only — no code change required.
+**Effort**: half day, mostly process + a short script.
+
+**Steps**:
+1. Add a `scripts/backup.sh` (or `.ps1`) that runs `pg_dump` against `DATABASE_URL` to a timestamped file under `backups/`.
+2. Add `scripts/restore.sh` that takes a dump path and restores into a fresh DB.
+3. Run the drill end to end on the dev DB:
+   - Take a backup with current data.
+   - Bring up a second clean DB (`erp_restore_test`).
+   - Restore the dump.
+   - Run a few sanity queries (employee count, role/permission count, vacation_balance count).
+   - Confirm documents referenced via `files.storageKey` would still resolve (storage is separate from DB; document this in the runbook).
+4. Add `docs/runbooks/backup-restore.md` with the procedure.
+5. Update this checklist to mark §14.13 done.
+
+**Acceptance**: a documented, working backup + restore procedure exists. Run once and recorded.
+
+### 3. Product decisions for PRD §22 — unblocks staging/prod config
+
+**Effort**: 1–2 hour conversation, then commit configs.
+
+For each decision below, get a single answer from the stakeholder, then encode:
+
+| Decision | Where to encode once answered |
+|---|---|
+| System name | `README.md`, login page title, email-from-name |
+| Production domain | `BETTER_AUTH_URL`, `APP_URL`, `BETTER_AUTH_TRUSTED_ORIGINS`, `NEXT_PUBLIC_BETTER_AUTH_URL` in prod env |
+| Storage provider | `STORAGE_PROVIDER` + R2 creds (or pick a different S3-compatible) |
+| Login domain whitelist | `ALLOWED_EMAIL_DOMAIN` in prod env |
+| First admin user | `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, `INITIAL_ADMIN_PASSWORD` (set once, then rotate via UI) |
+| Upload size limit | `UPLOAD_MAX_BYTES` (default 10485760 = 10 MB) |
+| Document retention policy | If non-trivial, add a scheduled cleanup; otherwise document the manual procedure |
+| Financial categories list | Hard-coded enum in finance feature — check if matches business reality |
+| Cargos / áreas | Seed via UI (`/app/configuracoes` if exposed) or extend seed |
+| NF descriptive template per PJ type | `buildSuggestedInvoiceDescription` in `src/features/portal/rules.ts` already uses position/area; confirm copy with finance |
+| CLT portal scope | If CLT should NOT see the portal in v1.0, gate `/portal` by employment type |
+
+**Acceptance**: each row above has a recorded decision (in this doc or `docs/decisions/`) and the corresponding env/code is in place.
+
+### 4. Staging environment (closes §14.14) — depends on infra
+
+**Effort**: depends on hosting choice; days if from scratch.
+
+**Minimum staging shape**:
+- Hosting target (Vercel / Render / Fly / VPS) — pick one.
+- A staging Postgres (Neon branch is cheapest if going Neon for prod).
+- Staging storage bucket (R2 staging credentials).
+- Environment promoted from a deploy of `development` after security tests merge.
+- Smoke test on staging: login, NF cycle, reimbursement → NF inclusion, vacation balance create, audit log visible.
+
+**Acceptance**: someone other than the developer logs into staging and runs a representative flow without help.
+
+### 5. Smaller feature gaps (post-§14 polish, can ship 1.0 without)
+
+Order by customer-visible value:
+
+a. **Aniversário alert generator** — small. Add `buildBirthdayAlertCandidates` in `src/features/alerts/dal.ts`. Query `employees.birthDate` where month/day matches a 7-day window from `asOf`. New alert kind `birthday`. Dashboard tile follows.
+b. **XLSX export** — adopt `exceljs` or `xlsx`, add export buttons in finance/audit alongside the existing CSV ones. PRD §6.2.8 mentions XLSX.
+c. **Terminated employee access alert** — verify `buildAccessAlertCandidates` already emits `acesso ativo apos desligamento` for `employee.status=terminated` cases. Code reads right; add a vitest covering it explicitly.
+d. **Recurring expected client entry** — only if the business wants automation. PRD §6.3 explicitly says "manual" — likely defer.
+
+### Cut the v1.0 release
+
+When §14.4, §14.13, and §14.14 are green:
+
+1. `npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && npm.cmd run build && npm.cmd run test:e2e` — must all pass on `development`.
+2. `git push origin development` (currently 11 commits unpushed).
+3. `git checkout main && git merge --no-ff development -m "release: v1.0.0"`.
+4. `git tag -a v1.0.0 -m "Initial release"`.
+5. `git push origin main --tags`.
+6. Deploy `main` to production.
+7. Update `docs/implementation-log.md` with the release entry.
 
 ## Pointers for cold starts
 
