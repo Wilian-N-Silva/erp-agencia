@@ -7,6 +7,7 @@ export const alertKindLabels = {
   invoice_pending: "NF PJ",
   reimbursement_pending: "Reembolso",
   timeoff_pending: "Ferias/pausa",
+  vacation_expiring: "Saldo de ferias",
   lifecycle_pending: "Checklist",
   equipment_return: "Equipamento",
   access_review: "Acesso",

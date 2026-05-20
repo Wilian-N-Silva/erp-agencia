@@ -40,7 +40,12 @@ import { formatCompetence, formatDate, formatMoney } from "@/features/finance/ru
 import { listSaasSubscriptions, type SaasSubscriptionListItem } from "@/features/saas/dal";
 import { saasSubscriptionStatusLabels } from "@/features/saas/rules";
 import { createTimeOffRequestAction } from "@/features/timeoff/actions";
-import { listTimeOffRequests, type TimeOffListItem } from "@/features/timeoff/dal";
+import {
+  listTimeOffRequests,
+  listVacationBalances,
+  type TimeOffListItem,
+  type VacationBalanceListItem,
+} from "@/features/timeoff/dal";
 import { timeOffStatusLabels, timeOffTypeLabels } from "@/features/timeoff/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
 
@@ -73,6 +78,12 @@ export default async function PortalPage() {
     listSaasSubscriptions(context, {}, { linkedOnly: true, limit: 6 }),
   ]);
   const pendingInvoice = invoices.find((invoice) => canSubmitInvoice(invoice.status));
+  const vacationBalances =
+    employee && employee.employmentType === "clt" && context.employeeId
+      ? await listVacationBalances(context, { employeeId: context.employeeId })
+      : [];
+  const currentVacationBalance =
+    vacationBalances.find((balance) => balance.status === "active") ?? null;
 
   return (
     <section className="flex w-full flex-col gap-6">
@@ -140,6 +151,7 @@ export default async function PortalPage() {
             <CalendarClock className="size-4 text-primary" aria-hidden="true" />
           </div>
         </div>
+        {currentVacationBalance ? <VacationBalanceCard balance={currentVacationBalance} /> : null}
         <TimeOffList requests={timeOffRequests} />
       </section>
 
@@ -363,6 +375,37 @@ function DocumentList({ documents }: { documents: DocumentListItem[] }) {
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function VacationBalanceCard({ balance }: { balance: VacationBalanceListItem }) {
+  const stateLabel = balance.expired ? "Vencido" : balance.expiring ? "Vencendo" : "Em vigencia";
+  const toneClass =
+    balance.expired || balance.expiring
+      ? "border-destructive/30 bg-destructive/10 text-destructive"
+      : "border-primary/30 bg-primary/10 text-primary";
+
+  return (
+    <div className="grid gap-3 border-b px-4 py-3 text-sm md:grid-cols-[1fr_auto] md:items-center">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <BalanceTile label="Disponiveis" value={`${balance.daysAvailable}`} />
+        <BalanceTile label="Tirados" value={`${balance.daysTaken}`} />
+        <BalanceTile label="Vendidos" value={`${balance.daysSold}`} />
+        <BalanceTile label="Vencimento" value={formatDate(balance.concessionDeadline)} />
+      </div>
+      <span className={`inline-flex w-fit rounded-md border px-2 py-1 text-xs font-medium ${toneClass}`}>
+        {stateLabel}
+      </span>
+    </div>
+  );
+}
+
+function BalanceTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold">{value}</p>
     </div>
   );
 }
