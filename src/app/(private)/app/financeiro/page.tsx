@@ -414,6 +414,14 @@ function FinanceFilterForm({
             Exportar CSV
           </a>
         ) : null}
+        {canExport ? (
+          <a
+            className={`${secondaryButtonClassName} self-end`}
+            href={`/app/financeiro/exportar-xlsx${buildFinanceExportQuery(filters)}`}
+          >
+            Exportar XLSX
+          </a>
+        ) : null}
       </div>
     </form>
   );

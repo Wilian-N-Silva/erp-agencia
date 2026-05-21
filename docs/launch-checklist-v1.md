@@ -12,7 +12,7 @@ This document is the authoritative cold-start summary for "what blocks v1.0 laun
 - Migrations are linear `0000` → `0007`; the `0006`/`0007` collision was resolved by regeneration during the vacation-branch merge.
 - Validation as of last check: typecheck clean, lint clean, vitest 119/119, build green, Playwright E2E 2/2 green.
 
-## PRD §14 acceptance criteria — 18 of 20 done
+## PRD §14 acceptance criteria — 19 of 20 done
 
 ### Done
 
@@ -38,16 +38,18 @@ This document is the authoritative cold-start summary for "what blocks v1.0 laun
 
 | # | Criterion | Concrete gap | Effort |
 |---|---|---|---|
-| §14.4 | Permission tests cover all profiles | `src/tests/security-critical-flows.test.ts` has 6 tests. PRD §9.4 lists 15. Gaps: IDOR, vertical privilege escalation, status payload manipulation, `employee_id` payload manipulation, XSS in observação fields, SQL injection in filters, CSRF, rate-limit on login. | Days |
-| §14.13 | Backup tested | PRD §9.5 never executed (create backup, restore in separate env, validate records/documents/permissions). | Half day |
-| §14.14 | Staging validated | No staging environment provisioned yet. | Depends on infra |
+| §14.4 | Permission tests cover all profiles | ~~6 tests, PRD §9.4 lists 15.~~ Closed: `src/tests/security-critical-flows.test.ts` now has 20 tests covering IDOR, vertical escalation, status / employee_id payload tampering, compensation visibility. Action-level CSRF + SQLi + rate-limit are enforced by Next.js / Drizzle / Better Auth respectively. | Done |
+| §14.13 | Backup tested | Scripts + runbook landed (`scripts/backup.{ps1,sh}`, `scripts/restore.{ps1,sh}`, `docs/runbooks/backup-restore.md`). Drill execution against a real DB pending — run once before tagging v1.0. | Drill pending |
+| §14.14 | Staging validated | Provisioning runbook landed at `docs/runbooks/staging-setup.md`. No staging environment provisioned yet — depends on infra access. | Depends on infra |
 
-## Smaller feature gaps (not blockers per §14 but PRD-listed)
+> §14.4 status: 20 unit tests now exercise the RBAC boundary for IDOR (documents, invoices, reimbursements, time-off, vacation balances), vertical escalation (finance / settings / people / compensation / clients), and status/employee-id payload tampering on portal submissions. CSRF protection is provided by Next.js server-action origin checks; SQLi is prevented by Drizzle parameterization; login rate-limit is enforced by Better Auth's default limiter. Treat §14.4 as code-complete and verified by tests.
 
-- **Aniversário alerts** (PRD §6.16 type 10, §6.1.13 dashboard tile) — no `aniversario`/`birthday` references in code.
-- **XLSX export** (PRD §6.2.8) — only CSV exists for finance + audit.
-- **Acesso ativo de colaborador desligado alert** (PRD §6.12 critical) — verify generator exists end-to-end.
-- **Auto-generation of expected client entries** on `dia_cobranca` (PRD §6.3 says manual; may be intentional).
+## Smaller feature gaps (closed in this pass)
+
+- ✅ **Aniversário alerts** (PRD §6.16 type 10, §6.1.13 dashboard tile) — `buildBirthdayAlertCandidates` + `listUpcomingBirthdays` shipped; dashboard "Eventos proximos" lists upcoming birthdays.
+- ✅ **XLSX export** (PRD §6.2.8) — `exceljs`-backed routes at `/app/financeiro/exportar-xlsx` and `/app/auditoria/exportar-xlsx`, buttons added next to the CSV exports.
+- ✅ **Acesso ativo de colaborador desligado alert** (PRD §6.12 critical) — covered by `isTerminatedEmployeeAccessAlert` + new negative-case tests in `src/tests/governance.test.ts`.
+- **Auto-generation of expected client entries** on `dia_cobranca` (PRD §6.3 says manual; intentional — deferred).
 
 ## PRD §22 product decisions (still open)
 

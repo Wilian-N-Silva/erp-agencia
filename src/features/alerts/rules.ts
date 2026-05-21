@@ -13,6 +13,7 @@ export const alertKindLabels = {
   access_review: "Acesso",
   saas_renewal: "Assinatura",
   saas_license: "Licenca SaaS",
+  birthday: "Aniversario",
 } as const;
 
 export const alertSeverityLabels = {
@@ -138,6 +139,49 @@ export function applyAlertFilters<
 
 export function mapReminderSeverity(severity: "low" | "medium" | "high"): AlertSeverity {
   return severity;
+}
+
+export const BIRTHDAY_ALERT_WINDOW_DAYS = 7;
+
+export type BirthdayMatch = {
+  daysUntil: number;
+  occursOn: string;
+};
+
+export function getUpcomingBirthdayMatch(
+  birthDate: string | null | undefined,
+  asOf: string,
+  windowDays = BIRTHDAY_ALERT_WINDOW_DAYS,
+): BirthdayMatch | null {
+  if (!birthDate || birthDate.length < 10) {
+    return null;
+  }
+
+  const month = birthDate.slice(5, 7);
+  const day = birthDate.slice(8, 10);
+
+  if (!/^\d{2}$/.test(month) || !/^\d{2}$/.test(day)) {
+    return null;
+  }
+
+  const asOfDate = new Date(`${asOf}T00:00:00.000Z`);
+
+  for (let offset = 0; offset <= windowDays; offset += 1) {
+    const candidate = new Date(asOfDate);
+    candidate.setUTCDate(candidate.getUTCDate() + offset);
+
+    const candidateMonth = String(candidate.getUTCMonth() + 1).padStart(2, "0");
+    const candidateDay = String(candidate.getUTCDate()).padStart(2, "0");
+
+    if (candidateMonth === month && candidateDay === day) {
+      return {
+        daysUntil: offset,
+        occursOn: candidate.toISOString().slice(0, 10),
+      };
+    }
+  }
+
+  return null;
 }
 
 function firstValue(value: string | string[] | undefined) {

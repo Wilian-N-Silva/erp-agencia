@@ -121,6 +121,36 @@ describe("access record rules", () => {
       }),
     ).toBe(true);
   });
+
+  it("does not flag terminated-employee alert when access is already removed", () => {
+    expect(
+      isTerminatedEmployeeAccessAlert({
+        critical: true,
+        employeeId: "employee_1",
+        employeeStatus: "terminated",
+        status: "removed",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not flag terminated-employee alert when employee is still active", () => {
+    expect(
+      isTerminatedEmployeeAccessAlert({
+        critical: true,
+        employeeId: "employee_1",
+        employeeStatus: "active",
+        status: "active",
+      }),
+    ).toBe(false);
+    expect(
+      isTerminatedEmployeeAccessAlert({
+        critical: true,
+        employeeId: "employee_1",
+        employeeStatus: "on_vacation",
+        status: "active",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("saas governance rules", () => {

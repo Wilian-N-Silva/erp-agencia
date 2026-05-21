@@ -6,6 +6,7 @@ import {
   canWriteAlerts,
   dedupeAlertCandidates,
   getAlertKey,
+  getUpcomingBirthdayMatch,
   sortAlertCandidates,
   type AlertCandidate,
 } from "@/features/alerts/rules";
@@ -73,5 +74,21 @@ describe("alert center rules", () => {
     expect(applyAlertFilters(alerts, { status: "open" })).toHaveLength(1);
     expect(applyAlertFilters(alerts, { severity: "medium", status: "all" })).toHaveLength(1);
     expect(applyAlertFilters(alerts, { query: "assinatura", status: "all" })).toHaveLength(1);
+  });
+
+  it("detects birthdays inside the 7-day window and ignores those outside", () => {
+    const asOf = "2026-05-21";
+
+    expect(getUpcomingBirthdayMatch("1990-05-21", asOf)).toEqual({ daysUntil: 0, occursOn: "2026-05-21" });
+    expect(getUpcomingBirthdayMatch("1990-05-23", asOf)).toEqual({ daysUntil: 2, occursOn: "2026-05-23" });
+    expect(getUpcomingBirthdayMatch("1990-05-28", asOf)).toEqual({ daysUntil: 7, occursOn: "2026-05-28" });
+    expect(getUpcomingBirthdayMatch("1990-05-29", asOf)).toBeNull();
+    expect(getUpcomingBirthdayMatch("1990-05-20", asOf)).toBeNull();
+    expect(getUpcomingBirthdayMatch(null, asOf)).toBeNull();
+    expect(getUpcomingBirthdayMatch("", asOf)).toBeNull();
+  });
+
+  it("crosses month/year boundaries when searching the birthday window", () => {
+    expect(getUpcomingBirthdayMatch("1985-01-02", "2025-12-30")).toEqual({ daysUntil: 3, occursOn: "2026-01-02" });
   });
 });

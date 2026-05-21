@@ -14,11 +14,15 @@ import {
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
+import { BIRTHDAY_ALERT_WINDOW_DAYS, getUpcomingBirthdayMatch } from "@/features/alerts/rules";
+import { toDateKey } from "@/features/finance/rules";
+
 import {
   applyPeopleFilters,
   canReadCompensationForTarget,
   canReadEmployeeRecord,
   canReadEmployeeSensitiveProfile,
+  canReadPeople,
   getPeopleListScope,
   isBenefitActive,
   toEmployeeListItem,
@@ -393,6 +397,67 @@ export async function listPeopleFilterOptions(context: AccessContext): Promise<{
     areas: areaRows,
     positions: positionRows,
   };
+}
+
+export type UpcomingBirthdayItem = {
+  employeeId: string;
+  employeeName: string;
+  birthDate: string;
+  occursOn: string;
+  daysUntil: number;
+};
+
+export async function listUpcomingBirthdays(
+  context: AccessContext,
+  options: { limit?: number; asOf?: string | Date; windowDays?: number } = {},
+): Promise<UpcomingBirthdayItem[]> {
+  if (!canReadPeople(context)) {
+    return [];
+  }
+
+  const organizationId = requireOrganizationId(context);
+  const asOfKey = toDateKey(options.asOf ?? new Date());
+  const windowDays = options.windowDays ?? BIRTHDAY_ALERT_WINDOW_DAYS;
+
+  const rows = await db
+    .select({
+      id: employees.id,
+      fullName: employees.fullName,
+      birthDate: employees.birthDate,
+      status: employees.status,
+    })
+    .from(employees)
+    .where(and(eq(employees.organizationId, organizationId), isNull(employees.deletedAt)));
+
+  const matches: UpcomingBirthdayItem[] = [];
+
+  for (const row of rows) {
+    if (row.status === "terminated") {
+      continue;
+    }
+
+    const match = getUpcomingBirthdayMatch(row.birthDate, asOfKey, windowDays);
+
+    if (!match || !row.birthDate) {
+      continue;
+    }
+
+    matches.push({
+      employeeId: row.id,
+      employeeName: row.fullName,
+      birthDate: row.birthDate,
+      occursOn: match.occursOn,
+      daysUntil: match.daysUntil,
+    });
+  }
+
+  matches.sort((a, b) => a.daysUntil - b.daysUntil || a.employeeName.localeCompare(b.employeeName));
+
+  if (typeof options.limit === "number") {
+    return matches.slice(0, options.limit);
+  }
+
+  return matches;
 }
 
 export async function listEmployeeAuditLogs(

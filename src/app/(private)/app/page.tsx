@@ -7,6 +7,7 @@ import { listEquipmentReturnAlerts } from "@/features/equipment/dal";
 import { formatDate } from "@/features/finance/rules";
 import { listLifecycleDashboardItems } from "@/features/lifecycle/dal";
 import { lifecycleTypeLabels } from "@/features/lifecycle/rules";
+import { listUpcomingBirthdays } from "@/features/people/dal";
 import { listSaasRenewalAlerts } from "@/features/saas/dal";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { can, canAny } from "@/lib/rbac";
@@ -20,7 +21,7 @@ export default async function AppHomePage() {
     redirect("/login");
   }
 
-  const [paymentAlerts, equipmentAlerts, accessAlerts, saasAlerts, lifecycleItems] = await Promise.all([
+  const [paymentAlerts, equipmentAlerts, accessAlerts, saasAlerts, lifecycleItems, birthdayItems] = await Promise.all([
     can("finance.read", context) ? listClientPaymentAlerts(context, { limit: 8 }) : Promise.resolve([]),
     canAny(["equipment.read", "equipment.write", "equipment.configure", "equipment.read_team"], context)
       ? listEquipmentReturnAlerts(context, { limit: 4 })
@@ -34,9 +35,12 @@ export default async function AppHomePage() {
     canAny(["lifecycle.read", "lifecycle.write"], context)
       ? listLifecycleDashboardItems(context, { limit: 4 })
       : Promise.resolve([]),
+    canAny(["people.read", "people.read_team", "people.read_own", "people.configure"], context)
+      ? listUpcomingBirthdays(context, { limit: 5 })
+      : Promise.resolve([]),
   ]);
   const governanceAlerts = equipmentAlerts.length + accessAlerts.length + saasAlerts.length;
-  const operationalAlerts = governanceAlerts + lifecycleItems.length;
+  const operationalAlerts = governanceAlerts + lifecycleItems.length + birthdayItems.length;
   const summaryItems = [
     { label: "Pendencias", value: String(paymentAlerts.length + operationalAlerts) },
     { label: "Alertas", value: String(paymentAlerts.length + operationalAlerts) },
@@ -121,6 +125,19 @@ export default async function AppHomePage() {
                   description={`Renovacao ${formatDate(item.renewalDate)}`}
                   key={`saas:${item.id}`}
                   title={`${item.name}: assinatura a revisar`}
+                />
+              ))}
+              {birthdayItems.map((item) => (
+                <EventItem
+                  description={
+                    item.daysUntil === 0
+                      ? `Hoje (${formatDate(item.occursOn)})`
+                      : item.daysUntil === 1
+                        ? `Amanha (${formatDate(item.occursOn)})`
+                        : `Em ${item.daysUntil} dias (${formatDate(item.occursOn)})`
+                  }
+                  key={`birthday:${item.employeeId}`}
+                  title={`${item.employeeName}: aniversario`}
                 />
               ))}
             </div>

@@ -49,6 +49,7 @@ import {
 import {
   applyAlertFilters,
   dedupeAlertCandidates,
+  getUpcomingBirthdayMatch,
   mapReminderSeverity,
   sortAlertCandidates,
   type AlertCandidate,
@@ -141,6 +142,7 @@ export async function generateAlertCandidatesForOrganization(
     equipmentCandidates,
     accessCandidates,
     saasCandidates,
+    birthdayCandidates,
   ] = await Promise.all([
     buildClientPaymentAlertCandidates(organizationId, asOfKey),
     buildFinancialExpenseAlertCandidates(organizationId, asOfKey),
@@ -152,6 +154,7 @@ export async function generateAlertCandidatesForOrganization(
     buildEquipmentAlertCandidates(organizationId),
     buildAccessAlertCandidates(organizationId, asOfKey),
     buildSaasAlertCandidates(organizationId, asOfKey),
+    buildBirthdayAlertCandidates(organizationId, asOfKey),
   ]);
 
   return sortAlertCandidates(
@@ -166,8 +169,55 @@ export async function generateAlertCandidatesForOrganization(
       ...equipmentCandidates,
       ...accessCandidates,
       ...saasCandidates,
+      ...birthdayCandidates,
     ]),
   );
+}
+
+export async function buildBirthdayAlertCandidates(
+  organizationId: string,
+  asOf: string,
+): Promise<AlertCandidate[]> {
+  const rows = await db
+    .select({
+      id: employees.id,
+      fullName: employees.fullName,
+      birthDate: employees.birthDate,
+      status: employees.status,
+    })
+    .from(employees)
+    .where(and(eq(employees.organizationId, organizationId), isNull(employees.deletedAt)));
+
+  return rows
+    .map((row): AlertCandidate | null => {
+      if (row.status === "terminated") {
+        return null;
+      }
+
+      const match = getUpcomingBirthdayMatch(row.birthDate, asOf);
+
+      if (!match) {
+        return null;
+      }
+
+      const when =
+        match.daysUntil === 0
+          ? "hoje"
+          : match.daysUntil === 1
+            ? "amanha"
+            : `em ${match.daysUntil} dias`;
+
+      return {
+        kind: "birthday",
+        title: `${row.fullName}: aniversario ${when}`,
+        description: `Aniversario na semana (${match.occursOn}).`,
+        severity: "low",
+        entityType: "employee",
+        entityId: row.id,
+        dueDate: match.occursOn,
+      };
+    })
+    .filter(isAlertCandidate);
 }
 
 async function buildVacationBalanceAlertCandidates(

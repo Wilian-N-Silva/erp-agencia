@@ -60,13 +60,22 @@ export default async function AuditPage({ searchParams }: PageProps) {
           </p>
         </div>
         {canExport ? (
-          <Link
-            className={`${primaryButtonClassName} sm:w-auto`}
-            href={`/app/auditoria/exportar?${buildSearchParams(filters)}` as Route}
-          >
-            <Download className="size-4" aria-hidden="true" />
-            Exportar CSV
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className={`${primaryButtonClassName} sm:w-auto`}
+              href={`/app/auditoria/exportar?${buildSearchParams(filters)}` as Route}
+            >
+              <Download className="size-4" aria-hidden="true" />
+              Exportar CSV
+            </Link>
+            <Link
+              className={`${primaryButtonClassName} sm:w-auto`}
+              href={`/app/auditoria/exportar-xlsx?${buildSearchParams(filters)}` as Route}
+            >
+              <Download className="size-4" aria-hidden="true" />
+              Exportar XLSX
+            </Link>
+          </div>
         ) : null}
       </div>
 
