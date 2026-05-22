@@ -42,6 +42,7 @@ const createEntrySchema = z.object({
   description: z.string().trim().min(1).max(180),
   amount: z.string().trim().min(1).transform(normalizeMoneyInput),
   dueDate: dateSchema,
+  paymentMethod: optionalTextSchema(80),
   competence: competenceSchema,
   recurring: z
     .string()
@@ -110,6 +111,7 @@ export async function createFinancialEntryAction(formData: FormData) {
       description: input.description,
       amount: input.amount,
       dueDate: input.dueDate,
+      paymentMethod: input.paymentMethod,
       competence: input.competence,
       recurring: input.recurring,
       notes: input.notes,
@@ -140,6 +142,7 @@ export async function updateFinancialEntryAction(formData: FormData) {
       description: input.description,
       amount: input.amount,
       dueDate: input.dueDate,
+      paymentMethod: input.paymentMethod,
       competence: input.competence,
       recurring: input.recurring,
       notes: input.notes,

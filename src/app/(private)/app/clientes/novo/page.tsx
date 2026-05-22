@@ -2,6 +2,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { MoneyInput } from "@/components/fg";
 import { createClientAction } from "@/features/clients/actions";
 import { listClientOwnerOptions } from "@/features/clients/dal";
 import { canWriteClients } from "@/features/clients/rules";
@@ -62,7 +63,7 @@ function ClientFormFields({
         </label>
         <label className={fieldClassName}>
           Fee mensal
-          <input className={inputClassName} inputMode="decimal" name="monthlyFee" required />
+          <MoneyInput name="monthlyFee" required />
         </label>
         <label className={fieldClassName}>
           Dia de cobranca

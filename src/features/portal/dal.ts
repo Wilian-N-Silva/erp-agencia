@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -8,6 +8,7 @@ import {
   invoiceRequests,
   reimbursementRequests,
   positions,
+  users,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -26,6 +27,7 @@ import {
 export type PortalEmployeeSummary = {
   id: string;
   fullName: string;
+  registrationNumber: string;
   positionName: string;
   areaName: string;
   employmentType: string;
@@ -43,6 +45,8 @@ export type InvoiceRequestListItem = {
   id: string;
   employeeId: string;
   employeeName: string;
+  employeeRegistrationNumber: string;
+  areaName: string;
   managerEmployeeId: string | null;
   competence: string;
   dueDate: string;
@@ -61,6 +65,9 @@ export type ReimbursementListItem = {
   id: string;
   employeeId: string;
   employeeName: string;
+  employeeRegistrationNumber: string;
+  areaName: string;
+  employmentType: string;
   managerEmployeeId: string | null;
   title: string;
   category: string;
@@ -72,6 +79,11 @@ export type ReimbursementListItem = {
   paidAt: Date | null;
   notes: string | null;
   createdAt: Date;
+  updatedAt: Date;
+  managerApproverUserId: string | null;
+  managerApproverName: string | null;
+  financeApproverUserId: string | null;
+  financeApproverName: string | null;
 };
 
 export type InvoiceEmployeeOption = {
@@ -95,6 +107,7 @@ export async function getPortalEmployeeSummary(
     .select({
       id: employees.id,
       fullName: employees.fullName,
+      registrationNumber: employees.registrationNumber,
       positionName: positions.name,
       areaName: areas.name,
       employmentType: employees.employmentType,
@@ -125,6 +138,8 @@ export async function listInvoiceRequests(
       id: invoiceRequests.id,
       employeeId: invoiceRequests.employeeId,
       employeeName: employees.fullName,
+      employeeRegistrationNumber: employees.registrationNumber,
+      areaName: areas.name,
       managerEmployeeId: employees.managerEmployeeId,
       competence: invoiceRequests.competence,
       dueDate: invoiceRequests.dueDate,
@@ -138,6 +153,7 @@ export async function listInvoiceRequests(
     })
     .from(invoiceRequests)
     .innerJoin(employees, eq(invoiceRequests.employeeId, employees.id))
+    .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(and(eq(invoiceRequests.organizationId, organizationId), isNull(invoiceRequests.deletedAt)))
     .orderBy(desc(invoiceRequests.competence), asc(employees.fullName));
   const scopedRows = rows.filter((row) => {
@@ -187,6 +203,9 @@ export async function listReimbursements(
       id: reimbursementRequests.id,
       employeeId: reimbursementRequests.employeeId,
       employeeName: employees.fullName,
+      employeeRegistrationNumber: employees.registrationNumber,
+      areaName: areas.name,
+      employmentType: employees.employmentType,
       managerEmployeeId: employees.managerEmployeeId,
       title: reimbursementRequests.title,
       category: reimbursementRequests.category,
@@ -198,13 +217,17 @@ export async function listReimbursements(
       paidAt: reimbursementRequests.paidAt,
       notes: reimbursementRequests.notes,
       createdAt: reimbursementRequests.createdAt,
+      updatedAt: reimbursementRequests.updatedAt,
+      managerApproverUserId: reimbursementRequests.managerApproverUserId,
+      financeApproverUserId: reimbursementRequests.financeApproverUserId,
     })
     .from(reimbursementRequests)
     .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))
+    .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(eq(reimbursementRequests.organizationId, organizationId))
     .orderBy(desc(reimbursementRequests.createdAt));
 
-  return rows
+  const scoped = rows
     .filter((row) => {
       if (scope === "all") {
         return true;
@@ -220,11 +243,36 @@ export async function listReimbursements(
         status: row.status as ReimbursementStatus,
       });
     })
-    .slice(0, options.limit)
-    .map((row) => ({
-      ...row,
-      status: row.status as ReimbursementStatus,
-    }));
+    .slice(0, options.limit);
+
+  const approverIds = new Set<string>();
+  for (const row of scoped) {
+    if (row.managerApproverUserId) approverIds.add(row.managerApproverUserId);
+    if (row.financeApproverUserId) approverIds.add(row.financeApproverUserId);
+  }
+
+  const approverNameById = new Map<string, string>();
+  if (approverIds.size > 0) {
+    const approverRows = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, Array.from(approverIds)));
+
+    for (const approver of approverRows) {
+      approverNameById.set(approver.id, approver.name);
+    }
+  }
+
+  return scoped.map((row) => ({
+    ...row,
+    status: row.status as ReimbursementStatus,
+    managerApproverName: row.managerApproverUserId
+      ? approverNameById.get(row.managerApproverUserId) ?? null
+      : null,
+    financeApproverName: row.financeApproverUserId
+      ? approverNameById.get(row.financeApproverUserId) ?? null
+      : null,
+  }));
 }
 
 export async function listInvoiceEmployeeOptions(

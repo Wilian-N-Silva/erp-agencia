@@ -3,6 +3,7 @@ import {
   employmentTypeLabels,
   type EmployeeStatus,
 } from "@/features/people/rules";
+import { MoneyInput } from "@/components/fg";
 
 export type EmployeeFormOptions = {
   areas: { id: string; name: string }[];
@@ -106,15 +107,15 @@ export function EmployeeCreateFields({
       <div className="grid gap-3 lg:grid-cols-3">
         <label className={fieldClassName}>
           Remuneracao atual
-          <input className={inputClassName} inputMode="decimal" name="currentCompensation" required />
+          <MoneyInput name="currentCompensation" required />
         </label>
         <label className={fieldClassName}>
           Ajuda de custo recorrente
-          <input className={inputClassName} inputMode="decimal" name="recurringCostAllowance" />
+          <MoneyInput name="recurringCostAllowance" />
         </label>
         <label className={fieldClassName}>
           Transporte recorrente
-          <input className={inputClassName} inputMode="decimal" name="recurringTransport" />
+          <MoneyInput name="recurringTransport" />
         </label>
       </div>
 

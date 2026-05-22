@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { MoneyInput } from "@/components/fg";
 import {
   createEmployeeBenefitAction,
   endEmployeeBenefitAction,
@@ -193,13 +194,7 @@ function CompensationForm({
       <div className="grid gap-3 md:grid-cols-2">
         <label className={fieldClassName}>
           Novo valor
-          <input
-            className={inputClassName}
-            defaultValue={employee.currentCompensation ?? ""}
-            inputMode="decimal"
-            name="newAmount"
-            required
-          />
+          <MoneyInput name="newAmount" required defaultValue={employee.currentCompensation ?? null} />
         </label>
         <label className={fieldClassName}>
           Vigencia
@@ -209,21 +204,11 @@ function CompensationForm({
       <div className="grid gap-3 md:grid-cols-2">
         <label className={fieldClassName}>
           Ajuda de custo
-          <input
-            className={inputClassName}
-            defaultValue={employee.recurringCostAllowance ?? ""}
-            inputMode="decimal"
-            name="recurringCostAllowance"
-          />
+          <MoneyInput name="recurringCostAllowance" defaultValue={employee.recurringCostAllowance ?? null} />
         </label>
         <label className={fieldClassName}>
           Transporte
-          <input
-            className={inputClassName}
-            defaultValue={employee.recurringTransport ?? ""}
-            inputMode="decimal"
-            name="recurringTransport"
-          />
+          <MoneyInput name="recurringTransport" defaultValue={employee.recurringTransport ?? null} />
         </label>
       </div>
       <label className={fieldClassName}>
@@ -257,7 +242,7 @@ function BenefitForm({ employeeId }: { employeeId: string }) {
       <div className="grid gap-3 md:grid-cols-2">
         <label className={fieldClassName}>
           Valor
-          <input className={inputClassName} inputMode="decimal" name="amount" required />
+          <MoneyInput name="amount" required />
         </label>
         <label className={fieldClassName}>
           Inicio

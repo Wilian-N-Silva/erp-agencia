@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { employees, timeOffRequests, vacationBalances } from "@/lib/db/schema";
+import { areas, employees, timeOffRequests, vacationBalances } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
@@ -23,6 +23,8 @@ export type TimeOffListItem = {
   id: string;
   employeeId: string;
   employeeName: string;
+  employeeRegistrationNumber: string;
+  areaName: string;
   employmentType: string;
   managerEmployeeId: string | null;
   type: TimeOffType | string;
@@ -54,6 +56,8 @@ export async function listTimeOffRequests(
       id: timeOffRequests.id,
       employeeId: timeOffRequests.employeeId,
       employeeName: employees.fullName,
+      employeeRegistrationNumber: employees.registrationNumber,
+      areaName: areas.name,
       employmentType: employees.employmentType,
       managerEmployeeId: employees.managerEmployeeId,
       type: timeOffRequests.type,
@@ -69,6 +73,7 @@ export async function listTimeOffRequests(
     })
     .from(timeOffRequests)
     .innerJoin(employees, eq(timeOffRequests.employeeId, employees.id))
+    .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(eq(timeOffRequests.organizationId, organizationId))
     .orderBy(desc(timeOffRequests.startDate), asc(employees.fullName));
 

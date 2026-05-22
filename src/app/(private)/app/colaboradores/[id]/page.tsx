@@ -1,23 +1,30 @@
-import { ArrowLeft, BadgeDollarSign, Save, UserRound } from "lucide-react";
-import type { Route } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { updateEmployeeAction } from "@/features/people/actions";
+import { listAccessRecords } from "@/features/accesses/dal";
+import { listDocuments } from "@/features/documents/dal";
+import { listEquipment } from "@/features/equipment/dal";
+import { canWriteEquipment } from "@/features/equipment/rules";
+import { toDateKey } from "@/features/finance/rules";
+import { listLifecycleChecklists } from "@/features/lifecycle/dal";
+import { canWriteLifecycle } from "@/features/lifecycle/rules";
 import {
   getEmployeeDetail,
+  listCompensationHistory,
   listEmployeeAuditLogs,
+  listEmployeeBenefits,
   listPeopleOptions,
-  type EmployeeAuditLogItem,
-  type EmployeeDetail,
 } from "@/features/people/dal";
+import { canWritePeople } from "@/features/people/rules";
+import { listInvoiceRequests, listReimbursements } from "@/features/portal/dal";
 import {
-  canWritePeople,
-  employeeStatusLabels,
-  employmentTypeLabels,
-} from "@/features/people/rules";
-import { formatDate, formatMoney } from "@/features/finance/rules";
+  listTimeOffRequests,
+  summarizeEmployeeVacation,
+} from "@/features/timeoff/dal";
+import { canCreateOwnTimeOff } from "@/features/timeoff/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
+import { can, canAny } from "@/lib/rbac";
+
+import { EmployeeDetailView } from "./employee-detail-view";
 
 export const dynamic = "force-dynamic";
 
@@ -45,335 +52,265 @@ export default async function EmployeeDetailPage({ params }: PageProps) {
   }
 
   const canWrite = canWritePeople(context);
-  const [options, auditLogs] = await Promise.all([
+  const canManageLifecycle = canWriteLifecycle(context);
+  const canManageEquipment = canWriteEquipment(context);
+  const canReadTimeOff = canAny(
+    ["timeoff.read", "timeoff.write", "timeoff.read_team", "timeoff.read_own"],
+    context,
+  );
+  const canReadEquipment = canAny(
+    ["equipment.read", "equipment.write", "equipment.configure", "equipment.read_team", "equipment.read_own"],
+    context,
+  );
+  const canReadAccesses = canAny(
+    [
+      "access_records.read",
+      "access_records.write",
+      "access_records.configure",
+      "access_records.read_team",
+      "access_records.read_own",
+    ],
+    context,
+  );
+  const canReadInvoices = canAny(
+    ["invoices.read", "invoices.write", "invoices.approve", "invoices.read_own"],
+    context,
+  );
+  const canReadReimbursements = canAny(
+    [
+      "reimbursements.read",
+      "reimbursements.write",
+      "reimbursements.approve_team",
+      "reimbursements.approve_finance",
+      "reimbursements.read_own",
+    ],
+    context,
+  );
+  const canReadDocuments = canAny(
+    ["documents.read_sensitive", "documents.write", "documents.read_own"],
+    context,
+  );
+
+  const [
+    options,
+    auditLogs,
+    compensationHistory,
+    benefits,
+    vacationSummary,
+    timeOffRequests,
+    equipmentItems,
+    accessRecords,
+    invoiceRequests,
+    reimbursements,
+    offboardingChecklists,
+    documents,
+  ] = await Promise.all([
     canWrite ? listPeopleOptions(context) : Promise.resolve(null),
     listEmployeeAuditLogs(context, employee.id, { limit: 12 }),
+    listCompensationHistory(context, employee.id),
+    listEmployeeBenefits(context, employee.id),
+    canReadTimeOff
+      ? summarizeEmployeeVacation(context, employee.id)
+      : Promise.resolve({ current: null, history: [] }),
+    canReadTimeOff ? listTimeOffRequests(context) : Promise.resolve([]),
+    canReadEquipment ? listEquipment(context) : Promise.resolve([]),
+    canReadAccesses ? listAccessRecords(context) : Promise.resolve([]),
+    canReadInvoices ? listInvoiceRequests(context) : Promise.resolve([]),
+    canReadReimbursements ? listReimbursements(context) : Promise.resolve([]),
+    canManageLifecycle ? listLifecycleChecklists(context, "offboarding") : Promise.resolve([]),
+    canReadDocuments
+      ? listDocuments(context, { ownerEmployeeId: employee.id })
+      : Promise.resolve([]),
   ]);
+  const hasOpenOffboarding = offboardingChecklists.some(
+    (checklist) => checklist.employeeId === employee.id && checklist.status === "open",
+  );
+  const isOwnEmployee = Boolean(context.employeeId && context.employeeId === employee.id);
+  const isActiveEmployee = employee.status !== "terminated";
 
   return (
-    <section className="flex w-full flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <Link className={`${secondaryButtonClassName} w-fit`} href="/app/colaboradores">
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          Voltar
-        </Link>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">{employee.registrationNumber}</p>
-            <h1 className="truncate text-2xl font-semibold tracking-normal">
-              {employee.socialName || employee.fullName}
-            </h1>
-          </div>
-          <Link
-            className={`${secondaryButtonClassName} sm:w-auto`}
-            href={`/app/colaboradores/${employee.id}/remuneracao` as Route}
-          >
-            <BadgeDollarSign className="size-4" aria-hidden="true" />
-            Remuneracao
-          </Link>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Status" value={employeeStatusLabels[employee.status]} />
-        <SummaryCard label="Vinculo" value={employmentTypeLabels[employee.employmentType]} />
-        <SummaryCard label="Tempo de casa" value={`${employee.tenureMonths} mes(es)`} />
-        <SummaryCard
-          label="Custo mensal"
-          value={employee.compensationHidden ? "Restrito" : formatMoney(employee.currentCompensation)}
-        />
-      </div>
-
-      <div className={`grid gap-4 ${canWrite && options ? "xl:grid-cols-[0.9fr_1.1fr]" : ""}`}>
-        <section className="rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-base font-semibold">Dados do colaborador</h2>
-          </div>
-          <dl className="grid gap-0 sm:grid-cols-2">
-            <DetailItem label="Nome completo" value={employee.fullName} />
-            <DetailItem label="Email corporativo" value={employee.corporateEmail ?? "-"} />
-            <DetailItem label="Area" value={employee.areaName} />
-            <DetailItem label="Cargo" value={employee.positionName} />
-            <DetailItem label="Entrada" value={formatDate(employee.startDate)} />
-            <DetailItem label="Saida" value={formatDate(employee.endDate)} />
-            <DetailItem label="Modelo" value={employee.workModel ?? "-"} />
-            <DetailItem label="Localizacao" value={employee.location ?? "-"} />
-            <DetailItem
-              label="Email pessoal"
-              value={employee.sensitiveProfileHidden ? "Restrito" : (employee.personalEmail ?? "-")}
-            />
-            <DetailItem
-              label="Telefone"
-              value={employee.sensitiveProfileHidden ? "Restrito" : (employee.phone ?? "-")}
-            />
-            <DetailItem
-              label="CPF"
-              value={employee.sensitiveProfileHidden ? "Restrito" : (employee.cpf ?? "-")}
-            />
-            <DetailItem
-              label="Pix"
-              value={employee.sensitiveProfileHidden ? "Restrito" : (employee.pix ?? "-")}
-            />
-          </dl>
-          <div className="border-t p-4">
-            <p className="text-sm font-medium">Observacoes internas</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-              {employee.sensitiveProfileHidden ? "Restrito" : employee.internalNotes || "-"}
-            </p>
-          </div>
-        </section>
-
-        {canWrite && options ? (
-          <section className="rounded-lg border bg-card">
-            <div className="border-b px-4 py-3">
-              <h2 className="text-base font-semibold">Editar cadastro</h2>
-            </div>
-            <form action={updateEmployeeAction} className="grid gap-4 p-4">
-              <input name="id" type="hidden" value={employee.id} />
-              <EmployeeEditFields employee={employee} options={options} />
-              <div className="flex justify-end">
-                <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-                  <Save className="size-4" aria-hidden="true" />
-                  Salvar cadastro
-                </button>
-              </div>
-            </form>
-          </section>
-        ) : null}
-      </div>
-
-      <HistorySection auditLogs={auditLogs} />
-    </section>
+    <EmployeeDetailView
+      employee={{
+        ...employee,
+        managerEmployeeId: employee.managerEmployeeId ?? null,
+        startDate: toDateKey(employee.startDate),
+        endDate: employee.endDate ? toDateKey(employee.endDate) : null,
+        birthDate: employee.birthDate ? toDateKey(employee.birthDate) : null,
+        updatedAt: employee.updatedAt.toISOString(),
+      }}
+      options={options}
+      actions={{
+        canAssignEquipment: canManageEquipment && isActiveEmployee,
+        canEdit: canWrite && Boolean(options),
+        canExportProfile: true,
+        canRegisterReimbursement:
+          isOwnEmployee && isActiveEmployee && can("reimbursements.read_own", context),
+        canRequestTimeOff:
+          isOwnEmployee && isActiveEmployee && canCreateOwnTimeOff(context),
+        canStartOffboarding:
+          canManageLifecycle && isActiveEmployee && !hasOpenOffboarding,
+        canUploadDocument: can("documents.write", context),
+      }}
+      auditLogs={auditLogs.map((log) => ({
+        id: log.id,
+        action: log.action,
+        actorName: log.actorName,
+        actorEmail: log.actorEmail,
+        createdAt: log.createdAt.toISOString(),
+      }))}
+      compensationHistory={compensationHistory.map((item) => ({
+        id: item.id,
+        previousAmount: item.previousAmount,
+        newAmount: item.newAmount,
+        differenceAmount: item.differenceAmount,
+        effectiveDate: item.effectiveDate,
+        reason: item.reason,
+        approvedByName: item.approvedByName,
+        createdByName: item.createdByName,
+        createdAt: item.createdAt.toISOString(),
+        compensationHidden: item.compensationHidden,
+      }))}
+      benefits={benefits.map((benefit) => ({
+        id: benefit.id,
+        benefitType: benefit.benefitType,
+        name: benefit.name,
+        amount: benefit.amount,
+        recurring: benefit.recurring,
+        startDate: benefit.startDate,
+        endDate: benefit.endDate,
+        status: benefit.status,
+        notes: benefit.notes,
+        activeForComposition: benefit.activeForComposition,
+        compensationHidden: benefit.compensationHidden,
+      }))}
+      vacationSummary={{
+        current: vacationSummary.current
+          ? serializeVacationBalance(vacationSummary.current)
+          : null,
+        history: vacationSummary.history.map(serializeVacationBalance),
+      }}
+      timeOffRequests={timeOffRequests
+        .filter((request) => request.employeeId === employee.id)
+        .map((request) => ({
+          id: request.id,
+          type: request.type,
+          startDate: request.startDate,
+          endDate: request.endDate,
+          businessDays: request.businessDays,
+          soldDays: request.soldDays,
+          status: request.status,
+          notes: request.notes,
+        }))}
+      equipmentItems={equipmentItems
+        .filter((item) => item.currentEmployeeId === employee.id)
+        .map((item) => ({
+          id: item.id,
+          assetNumber: item.assetNumber,
+          type: item.type,
+          brand: item.brand,
+          model: item.model,
+          serialNumber: item.serialNumber,
+          status: item.status,
+          notes: item.notes,
+          returnAlert: item.returnAlert,
+        }))}
+      assignableEquipmentItems={equipmentItems
+        .filter((item) => item.status !== "retired" && item.currentEmployeeId !== employee.id)
+        .map((item) => ({
+          id: item.id,
+          assetNumber: item.assetNumber,
+          type: item.type,
+          brand: item.brand,
+          model: item.model,
+          status: item.status,
+          currentEmployeeName: item.currentEmployeeName,
+        }))}
+      documents={documents.map((document) => ({
+        id: document.id,
+        ownerType: document.ownerType,
+        documentType: document.documentType,
+        originalName: document.originalName,
+        extension: document.extension,
+        byteSize: document.byteSize,
+        sensitivity: document.sensitivity,
+        visibility: document.visibility,
+        version: document.version,
+        status: document.status,
+        createdAt: document.createdAt.toISOString(),
+      }))}
+      accessRecords={accessRecords
+        .filter((record) => record.employeeId === employee.id)
+        .map((record) => ({
+          id: record.id,
+          platform: record.platform,
+          accountIdentifier: record.accountIdentifier,
+          accessLevel: record.accessLevel,
+          critical: record.critical,
+          status: record.status,
+          reviewDueDate: record.reviewDueDate
+            ? toDateKey(record.reviewDueDate)
+            : null,
+          responsibleUserName: record.responsibleUserName,
+          reviewState: record.reviewState,
+          alert: record.alert,
+        }))}
+      invoiceRequests={invoiceRequests
+        .filter((invoice) => invoice.employeeId === employee.id)
+        .map((invoice) => ({
+          id: invoice.id,
+          competence: invoice.competence,
+          dueDate: invoice.dueDate,
+          expectedAmount: invoice.expectedAmount,
+          issuedAmount: invoice.issuedAmount,
+          status: invoice.status,
+          divergence: invoice.divergence,
+        }))}
+      reimbursements={reimbursements
+        .filter((reimbursement) => reimbursement.employeeId === employee.id)
+        .map((reimbursement) => ({
+          id: reimbursement.id,
+          title: reimbursement.title,
+          category: reimbursement.category,
+          amount: reimbursement.amount,
+          expenseDate: reimbursement.expenseDate,
+          status: reimbursement.status,
+          includedInvoiceRequestId: reimbursement.includedInvoiceRequestId,
+          paidAt: reimbursement.paidAt?.toISOString() ?? null,
+        }))}
+    />
   );
 }
 
-function EmployeeEditFields({
-  employee,
-  options,
-}: {
-  employee: EmployeeDetail;
-  options: {
-    areas: { id: string; name: string }[];
-    managers: { id: string; name: string }[];
-    positions: { id: string; name: string }[];
-  };
+function serializeVacationBalance(balance: {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  concessionDeadline: string;
+  daysAcquired: number;
+  daysSold: number;
+  daysTaken: number;
+  daysAvailable: number;
+  status: "active" | "closed";
+  expiring: boolean;
+  expired: boolean;
+  notes: string | null;
 }) {
-  return (
-    <>
-      <div className="grid gap-3 lg:grid-cols-3">
-        <label className={fieldClassName}>
-          Nome completo
-          <input className={inputClassName} defaultValue={employee.fullName} maxLength={180} name="fullName" required />
-        </label>
-        <label className={fieldClassName}>
-          Nome social
-          <input className={inputClassName} defaultValue={employee.socialName ?? ""} maxLength={120} name="socialName" />
-        </label>
-        <label className={fieldClassName}>
-          Email corporativo
-          <input className={inputClassName} defaultValue={employee.corporateEmail ?? ""} maxLength={160} name="corporateEmail" type="email" />
-        </label>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-3">
-        <label className={fieldClassName}>
-          Area
-          <select className={inputClassName} defaultValue={employee.areaId} name="areaId">
-            {options.areas.map((area) => (
-              <option key={area.id} value={area.id}>
-                {area.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={fieldClassName}>
-          Cargo
-          <select className={inputClassName} defaultValue={employee.positionId} name="positionId">
-            {options.positions.map((position) => (
-              <option key={position.id} value={position.id}>
-                {position.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={fieldClassName}>
-          Gestor
-          <select className={inputClassName} defaultValue={employee.managerEmployeeId ?? ""} name="managerEmployeeId">
-            <option value="">Sem gestor</option>
-            {options.managers
-              .filter((manager) => manager.id !== employee.id)
-              .map((manager) => (
-                <option key={manager.id} value={manager.id}>
-                  {manager.name}
-                </option>
-              ))}
-          </select>
-        </label>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-4">
-        <label className={fieldClassName}>
-          Vinculo
-          <select className={inputClassName} defaultValue={employee.employmentType} name="employmentType">
-            {Object.entries(employmentTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={fieldClassName}>
-          Status
-          <select className={inputClassName} defaultValue={employee.status} name="status">
-            {Object.entries(employeeStatusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={fieldClassName}>
-          Entrada
-          <input className={inputClassName} defaultValue={toDateInputValue(employee.startDate)} name="startDate" required type="date" />
-        </label>
-        <label className={fieldClassName}>
-          Saida
-          <input className={inputClassName} defaultValue={employee.endDate ?? ""} name="endDate" type="date" />
-        </label>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-3">
-        <label className={fieldClassName}>
-          Email pessoal
-          <input className={inputClassName} defaultValue={employee.personalEmail ?? ""} maxLength={160} name="personalEmail" type="email" />
-        </label>
-        <label className={fieldClassName}>
-          Telefone
-          <input className={inputClassName} defaultValue={employee.phone ?? ""} maxLength={40} name="phone" />
-        </label>
-        <label className={fieldClassName}>
-          Modelo de trabalho
-          <input className={inputClassName} defaultValue={employee.workModel ?? ""} maxLength={80} name="workModel" />
-        </label>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-4">
-        <label className={fieldClassName}>
-          CPF
-          <input className={inputClassName} defaultValue={employee.cpf ?? ""} maxLength={20} name="cpf" />
-        </label>
-        <label className={fieldClassName}>
-          RG
-          <input className={inputClassName} defaultValue={employee.rg ?? ""} maxLength={30} name="rg" />
-        </label>
-        <label className={fieldClassName}>
-          Nascimento
-          <input className={inputClassName} defaultValue={employee.birthDate ?? ""} name="birthDate" type="date" />
-        </label>
-        <label className={fieldClassName}>
-          Localizacao
-          <input className={inputClassName} defaultValue={employee.location ?? ""} maxLength={120} name="location" />
-        </label>
-      </div>
-      <label className={fieldClassName}>
-        Pix
-        <input className={inputClassName} defaultValue={employee.pix ?? ""} maxLength={160} name="pix" />
-      </label>
-      <label className={fieldClassName}>
-        Endereco
-        <input className={inputClassName} defaultValue={employee.address ?? ""} maxLength={300} name="address" />
-      </label>
-      <label className={fieldClassName}>
-        Contato de emergencia
-        <input className={inputClassName} defaultValue={employee.emergencyContact ?? ""} maxLength={200} name="emergencyContact" />
-      </label>
-      <label className={fieldClassName}>
-        Observacoes internas
-        <textarea className={textareaClassName} defaultValue={employee.internalNotes ?? ""} maxLength={2000} name="internalNotes" rows={4} />
-      </label>
-    </>
-  );
-}
-
-function HistorySection({ auditLogs }: { auditLogs: EmployeeAuditLogItem[] }) {
-  return (
-    <section className="rounded-lg border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-base font-semibold">Historico recente</h2>
-      </div>
-      <div className="divide-y">
-        {auditLogs.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">Sem logs recentes.</p>
-        ) : (
-          auditLogs.map((log) => (
-            <div className="grid gap-1 px-4 py-3 text-sm md:grid-cols-[12rem_1fr_14rem]" key={log.id}>
-              <p className="font-medium">{formatAuditAction(log.action)}</p>
-              <p className="text-muted-foreground">{log.actorName ?? log.actorEmail ?? "Sistema"}</p>
-              <p className="text-muted-foreground md:text-right">{formatDateTime(log.createdAt)}</p>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <UserRound className="size-4 shrink-0 text-primary" aria-hidden="true" />
-      </div>
-      <p className="mt-2 break-words text-xl font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-b p-4 sm:odd:border-r">
-      <dt className="text-xs font-medium uppercase text-muted-foreground">{label}</dt>
-      <dd className="mt-1 break-words text-sm font-medium">{value}</dd>
-    </div>
-  );
-}
-
-function formatAuditAction(action: string) {
-  const labels: Record<string, string> = {
-    create: "Criacao",
-    status_change: "Status",
-    update: "Edicao",
+  return {
+    id: balance.id,
+    periodStart: balance.periodStart,
+    periodEnd: balance.periodEnd,
+    concessionDeadline: balance.concessionDeadline,
+    daysAcquired: balance.daysAcquired,
+    daysSold: balance.daysSold,
+    daysTaken: balance.daysTaken,
+    daysAvailable: balance.daysAvailable,
+    status: balance.status,
+    expiring: balance.expiring,
+    expired: balance.expired,
+    notes: balance.notes,
   };
-
-  return labels[action] ?? action;
-}
-
-function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(value);
-}
-
-function toDateInputValue(value: string | Date | null | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  return typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
 }
 
 function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
-
-const inputClassName =
-  "h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20";
-
-const textareaClassName =
-  "min-h-24 w-full min-w-0 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20";
-
-const fieldClassName = "grid min-w-0 gap-1 text-sm font-medium";
-
-const primaryButtonClassName =
-  "inline-flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90";
-
-const secondaryButtonClassName =
-  "inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
