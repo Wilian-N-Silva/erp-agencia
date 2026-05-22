@@ -101,6 +101,47 @@ const createReimbursementSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
+export type InvoiceRequestFormState = {
+  ok: boolean;
+  error?: string;
+};
+
+export async function createInvoiceRequestFormAction(
+  _prevState: InvoiceRequestFormState,
+  formData: FormData,
+): Promise<InvoiceRequestFormState> {
+  try {
+    await createInvoiceRequestAction(formData);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof AccessDeniedError) {
+      return { ok: false, error: "Você não tem permissão para criar composições." };
+    }
+
+    if (error instanceof z.ZodError) {
+      const first = error.issues[0];
+      return {
+        ok: false,
+        error: first?.message
+          ? `Verifique os campos: ${first.message}.`
+          : "Verifique os campos do formulário.",
+      };
+    }
+
+    if (error instanceof Error) {
+      if (error.message === "Invoice request already exists for this competence.") {
+        return {
+          ok: false,
+          error: "Já existe uma composição de NF para esse colaborador e competência.",
+        };
+      }
+      return { ok: false, error: error.message };
+    }
+
+    return { ok: false, error: "Não foi possível publicar a composição. Tente novamente." };
+  }
+}
+
 export async function createInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = createInvoiceRequestSchema.parse(formDataToObject(formData));

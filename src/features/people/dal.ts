@@ -129,6 +129,7 @@ export async function listEmployees(
     .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(and(eq(employees.organizationId, organizationId), isNull(employees.deletedAt)))
     .orderBy(asc(employees.fullName));
+  const employeeNameById = new Map(rows.map((row) => [row.id, row.fullName]));
   const scopedRows = rows.filter((row) => {
     if (scope === "all") {
       return true;
@@ -147,6 +148,9 @@ export async function listEmployees(
         {
           ...row,
           employeeId: row.id,
+          managerName: row.managerEmployeeId
+            ? employeeNameById.get(row.managerEmployeeId) ?? null
+            : null,
           employmentType: row.employmentType as EmploymentType,
           status: row.status as EmployeeStatus,
         },

@@ -39,6 +39,7 @@ export type EmployeeListRecord = EmployeeScopeTarget & {
   positionId: string;
   areaName: string;
   employmentType: EmploymentType;
+  managerName?: string | null;
   status: EmployeeStatus;
   startDate: string | Date;
   currentCompensation: string;

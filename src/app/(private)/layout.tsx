@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { getCurrentSession } from "@/lib/auth/session";
 import { getCurrentAccessContext } from "@/lib/dal";
+import { ToastProvider } from "@/components/fg/toast";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +13,20 @@ export default async function PrivateLayout({
 }: {
   children: ReactNode;
 }) {
-  const context = await getCurrentAccessContext();
+  const [context, session] = await Promise.all([
+    getCurrentAccessContext(),
+    getCurrentSession(),
+  ]);
 
   if (!context) {
     redirect("/login");
   }
 
-  return <AppShell context={context}>{children}</AppShell>;
+  return (
+    <ToastProvider>
+      <AppShell context={context} user={session?.user}>
+        {children}
+      </AppShell>
+    </ToastProvider>
+  );
 }

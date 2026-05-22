@@ -1,7 +1,8 @@
-import { Ban, CheckCircle2, DollarSign, FilePlus2, FileMinus2, type LucideIcon } from "lucide-react";
+import { Ban, Check, CheckCircle2, DollarSign, FileMinus2, FilePlus2 } from "lucide-react";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 
-import { ActionDialog } from "@/components/ui/action-dialog";
+import { ActionSheet, Button } from "@/components/fg";
 import {
   approveReimbursementByFinanceAction,
   approveReimbursementByManagerAction,
@@ -23,11 +24,12 @@ import {
   canIncludeReimbursementInInvoice,
   canMarkReimbursementPaid,
   invoiceRequestStatusLabels,
-  reimbursementStatusLabels,
 } from "@/features/portal/rules";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
 import { can, canAny } from "@/lib/rbac";
+
+import { ReembolsosView } from "./reembolsos-view";
 
 export const dynamic = "force-dynamic";
 
@@ -53,53 +55,61 @@ export default async function ReimbursementsPage() {
 
   const reimbursements = await listReimbursements(context);
   const openInvoicesByEmployee = await loadOpenInvoicesForReimbursements(context, reimbursements);
+  const canCreate = can("reimbursements.write", context);
+
+  const rowActions: Record<string, ReactNode> = {};
+  const detailActions: Record<string, ReactNode> = {};
+
+  for (const reimbursement of reimbursements) {
+    const target = {
+      employeeId: reimbursement.employeeId,
+      managerEmployeeId: reimbursement.managerEmployeeId,
+      status: reimbursement.status,
+    };
+    const canManagerApprove = canApproveReimbursementByManager(context, target);
+    const canFinanceApprove = canApproveReimbursementByFinance(context, target);
+    const canPay = canMarkReimbursementPaid(context, target);
+    const eligibleInvoices = (openInvoicesByEmployee.get(reimbursement.employeeId) ?? []).filter(
+      (invoice) =>
+        canIncludeReimbursementInInvoice(
+          context,
+          { employeeId: reimbursement.employeeId, status: reimbursement.status },
+          { employeeId: reimbursement.employeeId, status: invoice.status },
+        ),
+    );
+    const showInclude = reimbursement.status === "finance_approved" && eligibleInvoices.length > 0;
+    const showExclude =
+      reimbursement.status === "included_in_invoice" && can("invoices.write", context);
+
+    rowActions[reimbursement.id] = (
+      <RowActionForms
+        canManagerApprove={canManagerApprove}
+        canFinanceApprove={canFinanceApprove}
+        canPay={canPay}
+        reimbursementId={reimbursement.id}
+      />
+    );
+
+    detailActions[reimbursement.id] = (
+      <DetailActionForms
+        canManagerApprove={canManagerApprove}
+        canFinanceApprove={canFinanceApprove}
+        canPay={canPay}
+        showInclude={showInclude}
+        showExclude={showExclude}
+        eligibleInvoices={eligibleInvoices}
+        reimbursementId={reimbursement.id}
+      />
+    );
+  }
 
   return (
-    <section className="flex w-full flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-normal">Reembolsos</h1>
-        <p className="text-sm text-muted-foreground">Aprovacao, conferencia e pagamento</p>
-      </div>
-
-      <section className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-base font-semibold">Solicitacoes</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Colaborador</th>
-                <th className="px-4 py-3 font-medium">Descricao</th>
-                <th className="px-4 py-3 font-medium">Categoria</th>
-                <th className="px-4 py-3 font-medium">Data</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Valor</th>
-                <th className="px-4 py-3 text-right font-medium">Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reimbursements.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>
-                    Nenhum reembolso encontrado.
-                  </td>
-                </tr>
-              ) : (
-                reimbursements.map((reimbursement) => (
-                  <ReimbursementRow
-                    context={context}
-                    key={reimbursement.id}
-                    openInvoices={openInvoicesByEmployee.get(reimbursement.employeeId) ?? []}
-                    reimbursement={reimbursement}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </section>
+    <ReembolsosView
+      reimbursements={reimbursements}
+      canCreate={canCreate}
+      rowActions={rowActions}
+      detailActions={detailActions}
+    />
   );
 }
 
@@ -114,7 +124,6 @@ async function loadOpenInvoicesForReimbursements(
   }
 
   const employeeIds = new Set<string>();
-
   for (const reimbursement of reimbursements) {
     if (reimbursement.status === "finance_approved") {
       employeeIds.add(reimbursement.employeeId);
@@ -128,173 +137,203 @@ async function loadOpenInvoicesForReimbursements(
   return result;
 }
 
-function ReimbursementRow({
-  context,
-  openInvoices,
-  reimbursement,
+function RowActionForms({
+  canManagerApprove,
+  canFinanceApprove,
+  canPay,
+  reimbursementId,
 }: {
-  context: AccessContext;
-  openInvoices: OpenInvoiceOption[];
-  reimbursement: ReimbursementListItem;
+  canManagerApprove: boolean;
+  canFinanceApprove: boolean;
+  canPay: boolean;
+  reimbursementId: string;
 }) {
-  const target = {
-    employeeId: reimbursement.employeeId,
-    managerEmployeeId: reimbursement.managerEmployeeId,
-    status: reimbursement.status,
-  };
-  const canManagerApprove = canApproveReimbursementByManager(context, target);
-  const canFinanceApprove = canApproveReimbursementByFinance(context, target);
-  const canPay = canMarkReimbursementPaid(context, target);
-  const eligibleInvoices = openInvoices.filter((invoice) =>
-    canIncludeReimbursementInInvoice(
-      context,
-      { employeeId: reimbursement.employeeId, status: reimbursement.status },
-      { employeeId: reimbursement.employeeId, status: invoice.status },
-    ),
-  );
-  const showIncludeAction = reimbursement.status === "finance_approved" && eligibleInvoices.length > 0;
-  const showExcludeAction =
-    reimbursement.status === "included_in_invoice" && can("invoices.write", context);
+  if (!canManagerApprove && !canFinanceApprove && !canPay) return null;
 
   return (
-    <tr className="border-b last:border-b-0">
-      <td className="px-4 py-3 font-medium">{reimbursement.employeeName}</td>
-      <td className="px-4 py-3">
-        <p className="font-medium">{reimbursement.title}</p>
-        {reimbursement.notes ? <p className="text-xs text-muted-foreground">{reimbursement.notes}</p> : null}
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">{reimbursement.category}</td>
-      <td className="px-4 py-3 text-muted-foreground">{formatDate(reimbursement.expenseDate)}</td>
-      <td className="px-4 py-3">
-        <StatusBadge label={reimbursementStatusLabels[reimbursement.status]} />
-      </td>
-      <td className="px-4 py-3 text-right font-medium">{formatMoney(reimbursement.amount)}</td>
-      <td className="px-4 py-3">
-        <div className="flex justify-end gap-2">
-          {canManagerApprove ? (
-            <>
-              <form action={approveReimbursementByManagerAction}>
-                <input name="id" type="hidden" value={reimbursement.id} />
-                <IconButton icon={CheckCircle2} label="Aprovar gestor" tone="primary" />
-              </form>
-              <form action={rejectReimbursementByManagerAction}>
-                <input name="id" type="hidden" value={reimbursement.id} />
-                <IconButton icon={Ban} label="Recusar gestor" tone="destructive" />
-              </form>
-            </>
-          ) : null}
-          {canFinanceApprove ? (
-            <>
-              <form action={approveReimbursementByFinanceAction}>
-                <input name="id" type="hidden" value={reimbursement.id} />
-                <IconButton icon={CheckCircle2} label="Aprovar financeiro" tone="primary" />
-              </form>
-              <form action={rejectReimbursementByFinanceAction}>
-                <input name="id" type="hidden" value={reimbursement.id} />
-                <IconButton icon={Ban} label="Recusar financeiro" tone="destructive" />
-              </form>
-            </>
-          ) : null}
-          {canPay ? (
-            <form action={markReimbursementPaidAction}>
-              <input name="id" type="hidden" value={reimbursement.id} />
-              <IconButton icon={DollarSign} label="Marcar pago" tone="primary" />
-            </form>
-          ) : null}
-          {showIncludeAction ? (
-            <IncludeInInvoiceDialog
-              eligibleInvoices={eligibleInvoices}
-              reimbursementId={reimbursement.id}
-            />
-          ) : null}
-          {showExcludeAction ? (
-            <form action={excludeReimbursementFromInvoiceAction}>
-              <input name="reimbursementId" type="hidden" value={reimbursement.id} />
-              <IconButton icon={FileMinus2} label="Remover da NF" tone="destructive" />
-            </form>
-          ) : null}
-        </div>
-      </td>
-    </tr>
+    <>
+      {canManagerApprove ? (
+        <form action={approveReimbursementByManagerAction} style={{ display: "inline" }}>
+          <input name="id" type="hidden" value={reimbursementId} />
+          <button
+            type="submit"
+            className="fg-icon-btn sm"
+            aria-label="Aprovar (gestor)"
+            title="Aprovar (gestor)"
+          >
+            <Check size={13} />
+          </button>
+        </form>
+      ) : null}
+      {canFinanceApprove ? (
+        <form action={approveReimbursementByFinanceAction} style={{ display: "inline" }}>
+          <input name="id" type="hidden" value={reimbursementId} />
+          <button
+            type="submit"
+            className="fg-icon-btn sm"
+            aria-label="Aprovar (financeiro)"
+            title="Aprovar (financeiro)"
+          >
+            <CheckCircle2 size={13} />
+          </button>
+        </form>
+      ) : null}
+      {canPay ? (
+        <form action={markReimbursementPaidAction} style={{ display: "inline" }}>
+          <input name="id" type="hidden" value={reimbursementId} />
+          <button
+            type="submit"
+            className="fg-icon-btn sm"
+            aria-label="Marcar pago"
+            title="Marcar pago"
+          >
+            <DollarSign size={13} />
+          </button>
+        </form>
+      ) : null}
+    </>
   );
 }
 
-function IncludeInInvoiceDialog({
+function DetailActionForms({
+  canManagerApprove,
+  canFinanceApprove,
+  canPay,
+  showInclude,
+  showExclude,
   eligibleInvoices,
   reimbursementId,
 }: {
+  canManagerApprove: boolean;
+  canFinanceApprove: boolean;
+  canPay: boolean;
+  showInclude: boolean;
+  showExclude: boolean;
   eligibleInvoices: OpenInvoiceOption[];
   reimbursementId: string;
 }) {
+  const hasAny =
+    canManagerApprove || canFinanceApprove || canPay || showInclude || showExclude;
+
+  if (!hasAny) return null;
+
   return (
-    <ActionDialog
+    <>
+      {canManagerApprove ? (
+        <>
+          <form action={rejectReimbursementByManagerAction} style={{ display: "inline" }}>
+            <input name="id" type="hidden" value={reimbursementId} />
+            <Button type="submit" variant="destructive" size="sm" icon={<Ban size={13} />}>
+              Recusar
+            </Button>
+          </form>
+          <form action={approveReimbursementByManagerAction} style={{ display: "inline" }}>
+            <input name="id" type="hidden" value={reimbursementId} />
+            <Button type="submit" variant="primary" size="sm" icon={<Check size={13} />}>
+              Aprovar como gestor
+            </Button>
+          </form>
+        </>
+      ) : null}
+      {canFinanceApprove ? (
+        <>
+          <form action={rejectReimbursementByFinanceAction} style={{ display: "inline" }}>
+            <input name="id" type="hidden" value={reimbursementId} />
+            <Button type="submit" variant="destructive" size="sm" icon={<Ban size={13} />}>
+              Recusar
+            </Button>
+          </form>
+          <form action={approveReimbursementByFinanceAction} style={{ display: "inline" }}>
+            <input name="id" type="hidden" value={reimbursementId} />
+            <Button type="submit" variant="primary" size="sm" icon={<CheckCircle2 size={13} />}>
+              Aprovar para pagamento
+            </Button>
+          </form>
+        </>
+      ) : null}
+      {canPay ? (
+        <form action={markReimbursementPaidAction} style={{ display: "inline" }}>
+          <input name="id" type="hidden" value={reimbursementId} />
+          <Button type="submit" variant="primary" size="sm" icon={<DollarSign size={13} />}>
+            Marcar pago
+          </Button>
+        </form>
+      ) : null}
+      {showInclude ? (
+        <IncludeInInvoiceSheet
+          reimbursementId={reimbursementId}
+          eligibleInvoices={eligibleInvoices}
+        />
+      ) : null}
+      {showExclude ? (
+        <form action={excludeReimbursementFromInvoiceAction} style={{ display: "inline" }}>
+          <input name="reimbursementId" type="hidden" value={reimbursementId} />
+          <Button type="submit" variant="outline" size="sm" icon={<FileMinus2 size={13} />}>
+            Remover da NF
+          </Button>
+        </form>
+      ) : null}
+    </>
+  );
+}
+
+function IncludeInInvoiceSheet({
+  reimbursementId,
+  eligibleInvoices,
+}: {
+  reimbursementId: string;
+  eligibleInvoices: OpenInvoiceOption[];
+}) {
+  return (
+    <ActionSheet
       title="Incluir reembolso em NF"
-      trigger={<FilePlus2 className="size-4" aria-hidden="true" />}
-      triggerClassName="inline-flex size-8 items-center justify-center rounded-md border border-primary/30 text-primary transition-colors hover:bg-primary/10"
-      triggerLabel="Incluir na NF"
+      description="Selecione a NF do colaborador para somar este reembolso na composição."
+      width={520}
+      trigger={
+        <Button type="button" variant="outline" size="sm" icon={<FilePlus2 size={13} />}>
+          Incluir em NF
+        </Button>
+      }
     >
-      <form action={includeReimbursementInInvoiceAction} className="flex flex-col gap-3">
+      <form
+        action={includeReimbursementInInvoiceAction}
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      >
         <input name="reimbursementId" type="hidden" value={reimbursementId} />
-        <p className="text-sm text-muted-foreground">
-          Selecione a NF do colaborador para somar este reembolso na composicao.
-        </p>
-        <div className="flex flex-col gap-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {eligibleInvoices.map((invoice) => (
             <label
-              className="flex cursor-pointer items-center gap-3 rounded-md border bg-background px-3 py-2 hover:bg-muted"
               key={invoice.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                cursor: "pointer",
+                background: "var(--surface-0)",
+              }}
             >
-              <input
-                name="invoiceRequestId"
-                required
-                type="radio"
-                value={invoice.id}
-              />
-              <div className="flex flex-1 flex-col">
-                <span className="text-sm font-medium">
-                  {formatCompetence(invoice.competence)} - {invoiceRequestStatusLabels[invoice.status]}
+              <input name="invoiceRequestId" required type="radio" value={invoice.id} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span className="fg-cell-strong">
+                  {formatCompetence(invoice.competence)} ·{" "}
+                  {invoiceRequestStatusLabels[invoice.status]}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  Vencimento {formatDate(invoice.dueDate)} - Valor esperado {formatMoney(invoice.expectedAmount)}
+                <span className="fg-cell-sub fg-tabular">
+                  Vencimento {formatDate(invoice.dueDate)} · Esperado {formatMoney(invoice.expectedAmount)}
                 </span>
               </div>
             </label>
           ))}
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            className="inline-flex items-center justify-center rounded-md border bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            type="submit"
-          >
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button type="submit" variant="primary" icon={<FilePlus2 size={13} />}>
             Incluir na NF
-          </button>
+          </Button>
         </div>
       </form>
-    </ActionDialog>
-  );
-}
-
-function StatusBadge({ label }: { label: string }) {
-  return <span className="inline-flex rounded-md border border-secondary/30 bg-secondary/10 px-2 py-1 text-xs font-medium text-secondary-foreground">{label}</span>;
-}
-
-function IconButton({
-  icon: Icon,
-  label,
-  tone,
-}: {
-  icon: LucideIcon;
-  label: string;
-  tone: "destructive" | "primary";
-}) {
-  const className =
-    tone === "primary"
-      ? "border-primary/30 text-primary hover:bg-primary/10"
-      : "border-destructive/30 text-destructive hover:bg-destructive/10";
-
-  return (
-    <button aria-label={label} className={`inline-flex size-8 items-center justify-center rounded-md border transition-colors ${className}`} title={label} type="submit">
-      <Icon className="size-4" aria-hidden="true" />
-    </button>
+    </ActionSheet>
   );
 }
