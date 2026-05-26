@@ -1,7 +1,7 @@
 "use server";
 
 import { hashPassword } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -9,7 +9,16 @@ import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { accounts, appSettings, roles, userRoles, users } from "@/lib/db/schema";
+import {
+  accounts,
+  appSettings,
+  areas,
+  employees,
+  positions,
+  roles,
+  userRoles,
+  users,
+} from "@/lib/db/schema";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
@@ -34,6 +43,14 @@ const updateSettingSchema = z.object({
   description: z.string().trim().max(500).optional(),
   key: z.string().trim().min(1).max(120).regex(/^[a-z0-9_.-]+$/),
   value: z.string().max(5000),
+});
+
+const createOrgUnitSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+const deleteOrgUnitSchema = z.object({
+  id: z.string().uuid(),
 });
 
 export async function createSettingsUserAction(formData: FormData) {
@@ -182,6 +199,126 @@ export async function updateAppSettingAction(formData: FormData) {
     entityId: after.id,
     before: before[0] ?? null,
     after,
+  });
+
+  revalidatePath("/app/configuracoes");
+}
+
+export async function createAreaAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  const input = createOrgUnitSchema.parse(formDataToObject(formData));
+
+  const [area] = await db
+    .insert(areas)
+    .values({ organizationId, name: input.name })
+    .onConflictDoNothing({ target: [areas.organizationId, areas.name] })
+    .returning();
+
+  if (!area) {
+    throw new Error("Area com esse nome ja existe.");
+  }
+
+  await writeAuditLog(context, {
+    action: "create",
+    entityType: "area",
+    entityId: area.id,
+    after: { name: area.name },
+  });
+
+  revalidatePath("/app/configuracoes");
+}
+
+export async function deleteAreaAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
+
+  const [area] = await db
+    .select()
+    .from(areas)
+    .where(and(eq(areas.id, input.id), eq(areas.organizationId, organizationId)))
+    .limit(1);
+
+  if (!area) {
+    throw new AccessDeniedError();
+  }
+
+  const usage = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(eq(employees.areaId, area.id), isNull(employees.deletedAt)))
+    .limit(1);
+
+  if (usage.length > 0) {
+    throw new Error("Nao e possivel remover area com colaboradores vinculados.");
+  }
+
+  await db.delete(areas).where(eq(areas.id, area.id));
+
+  await writeAuditLog(context, {
+    action: "delete",
+    entityType: "area",
+    entityId: area.id,
+    before: { name: area.name },
+  });
+
+  revalidatePath("/app/configuracoes");
+}
+
+export async function createPositionAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  const input = createOrgUnitSchema.parse(formDataToObject(formData));
+
+  const [position] = await db
+    .insert(positions)
+    .values({ organizationId, name: input.name })
+    .onConflictDoNothing({ target: [positions.organizationId, positions.name] })
+    .returning();
+
+  if (!position) {
+    throw new Error("Cargo com esse nome ja existe.");
+  }
+
+  await writeAuditLog(context, {
+    action: "create",
+    entityType: "position",
+    entityId: position.id,
+    after: { name: position.name },
+  });
+
+  revalidatePath("/app/configuracoes");
+}
+
+export async function deletePositionAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
+
+  const [position] = await db
+    .select()
+    .from(positions)
+    .where(and(eq(positions.id, input.id), eq(positions.organizationId, organizationId)))
+    .limit(1);
+
+  if (!position) {
+    throw new AccessDeniedError();
+  }
+
+  const usage = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(eq(employees.positionId, position.id), isNull(employees.deletedAt)))
+    .limit(1);
+
+  if (usage.length > 0) {
+    throw new Error("Nao e possivel remover cargo com colaboradores vinculados.");
+  }
+
+  await db.delete(positions).where(eq(positions.id, position.id));
+
+  await writeAuditLog(context, {
+    action: "delete",
+    entityType: "position",
+    entityId: position.id,
+    before: { name: position.name },
   });
 
   revalidatePath("/app/configuracoes");

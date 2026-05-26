@@ -1,10 +1,12 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
   appSettings,
+  areas,
   employees,
   permissions,
+  positions,
   rolePermissions,
   roles,
   userRoles,
@@ -54,9 +56,17 @@ export type AppSettingListItem = {
   updatedAt: Date;
 };
 
+export type SettingsOrgUnitItem = {
+  id: string;
+  name: string;
+  employeeCount: number;
+};
+
 export type SettingsDashboard = {
   appSettings: AppSettingListItem[];
+  areas: SettingsOrgUnitItem[];
   permissions: SettingsPermissionItem[];
+  positions: SettingsOrgUnitItem[];
   roles: SettingsRoleItem[];
   users: SettingsUserListItem[];
 };
@@ -66,8 +76,16 @@ export async function getSettingsDashboard(
 ): Promise<SettingsDashboard> {
   assertCanAny(["settings.read", "settings.manage"], context);
   const organizationId = requireOrganizationId(context);
-  const [userRows, roleRows, permissionRows, rolePermissionRows, userRoleRows, settingRows] =
-    await Promise.all([
+  const [
+    userRows,
+    roleRows,
+    permissionRows,
+    rolePermissionRows,
+    userRoleRows,
+    settingRows,
+    areaRows,
+    positionRows,
+  ] = await Promise.all([
       db
         .select({
           id: users.id,
@@ -114,12 +132,36 @@ export async function getSettingsDashboard(
         .leftJoin(users, eq(appSettings.updatedByUserId, users.id))
         .where(eq(appSettings.organizationId, organizationId))
         .orderBy(asc(appSettings.key)),
+      db
+        .select({
+          id: areas.id,
+          name: areas.name,
+          employeeCount: sql<number>`coalesce(count(${employees.id}) filter (where ${employees.deletedAt} is null), 0)::int`,
+        })
+        .from(areas)
+        .leftJoin(employees, eq(employees.areaId, areas.id))
+        .where(eq(areas.organizationId, organizationId))
+        .groupBy(areas.id, areas.name)
+        .orderBy(asc(areas.name)),
+      db
+        .select({
+          id: positions.id,
+          name: positions.name,
+          employeeCount: sql<number>`coalesce(count(${employees.id}) filter (where ${employees.deletedAt} is null), 0)::int`,
+        })
+        .from(positions)
+        .leftJoin(employees, eq(employees.positionId, positions.id))
+        .where(eq(positions.organizationId, organizationId))
+        .groupBy(positions.id, positions.name)
+        .orderBy(asc(positions.name)),
     ]);
   const rolePermissionsByRoleId = groupRolePermissions(rolePermissionRows);
   const rolesByUserId = groupUserRoles(userRoleRows);
 
   return {
     appSettings: settingRows,
+    areas: areaRows,
+    positions: positionRows,
     permissions: permissionRows.flatMap((permission) => {
       if (!isPermissionKey(permission.key)) {
         return [];

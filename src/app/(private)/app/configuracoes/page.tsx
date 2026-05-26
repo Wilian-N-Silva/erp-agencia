@@ -1,9 +1,13 @@
-import { Ban, CheckCircle2, Save, UserPlus } from "lucide-react";
+import { Ban, CheckCircle2, Plus, Save, Trash2, UserPlus } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
 import {
+  createAreaAction,
+  createPositionAction,
   createSettingsUserAction,
+  deleteAreaAction,
+  deletePositionAction,
   updateAppSettingAction,
   updateSettingsUserRolesAction,
   updateSettingsUserStatusAction,
@@ -11,6 +15,7 @@ import {
 import {
   getSettingsDashboard,
   type AppSettingListItem,
+  type SettingsOrgUnitItem,
   type SettingsPermissionItem,
   type SettingsRoleItem,
   type SettingsUserListItem,
@@ -74,6 +79,24 @@ export default async function SettingsPage() {
       </div>
 
       <UsersSection canManage={canManage} roles={dashboard.roles} users={dashboard.users} />
+      <OrgUnitsSection
+        canManage={canManage}
+        title="Areas"
+        emptyLabel="Nenhuma area cadastrada"
+        items={dashboard.areas}
+        createAction={createAreaAction}
+        deleteAction={deleteAreaAction}
+        createLabel="Adicionar area"
+      />
+      <OrgUnitsSection
+        canManage={canManage}
+        title="Cargos"
+        emptyLabel="Nenhum cargo cadastrado"
+        items={dashboard.positions}
+        createAction={createPositionAction}
+        deleteAction={deletePositionAction}
+        createLabel="Adicionar cargo"
+      />
       <AppSettingsSection canManage={canManage} settings={dashboard.appSettings} />
       <PermissionsSection permissions={dashboard.permissions} roles={dashboard.roles} />
     </section>
@@ -184,6 +207,88 @@ function UserManagementRow({
         </form>
       ) : null}
     </div>
+  );
+}
+
+function OrgUnitsSection({
+  canManage,
+  createAction,
+  createLabel,
+  deleteAction,
+  emptyLabel,
+  items,
+  title,
+}: {
+  canManage: boolean;
+  createAction: (formData: FormData) => void;
+  createLabel: string;
+  deleteAction: (formData: FormData) => void;
+  emptyLabel: string;
+  items: SettingsOrgUnitItem[];
+  title: string;
+}) {
+  return (
+    <section className="rounded-lg border bg-card">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="text-base font-semibold">{title}</h2>
+        {canManage ? (
+          <ActionDialog
+            title={createLabel}
+            trigger={
+              <>
+                <Plus className="size-4" aria-hidden="true" />
+                {createLabel}
+              </>
+            }
+            triggerClassName={secondaryButtonClassName}
+            triggerLabel={createLabel}
+          >
+            <form action={createAction} className="grid gap-3">
+              <label className={fieldClassName}>
+                Nome
+                <input className={inputClassName} maxLength={120} name="name" required />
+              </label>
+              <div className="flex justify-end">
+                <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
+                  <Plus className="size-4" aria-hidden="true" />
+                  {createLabel}
+                </button>
+              </div>
+            </form>
+          </ActionDialog>
+        ) : null}
+      </div>
+      {items.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">{emptyLabel}</p>
+      ) : (
+        <div className="divide-y">
+          {items.map((item) => (
+            <div
+              className="flex items-center justify-between gap-3 px-4 py-3"
+              key={item.id}
+            >
+              <div>
+                <p className="font-medium">{item.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {item.employeeCount} colaborador
+                  {item.employeeCount === 1 ? "" : "es"}
+                </p>
+              </div>
+              {canManage ? (
+                <form action={deleteAction}>
+                  <input name="id" type="hidden" value={item.id} />
+                  <IconSubmitButton
+                    icon={Trash2}
+                    label={`Remover ${item.name}`}
+                    tone="destructive"
+                  />
+                </form>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
