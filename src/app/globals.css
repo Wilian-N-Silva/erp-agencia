@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design system tokens + fg-* component CSS (mirrors the prototype). */
+@import "../styles/design-system.css";
+@import "../styles/portal.css";
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Bridge: map the existing Tailwind tokens (bg-card, text-foreground, etc.)
+   onto the prototype's palette so pages that haven't been ported yet still
+   read as one app. Tailwind expects HSL space-separated values.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: 60 9% 98%;            /* surface-1 */
+  --foreground: 0 0% 4%;              /* ink-900 */
+  --card: 0 0% 100%;                  /* surface-0 */
+  --card-foreground: 0 0% 4%;
+  --primary: 13 100% 64%;             /* brand-orange */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 6% 10%;            /* ink-800 — dark CTA */
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 5% 96%;                /* ink-100 / surface-2 */
+  --muted-foreground: 240 4% 46%;     /* ink-500 */
+  --accent: 16 100% 96%;              /* brand-orange-soft */
+  --accent-foreground: 16 78% 40%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --tw-border: 240 5% 91%;            /* ink-200 */
+  --input: 240 5% 91%;
+  --ring: 13 100% 64%;
+  --radius: 0.5rem;
+}
+
+html[data-theme="dark"],
+html.dark {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 98%;
+  --card: 240 6% 6%;
+  --card-foreground: 0 0% 98%;
+  --primary: 13 100% 64%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 98%;
+  --secondary-foreground: 0 0% 4%;
+  --muted: 240 4% 13%;
+  --muted-foreground: 240 5% 64%;
+  --accent: 13 100% 64%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --tw-border: 240 4% 16%;
+  --input: 240 4% 16%;
+  --ring: 13 100% 64%;
+}
+
+* {
+  border-color: hsl(var(--tw-border));
+}
+
+html,
+body {
+  background: var(--surface-1);
+  color: var(--ink-900);
+}
+
+body {
+  font-family: var(--font-inter-tight, "Inter Tight"), "Inter", system-ui,
+    -apple-system, sans-serif;
+}
+
+.fg-mono,
+code,
+kbd,
+.fg-tabular-mono {
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace,
+    monospace;
+}

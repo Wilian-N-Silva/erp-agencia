@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778604448179,
+      "tag": "0000_lyrical_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778625300007,
+      "tag": "0001_big_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778681817615,
+      "tag": "0002_youthful_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778685767485,
+      "tag": "0003_deep_steve_rogers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778769387881,
+      "tag": "0004_noisy_human_robot",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778786276982,
+      "tag": "0005_early_marvel_zombies",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779207756050,
+      "tag": "0006_light_joseph",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779237129617,
+      "tag": "0007_narrow_doctor_spectrum",
+      "breakpoints": true
+    }
+  ]
+}
