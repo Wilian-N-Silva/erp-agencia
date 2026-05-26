@@ -1,5 +1,7 @@
 .env
-.env*.local
+.env.*
+!.env.example
+!.env.production.example
 .next
 node_modules
 coverage
@@ -18,3 +20,7 @@ storage-local
 CLAUDE.md
 codex.md
 .cursorrules
+
+# Local agent state
+.claude/
+NEXT_AGENT_HANDOFF.md
