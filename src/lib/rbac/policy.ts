@@ -131,3 +131,19 @@ export function hasAnyPermission(
 ) {
   return requiredPermissions.some((permission) => permissions.includes(permission));
 }
+
+const portalOnlyPermissions: ReadonlySet<PermissionKey> = new Set([
+  "people.read_own",
+  "compensation.read_own",
+  "documents.read_own",
+  "timeoff.read_own",
+  "invoices.read_own",
+  "reimbursements.read_own",
+  "equipment.read_own",
+  "access_records.read_own",
+  "saas.read_linked",
+]);
+
+export function canAccessBackoffice(permissions: readonly PermissionKey[]) {
+  return permissions.some((permission) => !portalOnlyPermissions.has(permission));
+}

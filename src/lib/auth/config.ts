@@ -44,12 +44,26 @@ export function getAllowedEmailDomain() {
   return normalizeEmailDomain(getOptionalEnv("ALLOWED_EMAIL_DOMAIN"));
 }
 
+let warnedAboutBaseUrl = false;
+
 export function getAuthBaseUrl() {
-  return (
+  const url =
     getOptionalEnv("BETTER_AUTH_URL") ??
     getOptionalEnv("APP_URL") ??
-    "http://localhost:3000"
-  );
+    "http://localhost:3000";
+
+  if (
+    !warnedAboutBaseUrl &&
+    process.env.NODE_ENV === "production" &&
+    (!url.startsWith("https://") || /\b(localhost|127\.0\.0\.1)\b/.test(url))
+  ) {
+    warnedAboutBaseUrl = true;
+    console.warn(
+      `[auth] BETTER_AUTH_URL is not a secure public URL in production: ${url}`,
+    );
+  }
+
+  return url;
 }
 
 export function getAuthSecret() {

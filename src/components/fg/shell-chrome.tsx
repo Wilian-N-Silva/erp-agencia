@@ -7,6 +7,7 @@ import type { Route } from "next";
 import { useEffect, useState } from "react";
 
 import { Avatar, FGLogo } from "@/components/fg/atoms";
+import { authClient } from "@/lib/auth/client";
 import { Breadcrumb } from "@/components/fg/breadcrumb";
 import { CommandPalette } from "@/components/fg/command-palette";
 import { Dropdown } from "@/components/fg/dropdown";
@@ -101,7 +102,8 @@ function Sidebar({
               label: "Sair",
               icon: <LogOut size={14} />,
               danger: true,
-              onClick: () => {
+              onClick: async () => {
+                await authClient.signOut();
                 window.location.href = "/login";
               },
             },

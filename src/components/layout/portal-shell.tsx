@@ -21,6 +21,7 @@ import { useRouter, usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Avatar, Dropdown, FGLogo, useThemeToggle } from "@/components/fg";
+import { authClient } from "@/lib/auth/client";
 
 interface NavItem {
   href: Route;
@@ -128,7 +129,8 @@ export function PortalShell({ children, user, employmentType }: PortalShellProps
                   label: "Sair",
                   icon: <LogOut size={14} />,
                   danger: true,
-                  onClick: () => {
+                  onClick: async () => {
+                    await authClient.signOut();
                     window.location.href = "/login";
                   },
                 },
