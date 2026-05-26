@@ -1,6 +1,7 @@
 import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { asc } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
@@ -59,9 +60,16 @@ export const auth = betterAuth({
             });
           }
 
+          const [defaultOrganization] = await db
+            .select({ id: schema.organizations.id })
+            .from(schema.organizations)
+            .orderBy(asc(schema.organizations.name))
+            .limit(1);
+
           return {
             data: {
               email,
+              organizationId: defaultOrganization?.id ?? null,
             },
           };
         },
