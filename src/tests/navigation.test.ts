@@ -15,9 +15,9 @@ describe("permission-filtered navigation", () => {
     });
 
     expect(getVisibleNavigationItems(financeContext).map((item) => item.href))
-      .toContain("/app/financeiro");
+      .toContain("/app/financeiro/entradas");
     expect(getVisibleNavigationItems(employeeContext).map((item) => item.href))
-      .not.toContain("/app/financeiro");
+      .not.toContain("/app/financeiro/entradas");
   });
 
   it("shows portal navigation for employees", () => {
@@ -39,7 +39,9 @@ describe("permission-filtered navigation", () => {
     const hrefs = getVisibleNavigationItems(context).map((item) => item.href);
 
     expect(hrefs).toContain("/app");
-    expect(hrefs).toContain("/app/financeiro");
+    expect(hrefs).toContain("/app/financeiro/entradas");
+    expect(hrefs).toContain("/app/financeiro/saidas");
+    expect(hrefs).toContain("/app/financeiro/provisoes");
     expect(hrefs).toContain("/app/clientes");
     expect(hrefs).toContain("/app/colaboradores");
     expect(hrefs).toContain("/app/ferias");
