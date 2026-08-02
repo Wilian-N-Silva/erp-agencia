@@ -14,6 +14,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     redirect("/login");
   }
 
+  if (!context.organizationId) {
+    redirect("/acesso-negado");
+  }
+
   const summary = await getPortalEmployeeSummary(context);
 
   return (
