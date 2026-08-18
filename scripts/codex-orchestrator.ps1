@@ -141,7 +141,8 @@ while ($true) {
     $taskId = [string]$next.id
     Write-Host ""; Write-Host "========== $taskId - $($next.title) ==========" -ForegroundColor Cyan
 
-    & "$PSScriptRoot/codex-worker.ps1" -Task $taskId -IntegrationBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model -MaxFixAttempts $MaxFixAttempts -SkipAutomatedReview:$SkipAutomatedReview
+    $workerScript = Join-Path $PSScriptRoot "codex-worker.ps1"
+    & $workerScript -Task $taskId -IntegrationBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model -MaxFixAttempts $MaxFixAttempts -SkipAutomatedReview:$SkipAutomatedReview
     $workerExit = $LASTEXITCODE
     if ($workerExit -ne 0) {
         $failedThisRun.Add($taskId)
