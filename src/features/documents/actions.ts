@@ -9,6 +9,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -82,6 +83,9 @@ async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
   const metadata = documentMetadataSchema.parse(formDataToObject(formData));
   const uploadedFile = getUploadedFile(formData);
+  if (uploadedFile) {
+    await enforceAuthenticatedRateLimit("upload", context);
+  }
   const input = uploadedFile
     ? await buildUploadedDocumentInput(uploadedFile, metadata, organizationId)
     : buildLegacyDocumentInput(formData);

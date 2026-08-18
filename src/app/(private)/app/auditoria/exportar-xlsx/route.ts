@@ -5,6 +5,10 @@ import { listAuditLogs } from "@/features/audit/dal";
 import { canExportAuditReport, normalizeAuditFilters } from "@/features/audit/rules";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  toRateLimitResponse,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,14 @@ export async function GET(request: NextRequest) {
 
   if (!canExportAuditReport(context)) {
     return NextResponse.redirect(new URL("/acesso-negado", request.url));
+  }
+
+  try {
+    await enforceAuthenticatedRateLimit("export", context);
+  } catch (error) {
+    const response = toRateLimitResponse(error);
+    if (response) return response;
+    throw error;
   }
 
   const filters = normalizeAuditFilters(

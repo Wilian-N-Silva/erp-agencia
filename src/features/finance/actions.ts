@@ -14,6 +14,7 @@ import {
   provisions,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "./rules";
@@ -170,6 +171,7 @@ async function updateFinancialEntryAction(formData: FormData) {
 
 async function markFinancialEntryReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -214,6 +216,7 @@ async function markFinancialEntryReceivedAction(formData: FormData) {
 
 async function cancelFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -320,6 +323,7 @@ async function updateFinancialExpenseAction(formData: FormData) {
 
 async function markFinancialExpensePaidAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 
@@ -359,6 +363,7 @@ async function markFinancialExpensePaidAction(formData: FormData) {
 
 async function cancelFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 

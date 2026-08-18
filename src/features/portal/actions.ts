@@ -25,6 +25,7 @@ import {
   getCurrentAccessContext,
   type AccessContext,
 } from "@/lib/dal";
+import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -916,6 +917,7 @@ async function updateReimbursementStatus(
 }
 
 async function storePortalDocument(input: StorePortalDocumentInput) {
+  await enforceAuthenticatedRateLimit("upload", input.context);
   const originalName = input.uploadedFile.name;
   const mimeType = input.uploadedFile.type || "application/octet-stream";
   const byteSize = input.uploadedFile.size;
