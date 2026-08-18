@@ -345,6 +345,7 @@ async function rejectInvoiceRequestAction(formData: FormData) {
 
 async function markInvoicePaidAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -669,6 +670,7 @@ async function excludeReimbursementFromInvoiceAction(formData: FormData) {
 
 async function markReimbursementPaidAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
