@@ -46,10 +46,11 @@ Leave TTL low (300s) until the cutover is verified, then raise to 3600.
 ### 2. Database
 
 1. Create a fresh Postgres 17 database in Neon (project `erp-prod`).
-2. Capture the **pooled** URL (`DATABASE_URL`) and the **direct** URL (`DATABASE_DIRECT_URL`).
+2. Capture the direct owner/admin URL as `DATABASE_DIRECT_URL`. Provision the
+   dedicated runtime role with `docs/runbooks/database-roles.md`, then capture its
+   pooled URL as `DATABASE_URL`. The roles must be different.
 3. Apply migrations from a clean local checkout pointed at the prod direct URL:
    ```powershell
-   $env:DATABASE_URL = "<prod direct url>"
    $env:DATABASE_DIRECT_URL = "<prod direct url>"
    npm run db:migrate
    ```
@@ -91,7 +92,9 @@ Leave TTL low (300s) until the cutover is verified, then raise to 3600.
 
 1. `vercel link` from the repo root into a new project named `erp-agencia-prod`.
 2. Production branch = `main`. (Staging project tracks `development`; prod tracks `main`.)
-3. Add every variable from `.env.production.example` to the Vercel dashboard under the "Production" environment. Suggested values:
+3. Add the runtime variables from `.env.production.example` to the Vercel dashboard
+   under the "Production" environment. Do not add `DATABASE_DIRECT_URL`; keep it in
+   the controlled migration/seed/backup environment only. Suggested values:
    ```
    BETTER_AUTH_URL=https://app.formulagroup.com.br
    BETTER_AUTH_TRUSTED_ORIGINS=https://app.formulagroup.com.br

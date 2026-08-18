@@ -7,7 +7,7 @@
 # Requires pg_restore on PATH (matching Postgres major version).
 #
 # Safety: the target database MUST be empty or you must pass -CleanFirst.
-# This script never targets the URL in $env:DATABASE_URL by default - you must
+# This script never targets either configured database URL by default - you must
 # pass a separate URL for the restore target to avoid clobbering production.
 
 [CmdletBinding()]
