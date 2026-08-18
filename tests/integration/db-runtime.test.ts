@@ -2,8 +2,12 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabase, type Database } from "@/lib/db";
+import { createWithTenantDb } from "@/lib/db/tenant";
+import type { AccessContext } from "@/lib/dal";
 
 const settingName = "app.sec_001_transaction_id";
+const tenantOrganizationId = "00000000-0000-4000-8000-000000000001";
+const tenantUserId = "sec-002-user";
 const databaseTestUrl = process.env.DATABASE_TEST_URL;
 
 if (!databaseTestUrl) {
@@ -74,6 +78,67 @@ describe("transaction-local database context", () => {
     const valueAfterRollback = await database.transaction(readLocalValue);
 
     expect(isUnset(valueAfterRollback)).toBe(true);
+  });
+});
+
+describe("tenant database context", () => {
+  it("sets organization and user only for the tenant transaction", async () => {
+    const withTenantDb = createWithTenantDb(database);
+    const context: AccessContext = {
+      userId: tenantUserId,
+      organizationId: tenantOrganizationId,
+      employeeId: null,
+      roles: [],
+      permissions: [],
+    };
+
+    const values = await withTenantDb(context, async (transaction) => {
+      const result = await transaction.execute(sql<{
+        organizationId: string | null;
+        userId: string | null;
+      }>`
+        select
+          current_setting('app.organization_id', true) as "organizationId",
+          current_setting('app.user_id', true) as "userId"
+      `);
+
+      return result.rows[0];
+    });
+
+    expect(values).toEqual({
+      organizationId: tenantOrganizationId,
+      userId: tenantUserId,
+    });
+
+    const valuesAfterCommit = await database.transaction(
+      async (transaction) => {
+        const result = await transaction.execute(sql<{
+          organizationId: string | null;
+          userId: string | null;
+        }>`
+        select
+          current_setting('app.organization_id', true) as "organizationId",
+          current_setting('app.user_id', true) as "userId"
+      `);
+
+        return result.rows[0];
+      },
+    );
+
+    const organizationIdAfterCommit: unknown =
+      valuesAfterCommit?.organizationId;
+    const userIdAfterCommit: unknown = valuesAfterCommit?.userId;
+
+    expect(
+      isUnset(
+        typeof organizationIdAfterCommit === "string"
+          ? organizationIdAfterCommit
+          : null,
+      ),
+    ).toBe(true);
+    expect(
+      isUnset(typeof userIdAfterCommit === "string" ? userIdAfterCommit : null),
+    ).toBe(true);
   });
 });
 

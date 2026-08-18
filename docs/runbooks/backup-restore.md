@@ -18,37 +18,44 @@ A complete recovery requires both. This runbook covers the database. Storage bac
 | Backup  | `.\scripts\backup.ps1`           | `./scripts/backup.sh`             |
 | Restore | `.\scripts\restore.ps1`          | `./scripts/restore.sh`            |
 
-Both scripts:
-- read `DATABASE_URL` from the environment,
+The backup scripts:
+
+- read the admin-only `DATABASE_DIRECT_URL` from the environment so RLS cannot
+  silently produce an incomplete dump,
 - produce a custom-format `pg_dump` (compresses + restore-friendly),
 - write a `.sha256` sidecar for integrity verification,
 - write into `./backups/erp-agencia-<UTC-timestamp>.dump` by default.
 
-The restore script will **refuse to run** if the checksum sidecar exists and does not match. It targets only the URL you pass explicitly (it deliberately ignores `DATABASE_URL` to prevent clobbering production).
+The restore script will **refuse to run** if the checksum sidecar exists and does not match. It targets only the URL you pass explicitly (it deliberately ignores both configured database URLs to prevent clobbering production).
 
 ## Drill procedure
 
 Run quarterly or before each release.
 
 1. **Take a backup** of the source database:
+
    ```powershell
-   $env:DATABASE_URL = "postgres://user:pass@host:5432/erp_production"
+   $env:DATABASE_DIRECT_URL = "postgres://admin:pass@host:5432/erp_production"
    .\scripts\backup.ps1
    ```
+
    Confirm the file under `./backups/` and capture the SHA-256.
 
 2. **Provision a clean target** database (do NOT reuse production):
+
    ```sql
    CREATE DATABASE erp_restore_test;
    ```
 
 3. **Restore** the dump into the new database:
+
    ```powershell
    .\scripts\restore.ps1 -DumpPath .\backups\erp-agencia-<timestamp>.dump `
                          -DatabaseUrl postgres://user:pass@host:5432/erp_restore_test
    ```
 
 4. **Validate** the restored database. Run each query and record counts in the drill log:
+
    ```sql
    SELECT count(*) FROM employees;
    SELECT count(*) FROM users;
@@ -62,6 +69,7 @@ Run quarterly or before each release.
    SELECT count(*) FROM vacation_balances;
    SELECT count(*) FROM audit_logs;
    ```
+
    Counts must match the source database (allow drift for any rows created after the backup snapshot).
 
 5. **Spot-check** one document download path. The `files.storage_key` column should match an object that still exists in the storage bucket — confirm via the storage provider's UI/CLI. If the bucket has been swapped, document references will dangle.

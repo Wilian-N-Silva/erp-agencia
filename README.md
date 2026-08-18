@@ -15,7 +15,9 @@ Base inicial para o sistema interno descrito em `docs/PRD-Sistema-Interno-FG-v1.
 ## Setup local
 
 1. Copie `.env.example` para `.env`.
-2. Preencha `DATABASE_URL`, `DATABASE_DIRECT_URL`, `BETTER_AUTH_SECRET`, credenciais Google e `INITIAL_ADMIN_EMAIL`.
+2. Configure `DATABASE_URL` com a role da aplicacao e `DATABASE_DIRECT_URL` com a
+   role de migration/admin conforme `docs/runbooks/database-roles.md`; preencha tambem
+   `BETTER_AUTH_SECRET`, credenciais Google e `INITIAL_ADMIN_EMAIL`.
 3. Instale dependências com `npm.cmd install`.
 4. Gere migrations com `npm.cmd run db:generate`.
 5. Rode migrations com `npm.cmd run db:migrate`.
@@ -37,9 +39,12 @@ variaveis nao forem definidas.
 
 1. Copie os valores de `.env.docker.example` para `.env` se quiser usar o Postgres local.
 2. Suba o banco com `docker compose up -d postgres`.
-3. Rode `npm.cmd run db:migrate`.
-4. Rode `npm.cmd run db:seed`.
-5. Acesse `/login` e entre com `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` definidos no `.env`.
+3. Configure `DATABASE_DIRECT_URL` com a URL do owner local e rode
+   `npm.cmd run db:migrate`.
+4. Provisione a role local da aplicacao seguindo
+   `docs/runbooks/database-roles.md` e configure sua URL pooled em `DATABASE_URL`.
+5. Rode `npm.cmd run db:seed`; o seed usa exclusivamente `DATABASE_DIRECT_URL`.
+6. Acesse `/login` e entre com `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` definidos no `.env`.
 
 Para carregar usuarios e registros de demonstracao locais usados nos testes E2E,
 defina `SEED_DEMO_DATA=true` antes de executar `npm.cmd run db:seed`. A senha

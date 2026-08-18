@@ -5,7 +5,7 @@
 #   ./scripts/backup.ps1 -OutDir D:\backups    # writes to a custom directory
 #
 # Requires:
-#   - DATABASE_URL set in the environment (postgres:// URL) OR pass -DatabaseUrl.
+#   - DATABASE_DIRECT_URL set in the environment (admin URL) OR pass -DatabaseUrl.
 #   - pg_dump on PATH (matching Postgres major version).
 #
 # The script writes a custom-format dump (pg_restore-compatible) plus a
@@ -14,13 +14,13 @@
 [CmdletBinding()]
 param(
   [string]$OutDir = "$(Get-Location)\backups",
-  [string]$DatabaseUrl = $env:DATABASE_URL
+  [string]$DatabaseUrl = $env:DATABASE_DIRECT_URL
 )
 
 $ErrorActionPreference = "Stop"
 
 if (-not $DatabaseUrl) {
-  throw "DATABASE_URL not set. Pass -DatabaseUrl or set the environment variable."
+  throw "DATABASE_DIRECT_URL not set. Pass -DatabaseUrl or set the environment variable."
 }
 
 if (-not (Get-Command pg_dump -ErrorAction SilentlyContinue)) {

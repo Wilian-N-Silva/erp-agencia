@@ -6,15 +6,15 @@
 #   OUT_DIR=/srv/backups ./scripts/backup.sh  # writes to a custom directory
 #
 # Requires:
-#   - DATABASE_URL set in the environment.
+#   - DATABASE_DIRECT_URL set in the environment (admin URL).
 #   - pg_dump on PATH (matching Postgres major version).
 #
 # Writes a custom-format dump plus a SHA-256 sidecar.
 
 set -euo pipefail
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "DATABASE_URL not set" >&2
+if [[ -z "${DATABASE_DIRECT_URL:-}" ]]; then
+  echo "DATABASE_DIRECT_URL not set" >&2
   exit 1
 fi
 
@@ -30,7 +30,7 @@ TIMESTAMP="$(date -u +"%Y%m%d-%H%M%S")"
 DUMP_PATH="$OUT_DIR/erp-agencia-$TIMESTAMP.dump"
 
 echo "Writing backup to $DUMP_PATH"
-pg_dump --format=custom --no-owner --no-privileges --file="$DUMP_PATH" "$DATABASE_URL"
+pg_dump --format=custom --no-owner --no-privileges --file="$DUMP_PATH" "$DATABASE_DIRECT_URL"
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256sum "$DUMP_PATH" | awk '{print $1}' > "$DUMP_PATH.sha256"

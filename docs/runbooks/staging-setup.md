@@ -49,10 +49,12 @@ You need credentials for all of these before starting:
 ### 1. Database
 
 1. Create a fresh Postgres 17 database in Neon.
-2. Copy the **pooled** connection string into `DATABASE_URL` and the **direct** (non-pooled) connection string into `DATABASE_DIRECT_URL`. Drizzle migrations need the direct URL because the pooler does not support prepared statements.
+2. Capture the direct owner/admin URL as `DATABASE_DIRECT_URL`. Provision the
+   dedicated runtime role with `docs/runbooks/database-roles.md`, then use its pooled
+   URL as `DATABASE_URL`. The roles must be different.
 3. Run migrations from a clean local checkout against the staging URL:
    ```powershell
-   $env:DATABASE_URL = "<staging direct url>"
+   $env:DATABASE_DIRECT_URL = "<staging direct url>"
    npm run db:migrate
    ```
 4. Seed initial RBAC + admin (set `SEED_DEMO_DATA=false` for staging — only run demo seed if you want fake data):
@@ -101,7 +103,11 @@ You need credentials for all of these before starting:
 
 1. `vercel link` from the repo root, pointing at a new project named `erp-agencia-staging`.
 2. In the Vercel dashboard, set the `development` branch as the production branch of this project (so each push to `development` ships staging).
-3. Add every variable from the `.env.example` file as a Vercel environment variable, scoped to "Production" (this project's "Production" environment is your staging deployment).
+3. Add the runtime variables from `.env.example` as Vercel environment variables,
+   scoped to "Production" (this project's "Production" environment is staging).
+   Do not add `DATABASE_DIRECT_URL`; keep it only in the controlled
+   migration/seed/backup environment. `DATABASE_URL` must be the verified pooled
+   app-role URL.
 4. Trigger a deploy by pushing to `development` or running `vercel --prod`.
 5. Add the custom domain `staging.<domain>` to the Vercel project and update DNS.
 

@@ -2,7 +2,7 @@ import { hashPassword } from "better-auth/crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { createRequire } from "node:module";
 
-import { getOptionalEnv } from "@/lib/env";
+import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
 import {
   defaultRolePermissions,
   permissionDescriptions,
@@ -12,7 +12,7 @@ import {
   type RoleKey,
 } from "@/lib/rbac";
 
-import { db } from "./index";
+import { createDatabase } from "./index";
 import {
   accounts,
   accessRecords,
@@ -51,6 +51,8 @@ const require = createRequire(import.meta.url);
 const { loadEnvConfig } = require("@next/env") as typeof import("@next/env");
 
 loadEnvConfig(process.cwd());
+
+const db = createDatabase(getRequiredEnv("DATABASE_DIRECT_URL"));
 
 const organizationSeed = {
   name: "Formula Group",

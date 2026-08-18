@@ -4,6 +4,7 @@ import { Pool, type PoolConfig } from "pg";
 import { getRequiredEnv } from "@/lib/env";
 
 import * as schema from "./schema";
+import { createWithTenantDb } from "./tenant";
 
 export function createDatabase(
   databaseUrl = getRequiredEnv("DATABASE_URL"),
@@ -35,3 +36,7 @@ export const db = new Proxy({} as Database, {
     return typeof value === "function" ? value.bind(database) : value;
   },
 });
+
+export const withTenantDb = createWithTenantDb(db);
+export { createWithTenantDb };
+export type { TenantTransaction } from "./tenant";
