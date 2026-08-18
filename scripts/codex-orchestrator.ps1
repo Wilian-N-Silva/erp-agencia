@@ -11,7 +11,8 @@ param(
     [switch]$NoSyncDevelopment
 )
 
-. "$PSScriptRoot/codex-common.ps1"
+$commonScript = Join-Path $PSScriptRoot "codex-common.ps1"
+. $commonScript
 $repoRoot = Get-ErpRepoRoot
 Set-Location $repoRoot
 Ensure-LocalExclude -RepoRoot $repoRoot
@@ -142,6 +143,7 @@ while ($true) {
     Write-Host ""; Write-Host "========== $taskId - $($next.title) ==========" -ForegroundColor Cyan
 
     $workerScript = Join-Path $PSScriptRoot "codex-worker.ps1"
+    if (-not (Test-Path $workerScript)) { throw "Worker nao encontrado: $workerScript" }
     & $workerScript -Task $taskId -IntegrationBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model -MaxFixAttempts $MaxFixAttempts -SkipAutomatedReview:$SkipAutomatedReview
     $workerExit = $LASTEXITCODE
     if ($workerExit -ne 0) {
@@ -166,7 +168,9 @@ while ($true) {
     finally { Pop-Location }
 
     $integrationGateLog = Join-Path $repoRoot ".codex-orchestrator/integration-$($taskId.ToLowerInvariant())-gates.log"
-    $integrationOk = Invoke-TaskGates -WorktreePath $repoRoot -Gates @("typecheck","lint","test") -LogPath $integrationGateLog
+    $integrationGates = @("typecheck","lint","test") + @($next.gates)
+    $integrationGates = @($integrationGates | Select-Object -Unique)
+    $integrationOk = Invoke-TaskGates -WorktreePath $repoRoot -Gates $integrationGates -LogPath $integrationGateLog
     if (-not $integrationOk) {
         Write-OrchestratorRunRecord -RepoRoot $repoRoot -TaskId $taskId -Data @{ status="integration_gates_failed"; branch=$taskBranch; integrationBranch=$IntegrationBranch; gateLog=$integrationGateLog } | Out-Null
         Write-Error "Gates falharam depois do merge em $IntegrationBranch. Pare e revise o merge; development continua intacta."

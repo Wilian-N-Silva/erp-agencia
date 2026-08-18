@@ -22,6 +22,28 @@ function Assert-GitClean {
     finally { Pop-Location }
 }
 
+function Test-WorktreeHasChanges {
+    param([string]$Path)
+    Push-Location $Path
+    try {
+        $status = (& git status --porcelain)
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao ler git status em '$Path'." }
+        return [bool]$status
+    }
+    finally { Pop-Location }
+}
+
+function Get-CommitAheadCount {
+    param([string]$Path, [string]$BaseRef)
+    Push-Location $Path
+    try {
+        $raw = (& git rev-list --count "$BaseRef..HEAD")
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao comparar HEAD com '$BaseRef'." }
+        return [int]$raw.Trim()
+    }
+    finally { Pop-Location }
+}
+
 function Invoke-GitChecked {
     param(
         [string]$Path,
@@ -148,6 +170,62 @@ function Get-NpmCommand {
     throw "npm nao encontrado no PATH."
 }
 
+function Initialize-CodexTestDatabase {
+    param(
+        [string]$WorktreePath,
+        [string]$ContainerName = $(if ($env:CODEX_TEST_DB_CONTAINER) { $env:CODEX_TEST_DB_CONTAINER } else { "erp-agencia-postgres" }),
+        [string]$DatabaseName = $(if ($env:CODEX_TEST_DB_NAME) { $env:CODEX_TEST_DB_NAME } else { "erp_agencia_test" }),
+        [string]$DatabaseUser = $(if ($env:CODEX_TEST_DB_USER) { $env:CODEX_TEST_DB_USER } else { "erp" }),
+        [string]$DatabasePassword = $(if ($env:CODEX_TEST_DB_PASSWORD) { $env:CODEX_TEST_DB_PASSWORD } else { "erp" }),
+        [int]$HostPort = $(if ($env:CODEX_TEST_DB_PORT) { [int]$env:CODEX_TEST_DB_PORT } else { 55432 })
+    )
+
+    if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_NAME invalido." }
+    if ($DatabaseUser -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_USER invalido." }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker nao encontrado no PATH." }
+
+    $running = (& docker inspect -f "{{.State.Running}}" $ContainerName 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $running -ne "true") {
+        Write-Host "Test DB: iniciando servico postgres via docker compose..." -ForegroundColor DarkCyan
+        Push-Location $WorktreePath
+        try {
+            & docker compose up -d postgres
+            if ($LASTEXITCODE -ne 0) { throw "docker compose up -d postgres falhou." }
+        }
+        finally { Pop-Location }
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        & docker exec $ContainerName pg_isready -U $DatabaseUser -d postgres *> $null
+        if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) { throw "Postgres do container '$ContainerName' nao ficou pronto." }
+
+    Write-Host "Test DB: resetando $DatabaseName..." -ForegroundColor DarkCyan
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DatabaseName WITH (FORCE);"
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao remover DB de teste '$DatabaseName'." }
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DatabaseName;"
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao criar DB de teste '$DatabaseName'." }
+
+    $url = "postgresql://${DatabaseUser}:${DatabasePassword}@127.0.0.1:${HostPort}/${DatabaseName}"
+    $env:DATABASE_TEST_URL = $url
+    $env:DATABASE_URL = $url
+    $env:DATABASE_DIRECT_URL = $url
+
+    Write-Host "Test DB: aplicando migrations..." -ForegroundColor DarkCyan
+    $npm = Get-NpmCommand
+    Push-Location $WorktreePath
+    try {
+        & $npm run db:migrate
+        if ($LASTEXITCODE -ne 0) { throw "db:migrate falhou no banco de teste." }
+    }
+    finally { Pop-Location }
+
+    return $url
+}
+
 function Invoke-TaskGates {
     param(
         [string]$WorktreePath,
@@ -157,6 +235,10 @@ function Invoke-TaskGates {
     $npm = Get-NpmCommand
     $lines = New-Object System.Collections.Generic.List[string]
     $ok = $true
+    $oldDatabaseUrl = $env:DATABASE_URL
+    $oldDatabaseDirectUrl = $env:DATABASE_DIRECT_URL
+    $oldDatabaseTestUrl = $env:DATABASE_TEST_URL
+
     Push-Location $WorktreePath
     try {
         $lines.Add("# git diff --check")
@@ -166,13 +248,26 @@ function Invoke-TaskGates {
 
         foreach ($gate in $Gates) {
             if (-not $ok) { break }
+            if ($gate -eq "test:db") {
+                Pop-Location
+                try {
+                    $dbUrl = Initialize-CodexTestDatabase -WorktreePath $WorktreePath
+                    $lines.Add("# disposable database prepared: $dbUrl")
+                }
+                finally { Push-Location $WorktreePath }
+            }
             $lines.Add("# npm run $gate")
             $out = (& $npm run $gate 2>&1 | Out-String)
             $lines.Add($out)
             if ($LASTEXITCODE -ne 0) { $ok = $false }
         }
     }
-    finally { Pop-Location }
+    finally {
+        Pop-Location
+        $env:DATABASE_URL = $oldDatabaseUrl
+        $env:DATABASE_DIRECT_URL = $oldDatabaseDirectUrl
+        $env:DATABASE_TEST_URL = $oldDatabaseTestUrl
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
     Set-Content -Encoding UTF8 -Path $LogPath -Value ($lines -join "`n")
     return $ok

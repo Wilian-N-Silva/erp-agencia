@@ -2,7 +2,7 @@
   "version": 1,
   "baseBranch": "development",
   "integrationBranch": "feature/codex-integration",
-  "notes": "Catálogo operacional do orquestrador. PRDs continuam sendo a fonte de requisitos; este arquivo só descreve ordem, dependências e automação.",
+  "notes": "Catálogo operacional do orquestrador. PRDs continuam sendo a fonte de requisitos; este arquivo só descreve ordem, dependências e automação. Gates test:db usam automaticamente um Postgres descartavel no Docker local.",
   "tasks": [
     {
       "id": "DOCS-001",
@@ -56,7 +56,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -74,7 +75,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -92,7 +94,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -147,7 +150,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -314,7 +318,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -332,7 +337,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -350,7 +356,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -368,7 +375,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -387,7 +395,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -424,7 +433,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -444,7 +454,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -462,7 +473,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -481,7 +493,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -500,7 +513,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -556,7 +570,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -574,7 +589,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -593,7 +609,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -612,7 +629,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -631,7 +649,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -651,7 +670,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -670,7 +690,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -688,7 +709,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -706,7 +728,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -727,7 +750,8 @@
         "typecheck",
         "lint",
         "test",
-        "test:e2e"
+        "test:e2e",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -745,7 +769,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -764,7 +789,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -782,7 +808,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -802,7 +829,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -841,7 +869,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -860,7 +889,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -878,7 +908,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -896,7 +927,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -916,7 +948,8 @@
         "typecheck",
         "lint",
         "test",
-        "test:e2e"
+        "test:e2e",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -934,7 +967,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -953,7 +987,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -971,7 +1006,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -991,7 +1027,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -1010,7 +1047,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -1030,7 +1068,8 @@
         "typecheck",
         "lint",
         "test",
-        "test:e2e"
+        "test:e2e",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -1050,7 +1089,8 @@
         "typecheck",
         "lint",
         "test",
-        "test:e2e"
+        "test:e2e",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],
@@ -1181,7 +1221,8 @@
       "gates": [
         "typecheck",
         "lint",
-        "test"
+        "test",
+        "test:db"
       ],
       "seeded": false,
       "candidateBranches": [],

@@ -7,7 +7,8 @@ param(
     [switch]$SkipAutomatedReview
 )
 
-. "$PSScriptRoot/codex-common.ps1"
+$commonScript = Join-Path $PSScriptRoot "codex-common.ps1"
+. $commonScript
 $repoRoot = Get-ErpRepoRoot
 Ensure-LocalExclude -RepoRoot $repoRoot
 $catalog = Get-TaskCatalog -RepoRoot $repoRoot -CatalogPath $CatalogPath
@@ -27,11 +28,13 @@ $branchExists = Test-GitRef -RepoRoot $repoRoot -Ref "refs/heads/$branch"
 if (-not $branchExists) {
     Invoke-GitChecked -Path $repoRoot branch $branch $IntegrationBranch
 }
-
 if (-not (Test-Path $worktree)) {
     Invoke-GitChecked -Path $repoRoot worktree add $worktree $branch
 }
-Assert-GitClean -Path $worktree
+
+$existingDirty = Test-WorktreeHasChanges -Path $worktree
+$existingAhead = Get-CommitAheadCount -Path $worktree -BaseRef $IntegrationBranch
+$resumeExisting = $existingDirty -or ($existingAhead -gt 0)
 
 $runDir = Join-Path $repoRoot ".codex-orchestrator/workers/$($Task.ToLowerInvariant())"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
@@ -39,7 +42,25 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $codexOutput = Join-Path $runDir "$stamp-implement.md"
 $gateLog = Join-Path $runDir "$stamp-gates.log"
 
-$prompt = @"
+function Test-ProducedWork {
+    return (Test-WorktreeHasChanges -Path $worktree) -or ((Get-CommitAheadCount -Path $worktree -BaseRef $IntegrationBranch) -gt 0)
+}
+
+function Invoke-CodexTolerant {
+    param([string]$Prompt, [string]$OutputFile, [string]$Phase)
+    $exitCode = Invoke-CodexExec -WorkingDirectory $worktree -Prompt $Prompt -OutputFile $OutputFile -Sandbox "workspace-write" -Model $Model
+    if ($exitCode -eq 0) { return $true }
+    if (Test-ProducedWork) {
+        Write-Warning "[$Task] Codex retornou exit code $exitCode em '$Phase', mas produziu alteracoes. Continuando para os gates."
+        Write-OrchestratorRunRecord -RepoRoot $repoRoot -TaskId $Task -Data @{ status="codex_nonzero_with_changes"; phase=$Phase; branch=$branch; worktree=$worktree; output=$OutputFile; exitCode=$exitCode } | Out-Null
+        return $true
+    }
+    Write-OrchestratorRunRecord -RepoRoot $repoRoot -TaskId $Task -Data @{ status="codex_failed"; phase=$Phase; branch=$branch; worktree=$worktree; output=$OutputFile; exitCode=$exitCode } | Out-Null
+    return $false
+}
+
+if (-not $resumeExisting) {
+    $prompt = @"
 Execute exatamente a task $Task seguindo AGENTS.md.
 O wrapper ja criou/preparou a branch $branch a partir de $IntegrationBranch.
 O wrapper e o dono do Git: NAO faca checkout, branch, commit, merge, rebase, reset, push ou qualquer escrita em .git.
@@ -61,13 +82,14 @@ Nao antecipe tasks futuras.
 Se encontrar bloqueio real de dependencia/requisito, pare e descreva-o; nao invente comportamento.
 Voce pode executar testes locais nao destrutivos, mas o wrapper executara os gates finais.
 "@
-
-Write-Host "[$Task] Codex implementando em $branch..." -ForegroundColor Cyan
-$exit = Invoke-CodexExec -WorkingDirectory $worktree -Prompt $prompt -OutputFile $codexOutput -Sandbox "workspace-write" -Model $Model
-if ($exit -ne 0) {
-    Write-OrchestratorRunRecord -RepoRoot $repoRoot -TaskId $Task -Data @{ status="codex_failed"; branch=$branch; worktree=$worktree; output=$codexOutput; exitCode=$exit } | Out-Null
-    Write-Error "Codex falhou. Worktree preservada: $worktree"
-    exit $exit
+    Write-Host "[$Task] Codex implementando em $branch..." -ForegroundColor Cyan
+    if (-not (Invoke-CodexTolerant -Prompt $prompt -OutputFile $codexOutput -Phase "implement")) {
+        Write-Error "Codex falhou sem produzir trabalho. Worktree preservada: $worktree"
+        exit 2
+    }
+}
+else {
+    Write-Host "[$Task] Retomando worktree existente sem chamar o Codex novamente: $worktree" -ForegroundColor Yellow
 }
 
 function Run-GatesWithRepair {
@@ -93,8 +115,7 @@ $failure
 
 Apos corrigir, pare. O wrapper executara os gates novamente.
 "@
-        $repairExit = Invoke-CodexExec -WorkingDirectory $worktree -Prompt $repairPrompt -OutputFile $repairOutput -Sandbox "workspace-write" -Model $Model
-        if ($repairExit -ne 0) { return $false }
+        if (-not (Invoke-CodexTolerant -Prompt $repairPrompt -OutputFile $repairOutput -Phase "gate-repair")) { return $false }
     }
     return $false
 }
@@ -109,12 +130,9 @@ Push-Location $worktree
 try {
     $status = (& git status --porcelain)
     if (-not $status) {
-        # Pode ser uma branch retomada ja commitada; exige ao menos um commit a frente da integracao.
         $aheadRaw = (& git rev-list --count "$IntegrationBranch..HEAD").Trim()
         $ahead = [int]$aheadRaw
-        if ($ahead -le 0) {
-            throw "Codex nao produziu mudancas para $Task."
-        }
+        if ($ahead -le 0) { throw "Codex nao produziu mudancas para $Task." }
     }
     else {
         & git add -A
@@ -126,8 +144,9 @@ try {
 finally { Pop-Location }
 
 if (-not $SkipAutomatedReview) {
+    $reviewScript = Join-Path $PSScriptRoot "codex-review.ps1"
     for ($reviewAttempt = 0; $reviewAttempt -le $MaxFixAttempts; $reviewAttempt++) {
-        & "$PSScriptRoot/codex-review.ps1" -Task $Task -WorktreePath $worktree -BaseBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model
+        & $reviewScript -Task $Task -WorktreePath $worktree -BaseBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model
         $reviewExit = $LASTEXITCODE
         if ($reviewExit -eq 0) { break }
         if ($reviewExit -ne 2 -or $reviewAttempt -ge $MaxFixAttempts) {
@@ -152,8 +171,7 @@ $reviewText
 
 Depois de corrigir, pare; o wrapper executara gates, commit e nova revisao.
 "@
-        $fixExit = Invoke-CodexExec -WorkingDirectory $worktree -Prompt $fixPrompt -OutputFile $fixOutput -Sandbox "workspace-write" -Model $Model
-        if ($fixExit -ne 0) { exit $fixExit }
+        if (-not (Invoke-CodexTolerant -Prompt $fixPrompt -OutputFile $fixOutput -Phase "review-fix")) { exit 22 }
         if (-not (Run-GatesWithRepair -MaxAttempts $MaxFixAttempts)) { exit 21 }
         Push-Location $worktree
         try {
