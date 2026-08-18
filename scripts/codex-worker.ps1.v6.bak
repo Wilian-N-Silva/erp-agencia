@@ -53,8 +53,6 @@ if (-not $resumeExisting) {
     }
 }
 
-Ensure-NodeDependencies -WorktreePath $worktree
-
 $runDir = Join-Path $repoRoot ".codex-orchestrator/workers/$($Task.ToLowerInvariant())"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -116,7 +114,6 @@ function Run-GatesWithRepair {
     param([int]$MaxAttempts)
     for ($attempt = 0; $attempt -le $MaxAttempts; $attempt++) {
         Write-Host "[$Task] Gates (tentativa $($attempt + 1))..."
-        Ensure-NodeDependencies -WorktreePath $worktree
         $ok = Invoke-TaskGates -WorktreePath $worktree -Gates @($taskDef.gates) -LogPath $gateLog -BaseRef $IntegrationBranch
         if ($ok) { return $true }
         if ($attempt -ge $MaxAttempts) { return $false }

@@ -308,35 +308,6 @@ function Get-NpmCommand {
     throw "npm nao encontrado no PATH."
 }
 
-function Ensure-NodeDependencies {
-    param([string]$WorktreePath)
-
-    $tscCmd = Join-Path $WorktreePath "node_modules\.bin\tsc.cmd"
-    $tscUnix = Join-Path $WorktreePath "node_modules\.bin\tsc"
-
-    if ((Test-Path $tscCmd) -or (Test-Path $tscUnix)) {
-        return
-    }
-
-    $npm = Get-NpmCommand
-    $npmPath = Get-NativeCommandPath -CommandName $npm
-
-    Write-Host "Dependencias ausentes na worktree. Executando npm ci..." -ForegroundColor DarkCyan
-
-    $result = Invoke-NativeConsoleProcess `
-        -FileName $npmPath `
-        -Arguments @("ci", "--prefer-offline", "--no-audit", "--no-fund") `
-        -WorkingDirectory $WorktreePath
-
-    if ($result -ne 0) {
-        throw "npm ci falhou na worktree '$WorktreePath' com exit code $result."
-    }
-
-    if (-not ((Test-Path $tscCmd) -or (Test-Path $tscUnix))) {
-        throw "npm ci terminou sem disponibilizar node_modules/.bin/tsc na worktree."
-    }
-}
-
 function Initialize-CodexTestDatabase {
     param(
         [string]$WorktreePath,
@@ -427,18 +398,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE $MigratorRole IN SCHEMA public
 
     Write-Host "Test DB: aplicando migrations..." -ForegroundColor DarkCyan
     $npm = Get-NpmCommand
-    $npmPath = Get-NativeCommandPath -CommandName $npm
-    $migrateResult = Invoke-NativeCaptureProcess `
-        -FileName $npmPath `
-        -Arguments @("run", "db:migrate") `
-        -WorkingDirectory $WorktreePath
-
-    if ($migrateResult.StdOut) { Write-Host $migrateResult.StdOut }
-    if ($migrateResult.StdErr) { Write-Host $migrateResult.StdErr }
-
-    if ($migrateResult.ExitCode -ne 0) {
-        throw "db:migrate falhou no banco de teste com exit code $($migrateResult.ExitCode)."
+    Push-Location $WorktreePath
+    try {
+        & $npm run db:migrate
+        if ($LASTEXITCODE -ne 0) { throw "db:migrate falhou no banco de teste." }
     }
+    finally { Pop-Location }
 
     $runtimePrivilegesSql = @"
 GRANT CONNECT ON DATABASE $DatabaseName TO $AppRole;
@@ -460,7 +425,6 @@ function Invoke-TaskGates {
         [string]$BaseRef = ""
     )
     $npm = Get-NpmCommand
-    $npmPath = Get-NativeCommandPath -CommandName $npm
     $lines = New-Object System.Collections.Generic.List[string]
     $ok = $true
     $oldDatabaseUrl = $env:DATABASE_URL
@@ -493,14 +457,9 @@ function Invoke-TaskGates {
                 finally { Push-Location $WorktreePath }
             }
             $lines.Add("# npm run $gate")
-            $result = Invoke-NativeCaptureProcess `
-                -FileName $npmPath `
-                -Arguments @("run", $gate) `
-                -WorkingDirectory $WorktreePath
-
-            if ($result.StdOut) { $lines.Add($result.StdOut) }
-            if ($result.StdErr) { $lines.Add($result.StdErr) }
-            if ($result.ExitCode -ne 0) { $ok = $false }
+            $out = (& $npm run $gate 2>&1 | Out-String)
+            $lines.Add($out)
+            if ($LASTEXITCODE -ne 0) { $ok = $false }
         }
     }
     finally {
