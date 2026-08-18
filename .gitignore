@@ -23,4 +23,5 @@ codex.md
 
 # Local agent state
 .claude/
+.codex-results/
 NEXT_AGENT_HANDOFF.md
