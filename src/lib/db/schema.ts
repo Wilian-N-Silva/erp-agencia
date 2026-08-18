@@ -261,6 +261,24 @@ export const auditLogs = pgTable(
   }),
 );
 
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    keyHash: text("key_hash").notNull(),
+    action: text("action").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(1),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: "rate_limit_buckets_pk",
+      columns: [table.keyHash, table.action, table.windowStart],
+    }),
+    expiresAtIdx: index("rate_limit_buckets_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
 export const areas = pgTable(
   "areas",
   {

@@ -97,11 +97,15 @@ You need credentials for all of these before starting:
 1. In Google Cloud, create a new OAuth 2.0 client (Web). Authorized redirect URI: `https://staging.<domain>/api/auth/callback/google`.
 2. Capture `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
 3. Pick a 32-byte random secret for `BETTER_AUTH_SECRET` (e.g. `openssl rand -hex 32`). Never reuse the prod secret.
-4. Set:
+4. Pick a separate 32-byte random secret for `RATE_LIMIT_HASH_SECRET`. It is used
+   only to HMAC rate-limit identities before persistence and must differ between
+   staging and production.
+5. Set:
    - `BETTER_AUTH_URL=https://staging.<domain>`
    - `BETTER_AUTH_TRUSTED_ORIGINS=https://staging.<domain>`
    - `NEXT_PUBLIC_BETTER_AUTH_URL=https://staging.<domain>`
    - `APP_URL=https://staging.<domain>`
+   - `RATE_LIMIT_HASH_SECRET=<independent random secret>`
    - `ALLOWED_EMAIL_DOMAIN=<your domain>` (or leave empty to allow any verified Google account).
 
 ### 4. Hosting (Vercel example)

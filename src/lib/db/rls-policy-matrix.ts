@@ -35,6 +35,8 @@ export const rlsExemptTables = {
   account: "Better Auth bootstrap table",
   organizations: "organization bootstrap before tenant context exists",
   permissions: "global RBAC catalog",
+  rate_limit_buckets:
+    "internal hashed counters required before tenant context and shared across instances",
   role_permissions: "global RBAC catalog relationship",
   roles: "global RBAC catalog",
   session: "Better Auth bootstrap table",
