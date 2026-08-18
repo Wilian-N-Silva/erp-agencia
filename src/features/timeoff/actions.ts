@@ -8,7 +8,11 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { employees, timeOffRequests, vacationBalances } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
@@ -48,7 +52,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createTimeOffRequestAction(formData: FormData) {
+async function createTimeOffRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
 
   if (!canCreateOwnTimeOff(context) || !context.employeeId) {
@@ -83,7 +87,7 @@ export async function createTimeOffRequestAction(formData: FormData) {
   revalidateTimeOffPaths();
 }
 
-export async function approveTimeOffRequestAction(formData: FormData) {
+async function approveTimeOffRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
@@ -101,7 +105,7 @@ export async function approveTimeOffRequestAction(formData: FormData) {
   await updateTimeOffStatus(context, before, "approved", "approve");
 }
 
-export async function rejectTimeOffRequestAction(formData: FormData) {
+async function rejectTimeOffRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
@@ -225,7 +229,7 @@ const updateVacationBalanceSchema = z.object({
     .transform((value) => value || null),
 });
 
-export async function createVacationBalanceAction(formData: FormData) {
+async function createVacationBalanceAction(formData: FormData) {
   const context = await requireCurrentContext();
 
   assertCan("timeoff.write", context);
@@ -288,7 +292,7 @@ export async function createVacationBalanceAction(formData: FormData) {
   revalidateVacationBalancePaths(input.employeeId);
 }
 
-export async function updateVacationBalanceAction(formData: FormData) {
+async function updateVacationBalanceAction(formData: FormData) {
   const context = await requireCurrentContext();
 
   assertCan("timeoff.write", context);
@@ -336,7 +340,7 @@ export async function updateVacationBalanceAction(formData: FormData) {
   revalidateVacationBalancePaths(before.employeeId);
 }
 
-export async function closeVacationBalanceAction(formData: FormData) {
+async function closeVacationBalanceAction(formData: FormData) {
   const context = await requireCurrentContext();
 
   assertCan("timeoff.write", context);
@@ -412,3 +416,31 @@ function revalidateVacationBalancePaths(employeeId: string) {
   revalidatePath("/portal");
   revalidatePath("/app");
 }
+
+export {
+  tenantCreateTimeOffRequestAction as createTimeOffRequestAction,
+  tenantApproveTimeOffRequestAction as approveTimeOffRequestAction,
+  tenantRejectTimeOffRequestAction as rejectTimeOffRequestAction,
+  tenantCreateVacationBalanceAction as createVacationBalanceAction,
+  tenantUpdateVacationBalanceAction as updateVacationBalanceAction,
+  tenantCloseVacationBalanceAction as closeVacationBalanceAction,
+};
+
+const tenantCreateTimeOffRequestAction = bindCurrentTenantContext(
+  createTimeOffRequestAction,
+);
+const tenantApproveTimeOffRequestAction = bindCurrentTenantContext(
+  approveTimeOffRequestAction,
+);
+const tenantRejectTimeOffRequestAction = bindCurrentTenantContext(
+  rejectTimeOffRequestAction,
+);
+const tenantCreateVacationBalanceAction = bindCurrentTenantContext(
+  createVacationBalanceAction,
+);
+const tenantUpdateVacationBalanceAction = bindCurrentTenantContext(
+  updateVacationBalanceAction,
+);
+const tenantCloseVacationBalanceAction = bindCurrentTenantContext(
+  closeVacationBalanceAction,
+);

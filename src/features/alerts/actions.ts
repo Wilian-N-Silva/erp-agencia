@@ -8,7 +8,11 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { alerts } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { generateAlertCandidatesForOrganization } from "./dal";
@@ -20,9 +24,9 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function generateAlertsAction() {
+async function generateAlertsAction() {
   const context = await requireAlertsWriterContext();
-  const candidates = await generateAlertCandidatesForOrganization(context.organizationId);
+  const candidates = await generateAlertCandidatesForOrganization(context);
   const existingRows = await db
     .select({
       entityId: alerts.entityId,
@@ -67,11 +71,11 @@ export async function generateAlertsAction() {
   revalidateAlertsPaths();
 }
 
-export async function resolveAlertAction(formData: FormData) {
+async function resolveAlertAction(formData: FormData) {
   await updateAlertStatus(formData, "resolved");
 }
 
-export async function dismissAlertAction(formData: FormData) {
+async function dismissAlertAction(formData: FormData) {
   await updateAlertStatus(formData, "dismissed");
 }
 
@@ -141,3 +145,13 @@ function revalidateAlertsPaths() {
   revalidatePath("/app");
   revalidatePath("/app/alertas");
 }
+
+export {
+  tenantGenerateAlertsAction as generateAlertsAction,
+  tenantResolveAlertAction as resolveAlertAction,
+  tenantDismissAlertAction as dismissAlertAction,
+};
+
+const tenantGenerateAlertsAction = bindCurrentTenantContext(generateAlertsAction);
+const tenantResolveAlertAction = bindCurrentTenantContext(resolveAlertAction);
+const tenantDismissAlertAction = bindCurrentTenantContext(dismissAlertAction);

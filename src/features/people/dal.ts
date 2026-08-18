@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { canReadAuditLogs } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   areas,
   auditLogs,
@@ -92,7 +92,7 @@ export type EmployeeAuditLogItem = {
   createdAt: Date;
 };
 
-export async function listEmployees(
+async function listEmployees(
   context: AccessContext,
   filters: PeopleFilters = {},
 ): Promise<EmployeeListItem[]> {
@@ -161,7 +161,7 @@ export async function listEmployees(
   );
 }
 
-export async function getEmployeeDetail(
+async function getEmployeeDetail(
   context: AccessContext,
   id: string,
 ): Promise<EmployeeDetail | null> {
@@ -249,7 +249,7 @@ export async function getEmployeeDetail(
   };
 }
 
-export async function listCompensationHistory(
+async function listCompensationHistory(
   context: AccessContext,
   employeeId: string,
 ): Promise<CompensationHistoryItem[]> {
@@ -297,7 +297,7 @@ export async function listCompensationHistory(
   }));
 }
 
-export async function listEmployeeBenefits(
+async function listEmployeeBenefits(
   context: AccessContext,
   employeeId: string,
 ): Promise<EmployeeBenefitItem[]> {
@@ -346,7 +346,7 @@ export async function listEmployeeBenefits(
   }));
 }
 
-export async function listPeopleOptions(context: AccessContext): Promise<{
+async function listPeopleOptions(context: AccessContext): Promise<{
   areas: PeopleOption[];
   managers: PeopleOption[];
   positions: PeopleOption[];
@@ -378,7 +378,7 @@ export async function listPeopleOptions(context: AccessContext): Promise<{
   };
 }
 
-export async function listPeopleFilterOptions(context: AccessContext): Promise<{
+async function listPeopleFilterOptions(context: AccessContext): Promise<{
   areas: PeopleOption[];
   positions: PeopleOption[];
 }> {
@@ -411,7 +411,7 @@ export type UpcomingBirthdayItem = {
   daysUntil: number;
 };
 
-export async function listUpcomingBirthdays(
+async function listUpcomingBirthdays(
   context: AccessContext,
   options: { limit?: number; asOf?: string | Date; windowDays?: number } = {},
 ): Promise<UpcomingBirthdayItem[]> {
@@ -464,7 +464,7 @@ export async function listUpcomingBirthdays(
   return matches;
 }
 
-export async function listEmployeeAuditLogs(
+async function listEmployeeAuditLogs(
   context: AccessContext,
   employeeId: string,
   options: { limit?: number } = {},
@@ -504,3 +504,23 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListEmployees as listEmployees,
+  tenantGetEmployeeDetail as getEmployeeDetail,
+  tenantListCompensationHistory as listCompensationHistory,
+  tenantListEmployeeBenefits as listEmployeeBenefits,
+  tenantListPeopleOptions as listPeopleOptions,
+  tenantListPeopleFilterOptions as listPeopleFilterOptions,
+  tenantListUpcomingBirthdays as listUpcomingBirthdays,
+  tenantListEmployeeAuditLogs as listEmployeeAuditLogs,
+};
+
+const tenantListEmployees = bindTenantContext(listEmployees);
+const tenantGetEmployeeDetail = bindTenantContext(getEmployeeDetail);
+const tenantListCompensationHistory = bindTenantContext(listCompensationHistory);
+const tenantListEmployeeBenefits = bindTenantContext(listEmployeeBenefits);
+const tenantListPeopleOptions = bindTenantContext(listPeopleOptions);
+const tenantListPeopleFilterOptions = bindTenantContext(listPeopleFilterOptions);
+const tenantListUpcomingBirthdays = bindTenantContext(listUpcomingBirthdays);
+const tenantListEmployeeAuditLogs = bindTenantContext(listEmployeeAuditLogs);

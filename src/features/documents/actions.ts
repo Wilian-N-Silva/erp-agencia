@@ -8,7 +8,7 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -78,7 +78,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function registerDocumentAction(formData: FormData) {
+async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
   const metadata = documentMetadataSchema.parse(formDataToObject(formData));
   const uploadedFile = getUploadedFile(formData);
@@ -203,7 +203,7 @@ function getUploadedFile(formData: FormData) {
   return typeof File !== "undefined" && file instanceof File && file.size > 0 ? file : null;
 }
 
-export async function deleteDocumentAction(formData: FormData) {
+async function deleteDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getDocumentForWrite(input.id, organizationId);
@@ -307,3 +307,11 @@ function optionalIdSchema() {
       message: "Invalid id.",
     });
 }
+
+export {
+  tenantRegisterDocumentAction as registerDocumentAction,
+  tenantDeleteDocumentAction as deleteDocumentAction,
+};
+
+const tenantRegisterDocumentAction = bindCurrentTenantContext(registerDocumentAction);
+const tenantDeleteDocumentAction = bindCurrentTenantContext(deleteDocumentAction);

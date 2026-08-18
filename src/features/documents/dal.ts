@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
@@ -39,7 +39,7 @@ export type DocumentOwnerOption = {
   name: string;
 };
 
-export async function listDocumentEmployeeOptions(
+async function listDocumentEmployeeOptions(
   context: AccessContext,
 ): Promise<DocumentOwnerOption[]> {
   assertCan("documents.write", context);
@@ -55,7 +55,7 @@ export async function listDocumentEmployeeOptions(
     .orderBy(asc(employees.fullName));
 }
 
-export async function listDocuments(
+async function listDocuments(
   context: AccessContext,
   filters: { ownerEmployeeId?: string; ownOnly?: boolean } = {},
 ): Promise<DocumentListItem[]> {
@@ -110,7 +110,7 @@ export async function listDocuments(
     }));
 }
 
-export async function getDocumentForAccess(context: AccessContext, id: string) {
+async function getDocumentForAccess(context: AccessContext, id: string) {
   const organizationId = requireOrganizationId(context);
   const [row] = await db
     .select({
@@ -154,3 +154,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListDocumentEmployeeOptions as listDocumentEmployeeOptions,
+  tenantListDocuments as listDocuments,
+  tenantGetDocumentForAccess as getDocumentForAccess,
+};
+
+const tenantListDocumentEmployeeOptions = bindTenantContext(listDocumentEmployeeOptions);
+const tenantListDocuments = bindTenantContext(listDocuments);
+const tenantGetDocumentForAccess = bindTenantContext(getDocumentForAccess);

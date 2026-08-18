@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   clients,
   financialEntries,
@@ -74,7 +74,7 @@ export type FinanceDashboard = {
   provisions: ProvisionListItem[];
 };
 
-export async function getFinanceDashboard(
+async function getFinanceDashboard(
   context: AccessContext,
   options: { asOf?: Date; filters?: FinanceFilters } = {},
 ): Promise<FinanceDashboard> {
@@ -181,3 +181,9 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantGetFinanceDashboard as getFinanceDashboard,
+};
+
+const tenantGetFinanceDashboard = bindTenantContext(getFinanceDashboard);

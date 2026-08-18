@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { canReadAuditLogs } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   auditLogs,
   clientBillingProfiles,
@@ -116,7 +116,7 @@ export type ClientAuditLogItem = {
   createdAt: Date;
 };
 
-export async function listClients(
+async function listClients(
   context: AccessContext,
   filters: ClientFilters = {},
 ): Promise<ClientListItem[]> {
@@ -162,7 +162,7 @@ export async function listClients(
   );
 }
 
-export async function getClientDetail(
+async function getClientDetail(
   context: AccessContext,
   id: string,
 ): Promise<ClientDetail | null> {
@@ -218,7 +218,7 @@ export async function getClientDetail(
   };
 }
 
-export async function getClientBillingProfile(
+async function getClientBillingProfile(
   context: AccessContext,
   clientId: string,
 ): Promise<ClientBillingProfileDetail | null> {
@@ -276,7 +276,7 @@ export async function getClientBillingProfile(
   };
 }
 
-export async function listClientPayments(
+async function listClientPayments(
   context: AccessContext,
   clientId: string,
   options: { asOf?: Date | string } = {},
@@ -327,7 +327,7 @@ export async function listClientPayments(
   }));
 }
 
-export async function getClientBillingSummary(
+async function getClientBillingSummary(
   context: AccessContext,
   clientId: string,
   options: { asOf?: Date | string } = {},
@@ -412,7 +412,7 @@ export async function getClientBillingSummary(
   };
 }
 
-export async function listClientPaymentReminders(
+async function listClientPaymentReminders(
   context: AccessContext,
   clientId: string,
   options: { asOf?: Date | string; limit?: number } = {},
@@ -500,7 +500,7 @@ export async function listClientPaymentReminders(
     .slice(0, options.limit ?? 20);
 }
 
-export async function listClientPaymentAlerts(
+async function listClientPaymentAlerts(
   context: AccessContext,
   options: { asOf?: Date | string; limit?: number } = {},
 ): Promise<ClientPaymentReminderItem[]> {
@@ -582,7 +582,7 @@ export async function listClientPaymentAlerts(
     .slice(0, options.limit ?? 8);
 }
 
-export async function listClientOwnerOptions(
+async function listClientOwnerOptions(
   context: AccessContext,
 ): Promise<ClientOwnerOption[]> {
   assertCanAny(["clients.write", "clients.configure"], context);
@@ -600,7 +600,7 @@ export async function listClientOwnerOptions(
   return rows;
 }
 
-export async function listClientAuditLogs(
+async function listClientAuditLogs(
   context: AccessContext,
   clientId: string,
   options: { limit?: number } = {},
@@ -677,3 +677,25 @@ function compareReminders(
     second.dueDate ?? "9999-12-31",
   );
 }
+
+export {
+  tenantListClients as listClients,
+  tenantGetClientDetail as getClientDetail,
+  tenantGetClientBillingProfile as getClientBillingProfile,
+  tenantListClientPayments as listClientPayments,
+  tenantGetClientBillingSummary as getClientBillingSummary,
+  tenantListClientPaymentReminders as listClientPaymentReminders,
+  tenantListClientPaymentAlerts as listClientPaymentAlerts,
+  tenantListClientOwnerOptions as listClientOwnerOptions,
+  tenantListClientAuditLogs as listClientAuditLogs,
+};
+
+const tenantListClients = bindTenantContext(listClients);
+const tenantGetClientDetail = bindTenantContext(getClientDetail);
+const tenantGetClientBillingProfile = bindTenantContext(getClientBillingProfile);
+const tenantListClientPayments = bindTenantContext(listClientPayments);
+const tenantGetClientBillingSummary = bindTenantContext(getClientBillingSummary);
+const tenantListClientPaymentReminders = bindTenantContext(listClientPaymentReminders);
+const tenantListClientPaymentAlerts = bindTenantContext(listClientPaymentAlerts);
+const tenantListClientOwnerOptions = bindTenantContext(listClientOwnerOptions);
+const tenantListClientAuditLogs = bindTenantContext(listClientAuditLogs);

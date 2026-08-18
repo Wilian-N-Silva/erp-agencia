@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   appSettings,
   areas,
@@ -71,7 +71,7 @@ export type SettingsDashboard = {
   users: SettingsUserListItem[];
 };
 
-export async function getSettingsDashboard(
+async function getSettingsDashboard(
   context: AccessContext,
 ): Promise<SettingsDashboard> {
   assertCanAny(["settings.read", "settings.manage"], context);
@@ -234,3 +234,9 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantGetSettingsDashboard as getSettingsDashboard,
+};
+
+const tenantGetSettingsDashboard = bindTenantContext(getSettingsDashboard);

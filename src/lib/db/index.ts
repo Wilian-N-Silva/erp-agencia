@@ -2,9 +2,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 
 import { getRequiredEnv } from "@/lib/env";
+import type { AccessContext } from "@/lib/dal";
 
 import * as schema from "./schema";
-import { createWithTenantDb } from "./tenant";
+import { createWithTenantDb, getActiveTenantTransaction } from "./tenant";
 
 export function createDatabase(
   databaseUrl = getRequiredEnv("DATABASE_URL"),
@@ -30,7 +31,7 @@ export type Database = ReturnType<typeof createDatabase>;
 
 export const db = new Proxy({} as Database, {
   get(_target, property, receiver) {
-    const database = getDb();
+    const database = getActiveTenantTransaction() ?? getDb();
     const value = Reflect.get(database, property, receiver);
 
     return typeof value === "function" ? value.bind(database) : value;
@@ -38,5 +39,16 @@ export const db = new Proxy({} as Database, {
 });
 
 export const withTenantDb = createWithTenantDb(db);
+
+export function bindTenantContext<Arguments extends unknown[], Result>(
+  operation: (
+    context: AccessContext,
+    ...args: Arguments
+  ) => Promise<Result>,
+) {
+  return async (context: AccessContext, ...args: Arguments) =>
+    withTenantDb(context, () => operation(context, ...args));
+}
+
 export { createWithTenantDb };
 export type { TenantTransaction } from "./tenant";

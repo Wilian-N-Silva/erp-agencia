@@ -19,7 +19,7 @@ import {
   userRoles,
   users,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
@@ -53,7 +53,7 @@ const deleteOrgUnitSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createSettingsUserAction(formData: FormData) {
+async function createSettingsUserAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = createUserSchema.parse(formDataToObject(formData));
   const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
@@ -107,7 +107,7 @@ export async function createSettingsUserAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function updateSettingsUserRolesAction(formData: FormData) {
+async function updateSettingsUserRolesAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = updateRolesSchema.parse(formDataToObject(formData));
   const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
@@ -133,7 +133,7 @@ export async function updateSettingsUserRolesAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function updateSettingsUserStatusAction(formData: FormData) {
+async function updateSettingsUserStatusAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = updateStatusSchema.parse(formDataToObject(formData));
 
@@ -165,7 +165,7 @@ export async function updateSettingsUserStatusAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function updateAppSettingAction(formData: FormData) {
+async function updateAppSettingAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = updateSettingSchema.parse(formDataToObject(formData));
   const before = await db
@@ -204,7 +204,7 @@ export async function updateAppSettingAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function createAreaAction(formData: FormData) {
+async function createAreaAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = createOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -228,7 +228,7 @@ export async function createAreaAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function deleteAreaAction(formData: FormData) {
+async function deleteAreaAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -264,7 +264,7 @@ export async function deleteAreaAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function createPositionAction(formData: FormData) {
+async function createPositionAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = createOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -288,7 +288,7 @@ export async function createPositionAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function deletePositionAction(formData: FormData) {
+async function deletePositionAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -393,3 +393,27 @@ async function requireSettingsManagerContext() {
 function formDataToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
+
+export {
+  tenantCreateSettingsUserAction as createSettingsUserAction,
+  tenantUpdateSettingsUserRolesAction as updateSettingsUserRolesAction,
+  tenantUpdateSettingsUserStatusAction as updateSettingsUserStatusAction,
+  tenantUpdateAppSettingAction as updateAppSettingAction,
+  tenantCreateAreaAction as createAreaAction,
+  tenantDeleteAreaAction as deleteAreaAction,
+  tenantCreatePositionAction as createPositionAction,
+  tenantDeletePositionAction as deletePositionAction,
+};
+
+const tenantCreateSettingsUserAction = bindCurrentTenantContext(createSettingsUserAction);
+const tenantUpdateSettingsUserRolesAction = bindCurrentTenantContext(
+  updateSettingsUserRolesAction,
+);
+const tenantUpdateSettingsUserStatusAction = bindCurrentTenantContext(
+  updateSettingsUserStatusAction,
+);
+const tenantUpdateAppSettingAction = bindCurrentTenantContext(updateAppSettingAction);
+const tenantCreateAreaAction = bindCurrentTenantContext(createAreaAction);
+const tenantDeleteAreaAction = bindCurrentTenantContext(deleteAreaAction);
+const tenantCreatePositionAction = bindCurrentTenantContext(createPositionAction);
+const tenantDeletePositionAction = bindCurrentTenantContext(deletePositionAction);

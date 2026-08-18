@@ -8,7 +8,11 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { accessRecords, employees } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import { accessRecordStatusLabels, type AccessRecordStatus } from "./rules";
@@ -44,7 +48,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createAccessRecordAction(formData: FormData) {
+async function createAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = createAccessRecordSchema.parse(formDataToObject(formData));
 
@@ -78,7 +82,7 @@ export async function createAccessRecordAction(formData: FormData) {
   revalidateAccessPaths();
 }
 
-export async function updateAccessRecordAction(formData: FormData) {
+async function updateAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = updateAccessRecordSchema.parse(formDataToObject(formData));
 
@@ -114,15 +118,15 @@ export async function updateAccessRecordAction(formData: FormData) {
   revalidateAccessPaths();
 }
 
-export async function approveAccessRecordAction(formData: FormData) {
+async function approveAccessRecordAction(formData: FormData) {
   await updateAccessStatus(formData, "active", "approve");
 }
 
-export async function markAccessRemovedAction(formData: FormData) {
+async function markAccessRemovedAction(formData: FormData) {
   await updateAccessStatus(formData, "removed", "status_change");
 }
 
-export async function reviewAccessRecordAction(formData: FormData) {
+async function reviewAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = reviewAccessRecordSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
@@ -274,3 +278,17 @@ function optionalDateSchema() {
       message: "Invalid date.",
     });
 }
+
+export {
+  tenantCreateAccessRecordAction as createAccessRecordAction,
+  tenantUpdateAccessRecordAction as updateAccessRecordAction,
+  tenantApproveAccessRecordAction as approveAccessRecordAction,
+  tenantMarkAccessRemovedAction as markAccessRemovedAction,
+  tenantReviewAccessRecordAction as reviewAccessRecordAction,
+};
+
+const tenantCreateAccessRecordAction = bindCurrentTenantContext(createAccessRecordAction);
+const tenantUpdateAccessRecordAction = bindCurrentTenantContext(updateAccessRecordAction);
+const tenantApproveAccessRecordAction = bindCurrentTenantContext(approveAccessRecordAction);
+const tenantMarkAccessRemovedAction = bindCurrentTenantContext(markAccessRemovedAction);
+const tenantReviewAccessRecordAction = bindCurrentTenantContext(reviewAccessRecordAction);
