@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { auditLogs, users } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError } from "@/lib/rbac";
@@ -41,7 +41,7 @@ export type AuditLogDetail = AuditLogListItem & {
   userAgent: string | null;
 };
 
-export async function listAuditLogs(
+async function listAuditLogs(
   context: AccessContext,
   filters: AuditFilters = {},
   options: { limit?: number } = {},
@@ -86,7 +86,7 @@ export async function listAuditLogs(
   ).slice(0, options.limit ?? 200);
 }
 
-export async function getAuditLogDetail(
+async function getAuditLogDetail(
   context: AccessContext,
   id: string,
 ): Promise<AuditLogDetail | null> {
@@ -138,7 +138,7 @@ export async function getAuditLogDetail(
   };
 }
 
-export async function listAuditActorOptions(
+async function listAuditActorOptions(
   context: AccessContext,
 ): Promise<AuditActorOption[]> {
   assertCanReadAudit(context);
@@ -222,3 +222,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListAuditLogs as listAuditLogs,
+  tenantGetAuditLogDetail as getAuditLogDetail,
+  tenantListAuditActorOptions as listAuditActorOptions,
+};
+
+const tenantListAuditLogs = bindTenantContext(listAuditLogs);
+const tenantGetAuditLogDetail = bindTenantContext(getAuditLogDetail);
+const tenantListAuditActorOptions = bindTenantContext(listAuditActorOptions);

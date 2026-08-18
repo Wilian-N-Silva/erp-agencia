@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { withTenantDb } from "@/lib/db";
 import { auditLogs } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 
@@ -31,12 +31,14 @@ export async function writeAuditLog(
   context: AccessContext,
   input: AuditLogInput,
 ) {
-  const [log] = await db
-    .insert(auditLogs)
-    .values(createAuditLogValues(context, input))
-    .returning();
+  return withTenantDb(context, async (tenantDb) => {
+    const [log] = await tenantDb
+      .insert(auditLogs)
+      .values(createAuditLogValues(context, input))
+      .returning();
 
-  return log;
+    return log;
+  });
 }
 
 export async function auditSensitiveRead(

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -17,6 +19,18 @@ export type TenantTransaction = Parameters<
 
 type TransactionalDatabase = Pick<Database, "transaction">;
 
+type TenantTransactionContext = {
+  organizationId: string;
+  transaction: TenantTransaction;
+  userId: string;
+};
+
+const tenantTransactionStorage = new AsyncLocalStorage<TenantTransactionContext>();
+
+export function getActiveTenantTransaction() {
+  return tenantTransactionStorage.getStore()?.transaction;
+}
+
 export function createWithTenantDb(database: TransactionalDatabase) {
   return async function withConfiguredTenantDb<T>(
     context: AccessContext | null | undefined,
@@ -28,6 +42,19 @@ export function createWithTenantDb(database: TransactionalDatabase) {
       throw new AccessDeniedError();
     }
 
+    const activeContext = tenantTransactionStorage.getStore();
+
+    if (activeContext) {
+      if (
+        activeContext.organizationId !== identity.data.organizationId ||
+        activeContext.userId !== identity.data.userId
+      ) {
+        throw new AccessDeniedError();
+      }
+
+      return callback(activeContext.transaction);
+    }
+
     return database.transaction(async (transaction) => {
       await transaction.execute(sql`
         select
@@ -35,7 +62,14 @@ export function createWithTenantDb(database: TransactionalDatabase) {
           set_config('app.user_id', ${identity.data.userId}, true)
       `);
 
-      return callback(transaction);
+      return tenantTransactionStorage.run(
+        {
+          organizationId: identity.data.organizationId,
+          transaction,
+          userId: identity.data.userId,
+        },
+        () => callback(transaction),
+      );
     });
   };
 }

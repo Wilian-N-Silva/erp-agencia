@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Database } from "@/lib/db";
+import { db, type Database } from "@/lib/db";
 import { createWithTenantDb, type TenantTransaction } from "@/lib/db/tenant";
 import { createAccessContext } from "@/lib/dal";
 import { AccessDeniedError } from "@/lib/rbac";
@@ -62,5 +62,65 @@ describe("withTenantDb", () => {
     expect(result).toBe("result");
     expect(execute).toHaveBeenCalledOnce();
     expect(events).toEqual(["context", "callback"]);
+  });
+
+  it("routes unrestricted db imports to the active tenant transaction", async () => {
+    const execute = vi.fn(async () => undefined);
+    const select = vi.fn(() => "tenant-select");
+    const transaction = vi.fn(
+      async (callback: (transaction: TenantTransaction) => Promise<unknown>) =>
+        callback({ execute, select } as unknown as TenantTransaction),
+    );
+    const withTenantDb = createWithTenantDb({
+      transaction: transaction as unknown as Database["transaction"],
+    });
+    const context = createAccessContext({
+      userId: "user-1",
+      organizationId,
+      roles: [],
+    });
+
+    const result = await withTenantDb(context, async () => db.select());
+
+    expect(result).toBe("tenant-select");
+    expect(select).toHaveBeenCalledOnce();
+    expect(transaction).toHaveBeenCalledOnce();
+  });
+
+  it("reuses the active transaction and rejects a nested tenant switch", async () => {
+    const execute = vi.fn(async () => undefined);
+    const tenantTransaction = { execute } as unknown as TenantTransaction;
+    const transaction = vi.fn(
+      async (callback: (transaction: TenantTransaction) => Promise<unknown>) =>
+        callback(tenantTransaction),
+    );
+    const withTenantDb = createWithTenantDb({
+      transaction: transaction as unknown as Database["transaction"],
+    });
+    const context = createAccessContext({
+      userId: "user-1",
+      organizationId,
+      roles: [],
+    });
+    const otherContext = createAccessContext({
+      userId: "user-2",
+      organizationId: "00000000-0000-4000-8000-000000000002",
+      roles: [],
+    });
+
+    await withTenantDb(context, async (outerTransaction) => {
+      const nestedResult = await withTenantDb(
+        context,
+        async (nestedTransaction) => nestedTransaction,
+      );
+
+      expect(nestedResult).toBe(outerTransaction);
+      await expect(
+        withTenantDb(otherContext, async () => undefined),
+      ).rejects.toBeInstanceOf(AccessDeniedError);
+    });
+
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledOnce();
   });
 });

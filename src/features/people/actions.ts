@@ -17,7 +17,11 @@ import {
   lifecycleChecklists,
   positions,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  runWithCurrentTenantDb,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "@/features/finance/rules";
@@ -107,6 +111,14 @@ const endBenefitSchema = z.object({
 });
 
 export async function createEmployeeAction(formData: FormData) {
+  const redirectTo = await runWithCurrentTenantDb(() =>
+    createEmployee(formData),
+  );
+
+  redirect(redirectTo as Route);
+}
+
+async function createEmployee(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterWithCompensationContext();
   const shouldCreateOnboardingChecklist = formData.get("createOnboardingChecklist") === "on";
   const redirectTo = normalizeRedirectPath(formData.get("redirectTo"));
@@ -197,14 +209,10 @@ export async function createEmployeeAction(formData: FormData) {
   revalidatePath("/app/colaboradores");
   revalidatePath("/app/colaboradores/admissoes");
 
-  if (redirectTo) {
-    redirect(redirectTo as Route);
-  }
-
-  redirect(`/app/colaboradores/${employee.id}`);
+  return redirectTo ?? `/app/colaboradores/${employee.id}`;
 }
 
-export async function updateEmployeeAction(formData: FormData) {
+async function updateEmployeeAction(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterContext();
   const input = updateEmployeeSchema.parse(formDataToObject(formData));
   await assertAreaPositionAndManager(input, organizationId, input.id);
@@ -257,7 +265,7 @@ export async function updateEmployeeAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.id}`);
 }
 
-export async function updateEmployeeCompensationAction(formData: FormData) {
+async function updateEmployeeCompensationAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = updateCompensationSchema.parse(formDataToObject(formData));
   const before = await getEmployeeForWrite(input.employeeId, organizationId);
@@ -312,7 +320,7 @@ export async function updateEmployeeCompensationAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function createEmployeeBenefitAction(formData: FormData) {
+async function createEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = createBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -347,7 +355,7 @@ export async function createEmployeeBenefitAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function endEmployeeBenefitAction(formData: FormData) {
+async function endEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = endBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -563,3 +571,19 @@ function optionalMoneySchema() {
 function normalizeRedirectPath(value: FormDataEntryValue | null) {
   return typeof value === "string" && value.startsWith("/app/") ? value : null;
 }
+
+export {
+  tenantUpdateEmployeeAction as updateEmployeeAction,
+  tenantUpdateEmployeeCompensationAction as updateEmployeeCompensationAction,
+  tenantCreateEmployeeBenefitAction as createEmployeeBenefitAction,
+  tenantEndEmployeeBenefitAction as endEmployeeBenefitAction,
+};
+
+const tenantUpdateEmployeeAction = bindCurrentTenantContext(updateEmployeeAction);
+const tenantUpdateEmployeeCompensationAction = bindCurrentTenantContext(
+  updateEmployeeCompensationAction,
+);
+const tenantCreateEmployeeBenefitAction = bindCurrentTenantContext(
+  createEmployeeBenefitAction,
+);
+const tenantEndEmployeeBenefitAction = bindCurrentTenantContext(endEmployeeBenefitAction);

@@ -8,7 +8,11 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { employees, equipment } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -53,7 +57,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createEquipmentAction(formData: FormData) {
+async function createEquipmentAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = createEquipmentSchema.parse(formDataToObject(formData));
   const currentEmployeeId = await normalizeCurrentEmployeeId(
@@ -87,7 +91,7 @@ export async function createEquipmentAction(formData: FormData) {
   revalidateEquipmentPaths();
 }
 
-export async function updateEquipmentAction(formData: FormData) {
+async function updateEquipmentAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = updateEquipmentSchema.parse(formDataToObject(formData));
   const before = await getEquipmentForWrite(input.id, context.organizationId);
@@ -128,7 +132,7 @@ export async function updateEquipmentAction(formData: FormData) {
   revalidateEquipmentPaths();
 }
 
-export async function assignEquipmentAction(formData: FormData) {
+async function assignEquipmentAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = assignEquipmentSchema.parse(formDataToObject(formData));
   const before = await getEquipmentForWrite(input.id, context.organizationId);
@@ -163,7 +167,7 @@ export async function assignEquipmentAction(formData: FormData) {
   revalidateEquipmentPaths();
 }
 
-export async function returnEquipmentAction(formData: FormData) {
+async function returnEquipmentAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = equipmentNoteSchema.parse(formDataToObject(formData));
   const before = await getEquipmentForWrite(input.id, context.organizationId);
@@ -202,7 +206,7 @@ export async function returnEquipmentAction(formData: FormData) {
   revalidateEquipmentPaths();
 }
 
-export async function markEquipmentMaintenanceAction(formData: FormData) {
+async function markEquipmentMaintenanceAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = equipmentNoteSchema.parse(formDataToObject(formData));
   const before = await getEquipmentForWrite(input.id, context.organizationId);
@@ -231,7 +235,7 @@ export async function markEquipmentMaintenanceAction(formData: FormData) {
   revalidateEquipmentPaths();
 }
 
-export async function retireEquipmentAction(formData: FormData) {
+async function retireEquipmentAction(formData: FormData) {
   const context = await requireEquipmentWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEquipmentForWrite(input.id, context.organizationId);
@@ -372,3 +376,21 @@ function optionalIdSchema() {
       message: "Invalid id.",
     });
 }
+
+export {
+  tenantCreateEquipmentAction as createEquipmentAction,
+  tenantUpdateEquipmentAction as updateEquipmentAction,
+  tenantAssignEquipmentAction as assignEquipmentAction,
+  tenantReturnEquipmentAction as returnEquipmentAction,
+  tenantMarkEquipmentMaintenanceAction as markEquipmentMaintenanceAction,
+  tenantRetireEquipmentAction as retireEquipmentAction,
+};
+
+const tenantCreateEquipmentAction = bindCurrentTenantContext(createEquipmentAction);
+const tenantUpdateEquipmentAction = bindCurrentTenantContext(updateEquipmentAction);
+const tenantAssignEquipmentAction = bindCurrentTenantContext(assignEquipmentAction);
+const tenantReturnEquipmentAction = bindCurrentTenantContext(returnEquipmentAction);
+const tenantMarkEquipmentMaintenanceAction = bindCurrentTenantContext(
+  markEquipmentMaintenanceAction,
+);
+const tenantRetireEquipmentAction = bindCurrentTenantContext(retireEquipmentAction);

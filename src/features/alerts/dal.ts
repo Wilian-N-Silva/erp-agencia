@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   accessRecords,
   alerts,
@@ -73,7 +73,7 @@ export type StoredAlertListItem = {
   updatedAt: Date;
 };
 
-export async function listStoredAlerts(
+async function listStoredAlerts(
   context: AccessContext,
   filters: AlertFilters = {},
 ): Promise<StoredAlertListItem[]> {
@@ -109,13 +109,12 @@ export async function listStoredAlerts(
   );
 }
 
-export async function listAlertCandidates(
+async function listAlertCandidates(
   context: AccessContext,
   filters: AlertFilters = {},
 ): Promise<AlertCandidate[]> {
   assertCanAny(["alerts.read", "alerts.write"], context);
-  const organizationId = requireOrganizationId(context);
-  const candidates = await generateAlertCandidatesForOrganization(organizationId);
+  const candidates = await generateAlertCandidatesForOrganization(context);
 
   return applyAlertFilters(
     sortAlertCandidates(dedupeAlertCandidates(candidates)),
@@ -126,10 +125,11 @@ export async function listAlertCandidates(
   );
 }
 
-export async function generateAlertCandidatesForOrganization(
-  organizationId: string,
+async function generateAlertCandidatesForOrganization(
+  context: AccessContext,
   asOf: string | Date = new Date(),
 ): Promise<AlertCandidate[]> {
+  const organizationId = requireOrganizationId(context);
   const asOfKey = toDateKey(asOf);
   const [
     clientCandidates,
@@ -174,7 +174,7 @@ export async function generateAlertCandidatesForOrganization(
   );
 }
 
-export async function buildBirthdayAlertCandidates(
+async function buildBirthdayAlertCandidates(
   organizationId: string,
   asOf: string,
 ): Promise<AlertCandidate[]> {
@@ -838,3 +838,15 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListStoredAlerts as listStoredAlerts,
+  tenantListAlertCandidates as listAlertCandidates,
+  tenantGenerateAlertCandidatesForOrganization as generateAlertCandidatesForOrganization,
+};
+
+const tenantListStoredAlerts = bindTenantContext(listStoredAlerts);
+const tenantListAlertCandidates = bindTenantContext(listAlertCandidates);
+const tenantGenerateAlertCandidatesForOrganization = bindTenantContext(
+  generateAlertCandidatesForOrganization,
+);

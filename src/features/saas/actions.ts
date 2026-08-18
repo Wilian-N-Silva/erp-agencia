@@ -8,7 +8,11 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { employees, saasSubscriptionUsers, saasSubscriptions } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import { normalizeMoneyInput } from "@/features/finance/rules";
@@ -53,7 +57,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createSaasSubscriptionAction(formData: FormData) {
+async function createSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = createSaasSubscriptionSchema.parse(formDataToObject(formData));
   const [created] = await db
@@ -81,7 +85,7 @@ export async function createSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function updateSaasSubscriptionAction(formData: FormData) {
+async function updateSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = updateSaasSubscriptionSchema.parse(formDataToObject(formData));
   const before = await getSaasSubscriptionForWrite(input.id, context.organizationId);
@@ -115,7 +119,7 @@ export async function updateSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
+async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = linkSaasUserSchema.parse(formDataToObject(formData));
 
@@ -153,7 +157,7 @@ export async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormData) {
+async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = linkSaasUserSchema.parse(formDataToObject(formData));
 
@@ -190,7 +194,7 @@ export async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormDat
   revalidateSaasPaths();
 }
 
-export async function markSaasSubscriptionRenewedAction(formData: FormData) {
+async function markSaasSubscriptionRenewedAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = renewSaasSubscriptionSchema.parse(formDataToObject(formData));
 
@@ -199,7 +203,7 @@ export async function markSaasSubscriptionRenewedAction(formData: FormData) {
   });
 }
 
-export async function cancelSaasSubscriptionAction(formData: FormData) {
+async function cancelSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
 
@@ -340,3 +344,31 @@ function optionalMoneySchema() {
     .optional()
     .transform((value) => (value ? normalizeMoneyInput(value) : null));
 }
+
+export {
+  tenantCreateSaasSubscriptionAction as createSaasSubscriptionAction,
+  tenantUpdateSaasSubscriptionAction as updateSaasSubscriptionAction,
+  tenantLinkEmployeeToSaasSubscriptionAction as linkEmployeeToSaasSubscriptionAction,
+  tenantUnlinkEmployeeFromSaasSubscriptionAction as unlinkEmployeeFromSaasSubscriptionAction,
+  tenantMarkSaasSubscriptionRenewedAction as markSaasSubscriptionRenewedAction,
+  tenantCancelSaasSubscriptionAction as cancelSaasSubscriptionAction,
+};
+
+const tenantCreateSaasSubscriptionAction = bindCurrentTenantContext(
+  createSaasSubscriptionAction,
+);
+const tenantUpdateSaasSubscriptionAction = bindCurrentTenantContext(
+  updateSaasSubscriptionAction,
+);
+const tenantLinkEmployeeToSaasSubscriptionAction = bindCurrentTenantContext(
+  linkEmployeeToSaasSubscriptionAction,
+);
+const tenantUnlinkEmployeeFromSaasSubscriptionAction = bindCurrentTenantContext(
+  unlinkEmployeeFromSaasSubscriptionAction,
+);
+const tenantMarkSaasSubscriptionRenewedAction = bindCurrentTenantContext(
+  markSaasSubscriptionRenewedAction,
+);
+const tenantCancelSaasSubscriptionAction = bindCurrentTenantContext(
+  cancelSaasSubscriptionAction,
+);

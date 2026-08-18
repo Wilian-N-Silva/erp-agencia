@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { db, withTenantDb } from "@/lib/db";
 import { employees, roles, userRoles, users } from "@/lib/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getPermissionsForRoles, isRoleKey, type PermissionKey, type RoleKey } from "@/lib/rbac";
@@ -51,14 +51,6 @@ export async function getCurrentAccessContext() {
     .where(eq(users.id, session.user.id))
     .limit(1);
 
-  const [employee] = await db
-    .select({
-      id: employees.id,
-    })
-    .from(employees)
-    .where(eq(employees.userId, session.user.id))
-    .limit(1);
-
   const assignedRoles = await db
     .select({
       key: roles.key,
@@ -71,12 +63,53 @@ export async function getCurrentAccessContext() {
     .map((role) => role.key)
     .filter(isRoleKey);
 
-  return createAccessContext({
+  const bootstrapContext = createAccessContext({
     userId: session.user.id,
     organizationId: user?.organizationId ?? null,
-    employeeId: employee?.id ?? null,
     roles: roleKeys.length > 0 ? roleKeys : ["employee"],
   });
+  const employee = bootstrapContext.organizationId
+    ? await withTenantDb(bootstrapContext, async (tenantDb) => {
+        const [row] = await tenantDb
+          .select({
+            id: employees.id,
+          })
+          .from(employees)
+          .where(
+            eq(employees.userId, session.user.id),
+          )
+          .limit(1);
+
+        return row;
+      })
+    : undefined;
+
+  return createAccessContext({
+    userId: session.user.id,
+    organizationId: bootstrapContext.organizationId,
+    employeeId: employee?.id ?? null,
+    roles: bootstrapContext.roles,
+  });
+}
+
+export async function runWithCurrentTenantDb<Result>(
+  operation: () => Promise<Result>,
+) {
+  const context = await getCurrentAccessContext();
+
+  if (!context?.organizationId) {
+    return operation();
+  }
+
+  return withTenantDb(context, operation);
+}
+
+export function bindCurrentTenantContext<
+  Arguments extends unknown[],
+  Result,
+>(operation: (...args: Arguments) => Promise<Result>) {
+  return async (...args: Arguments) =>
+    runWithCurrentTenantDb(() => operation(...args));
 }
 
 export function isOwnEmployee(context: AccessContext, employeeId: string) {

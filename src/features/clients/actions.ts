@@ -1,6 +1,7 @@
 "use server";
 
 import { and, count, eq, isNull } from "drizzle-orm";
+import type { Route } from "next";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -14,7 +15,11 @@ import {
   employees,
   financialEntries,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  runWithCurrentTenantDb,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -106,6 +111,14 @@ const updateClientInternalNotesSchema = z.object({
 });
 
 export async function createClientAction(formData: FormData) {
+  const redirectTo = await runWithCurrentTenantDb(() =>
+    createClient(formData),
+  );
+
+  redirect(redirectTo as Route);
+}
+
+async function createClient(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
   const input = createClientSchema.parse(formDataToObject(formData));
   const internalOwnerEmployeeId = await resolveEmployeeId(
@@ -149,10 +162,10 @@ export async function createClientAction(formData: FormData) {
   });
 
   revalidatePath("/app/clientes");
-  redirect(`/app/clientes/${client.id}`);
+  return `/app/clientes/${client.id}`;
 }
 
-export async function updateClientAction(formData: FormData) {
+async function updateClientAction(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
   const input = updateClientSchema.parse(formDataToObject(formData));
   const before = await getClientForWrite(input.id, organizationId);
@@ -213,7 +226,7 @@ export async function updateClientAction(formData: FormData) {
   revalidatePath(`/app/clientes/${input.id}`);
 }
 
-export async function updateClientBillingProfileAction(formData: FormData) {
+async function updateClientBillingProfileAction(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
   const input = updateClientBillingProfileSchema.parse(formDataToObject(formData));
   const before = await getClientBillingProfileForWrite(input.clientId, organizationId);
@@ -274,7 +287,7 @@ export async function updateClientBillingProfileAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function generateClientExpectedEntryAction(formData: FormData) {
+async function generateClientExpectedEntryAction(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
   const input = generateExpectedEntrySchema.parse(formDataToObject(formData));
   const billing = await getClientBillingProfileForWrite(input.clientId, organizationId);
@@ -349,7 +362,7 @@ export async function generateClientExpectedEntryAction(formData: FormData) {
   revalidatePath(`/app/clientes/${input.clientId}`);
 }
 
-export async function markClientPaymentReceivedAction(formData: FormData) {
+async function markClientPaymentReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
   const input = markClientPaymentReceivedSchema.parse(formDataToObject(formData));
   const before = await getFinancialEntryForWrite(input.id, organizationId);
@@ -413,7 +426,7 @@ export async function markClientPaymentReceivedAction(formData: FormData) {
   revalidatePath(`/app/clientes/${before.clientId}`);
 }
 
-export async function updateClientInternalNotesAction(formData: FormData) {
+async function updateClientInternalNotesAction(formData: FormData) {
   const { context, organizationId } = await requireClientWriterContext();
   const input = updateClientInternalNotesSchema.parse(formDataToObject(formData));
   const before = await getClientForWrite(input.id, organizationId);
@@ -447,7 +460,7 @@ export async function updateClientInternalNotesAction(formData: FormData) {
   revalidatePath(`/app/clientes/${input.id}`);
 }
 
-export async function updateClientStatusAction(formData: FormData) {
+async function updateClientStatusAction(formData: FormData) {
   const { context, organizationId } = await requireClientWriterContext();
   const input = updateClientStatusSchema.parse(formDataToObject(formData));
   const before = await getClientForWrite(input.id, organizationId);
@@ -794,3 +807,27 @@ function optionalIdSchema() {
 function reminderKey(financialEntryId: string | null, kind: string) {
   return `${financialEntryId ?? "client"}:${kind}`;
 }
+
+export {
+  tenantUpdateClientAction as updateClientAction,
+  tenantUpdateClientBillingProfileAction as updateClientBillingProfileAction,
+  tenantGenerateClientExpectedEntryAction as generateClientExpectedEntryAction,
+  tenantMarkClientPaymentReceivedAction as markClientPaymentReceivedAction,
+  tenantUpdateClientInternalNotesAction as updateClientInternalNotesAction,
+  tenantUpdateClientStatusAction as updateClientStatusAction,
+};
+
+const tenantUpdateClientAction = bindCurrentTenantContext(updateClientAction);
+const tenantUpdateClientBillingProfileAction = bindCurrentTenantContext(
+  updateClientBillingProfileAction,
+);
+const tenantGenerateClientExpectedEntryAction = bindCurrentTenantContext(
+  generateClientExpectedEntryAction,
+);
+const tenantMarkClientPaymentReceivedAction = bindCurrentTenantContext(
+  markClientPaymentReceivedAction,
+);
+const tenantUpdateClientInternalNotesAction = bindCurrentTenantContext(
+  updateClientInternalNotesAction,
+);
+const tenantUpdateClientStatusAction = bindCurrentTenantContext(updateClientStatusAction);

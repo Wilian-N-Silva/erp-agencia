@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   areas,
   employees,
@@ -70,7 +70,7 @@ export type LifecycleEmployeeOption = {
   status: string;
 };
 
-export async function listLifecycleChecklists(
+async function listLifecycleChecklists(
   context: AccessContext,
   type?: LifecycleType,
 ): Promise<LifecycleChecklistListItem[]> {
@@ -134,7 +134,7 @@ export async function listLifecycleChecklists(
   });
 }
 
-export async function listLifecycleDashboardItems(
+async function listLifecycleDashboardItems(
   context: AccessContext,
   options: { limit?: number } = {},
 ) {
@@ -156,7 +156,7 @@ export async function listLifecycleDashboardItems(
     .slice(0, options.limit);
 }
 
-export async function listLifecycleEmployeeOptions(
+async function listLifecycleEmployeeOptions(
   context: AccessContext,
 ): Promise<LifecycleEmployeeOption[]> {
   assertCanAny(["lifecycle.write"], context);
@@ -223,3 +223,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListLifecycleChecklists as listLifecycleChecklists,
+  tenantListLifecycleDashboardItems as listLifecycleDashboardItems,
+  tenantListLifecycleEmployeeOptions as listLifecycleEmployeeOptions,
+};
+
+const tenantListLifecycleChecklists = bindTenantContext(listLifecycleChecklists);
+const tenantListLifecycleDashboardItems = bindTenantContext(listLifecycleDashboardItems);
+const tenantListLifecycleEmployeeOptions = bindTenantContext(listLifecycleEmployeeOptions);

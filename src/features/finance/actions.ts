@@ -13,7 +13,7 @@ import {
   financialExpenses,
   provisions,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "./rules";
@@ -98,7 +98,7 @@ const idSchema = z.object({
   id: z.string().uuid(),
 });
 
-export async function createFinancialEntryAction(formData: FormData) {
+async function createFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createEntrySchema.parse(formDataToObject(formData));
   const clientId = await resolveClientId(input.clientId, organizationId);
@@ -129,7 +129,7 @@ export async function createFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function updateFinancialEntryAction(formData: FormData) {
+async function updateFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = updateEntrySchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
@@ -168,7 +168,7 @@ export async function updateFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function markFinancialEntryReceivedAction(formData: FormData) {
+async function markFinancialEntryReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
@@ -212,7 +212,7 @@ export async function markFinancialEntryReceivedAction(formData: FormData) {
   }
 }
 
-export async function cancelFinancialEntryAction(formData: FormData) {
+async function cancelFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
@@ -246,7 +246,7 @@ export async function cancelFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function createFinancialExpenseAction(formData: FormData) {
+async function createFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createExpenseSchema.parse(formDataToObject(formData));
 
@@ -278,7 +278,7 @@ export async function createFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function updateFinancialExpenseAction(formData: FormData) {
+async function updateFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = updateExpenseSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
@@ -318,7 +318,7 @@ export async function updateFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function markFinancialExpensePaidAction(formData: FormData) {
+async function markFinancialExpensePaidAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
@@ -357,7 +357,7 @@ export async function markFinancialExpensePaidAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function cancelFinancialExpenseAction(formData: FormData) {
+async function cancelFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
@@ -391,7 +391,7 @@ export async function cancelFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function createProvisionAction(formData: FormData) {
+async function createProvisionAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createProvisionSchema.parse(formDataToObject(formData));
 
@@ -418,7 +418,7 @@ export async function createProvisionAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function deactivateProvisionAction(formData: FormData) {
+async function deactivateProvisionAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getProvisionForWrite(input.id, organizationId);
@@ -552,3 +552,45 @@ async function getProvisionForWrite(id: string, organizationId: string) {
 function formDataToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
+
+export {
+  tenantCreateFinancialEntryAction as createFinancialEntryAction,
+  tenantUpdateFinancialEntryAction as updateFinancialEntryAction,
+  tenantMarkFinancialEntryReceivedAction as markFinancialEntryReceivedAction,
+  tenantCancelFinancialEntryAction as cancelFinancialEntryAction,
+  tenantCreateFinancialExpenseAction as createFinancialExpenseAction,
+  tenantUpdateFinancialExpenseAction as updateFinancialExpenseAction,
+  tenantMarkFinancialExpensePaidAction as markFinancialExpensePaidAction,
+  tenantCancelFinancialExpenseAction as cancelFinancialExpenseAction,
+  tenantCreateProvisionAction as createProvisionAction,
+  tenantDeactivateProvisionAction as deactivateProvisionAction,
+};
+
+const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
+  createFinancialEntryAction,
+);
+const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
+  updateFinancialEntryAction,
+);
+const tenantMarkFinancialEntryReceivedAction = bindCurrentTenantContext(
+  markFinancialEntryReceivedAction,
+);
+const tenantCancelFinancialEntryAction = bindCurrentTenantContext(
+  cancelFinancialEntryAction,
+);
+const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
+  createFinancialExpenseAction,
+);
+const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
+  updateFinancialExpenseAction,
+);
+const tenantMarkFinancialExpensePaidAction = bindCurrentTenantContext(
+  markFinancialExpensePaidAction,
+);
+const tenantCancelFinancialExpenseAction = bindCurrentTenantContext(
+  cancelFinancialExpenseAction,
+);
+const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);
+const tenantDeactivateProvisionAction = bindCurrentTenantContext(
+  deactivateProvisionAction,
+);

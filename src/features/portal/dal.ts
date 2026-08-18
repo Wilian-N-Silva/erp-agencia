@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   areas,
   employees,
@@ -96,7 +96,7 @@ export type InvoiceEmployeeOption = {
   recurringTransport: string | null;
 };
 
-export async function getPortalEmployeeSummary(
+async function getPortalEmployeeSummary(
   context: AccessContext,
 ): Promise<PortalEmployeeSummary | null> {
   if (!context.employeeId || !context.organizationId) {
@@ -127,7 +127,7 @@ export async function getPortalEmployeeSummary(
   return employee ?? null;
 }
 
-export async function listInvoiceRequests(
+async function listInvoiceRequests(
   context: AccessContext,
   options: { ownOnly?: boolean; limit?: number } = {},
 ): Promise<InvoiceRequestListItem[]> {
@@ -177,7 +177,7 @@ export async function listInvoiceRequests(
   }));
 }
 
-export async function listReimbursements(
+async function listReimbursements(
   context: AccessContext,
   options: { ownOnly?: boolean; limit?: number } = {},
 ): Promise<ReimbursementListItem[]> {
@@ -275,7 +275,7 @@ export async function listReimbursements(
   }));
 }
 
-export async function listInvoiceEmployeeOptions(
+async function listInvoiceEmployeeOptions(
   context: AccessContext,
 ): Promise<InvoiceEmployeeOption[]> {
   assertCanAny(["invoices.write", "invoices.approve"], context);
@@ -312,7 +312,7 @@ export type OpenInvoiceOption = {
   status: InvoiceRequestStatus;
 };
 
-export async function listOpenInvoicesForEmployee(
+async function listOpenInvoicesForEmployee(
   context: AccessContext,
   employeeId: string,
 ): Promise<OpenInvoiceOption[]> {
@@ -395,3 +395,17 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantGetPortalEmployeeSummary as getPortalEmployeeSummary,
+  tenantListInvoiceRequests as listInvoiceRequests,
+  tenantListReimbursements as listReimbursements,
+  tenantListInvoiceEmployeeOptions as listInvoiceEmployeeOptions,
+  tenantListOpenInvoicesForEmployee as listOpenInvoicesForEmployee,
+};
+
+const tenantGetPortalEmployeeSummary = bindTenantContext(getPortalEmployeeSummary);
+const tenantListInvoiceRequests = bindTenantContext(listInvoiceRequests);
+const tenantListReimbursements = bindTenantContext(listReimbursements);
+const tenantListInvoiceEmployeeOptions = bindTenantContext(listInvoiceEmployeeOptions);
+const tenantListOpenInvoicesForEmployee = bindTenantContext(listOpenInvoicesForEmployee);

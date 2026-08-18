@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { employees, saasSubscriptionUsers, saasSubscriptions, users } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -49,7 +49,7 @@ export type SaasEmployeeOption = {
   name: string;
 };
 
-export async function listSaasSubscriptions(
+async function listSaasSubscriptions(
   context: AccessContext,
   filters: SaasSubscriptionFilters = {},
   options: { limit?: number; linkedOnly?: boolean } = {},
@@ -119,7 +119,7 @@ export async function listSaasSubscriptions(
   ).slice(0, options.limit);
 }
 
-export async function listSaasEmployeeOptions(
+async function listSaasEmployeeOptions(
   context: AccessContext,
 ): Promise<SaasEmployeeOption[]> {
   assertCanAny(["saas.write", "saas.configure"], context);
@@ -135,7 +135,7 @@ export async function listSaasEmployeeOptions(
     .orderBy(asc(employees.fullName));
 }
 
-export async function listSaasRenewalAlerts(
+async function listSaasRenewalAlerts(
   context: AccessContext,
   options: { limit?: number } = {},
 ) {
@@ -199,3 +199,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListSaasSubscriptions as listSaasSubscriptions,
+  tenantListSaasEmployeeOptions as listSaasEmployeeOptions,
+  tenantListSaasRenewalAlerts as listSaasRenewalAlerts,
+};
+
+const tenantListSaasSubscriptions = bindTenantContext(listSaasSubscriptions);
+const tenantListSaasEmployeeOptions = bindTenantContext(listSaasEmployeeOptions);
+const tenantListSaasRenewalAlerts = bindTenantContext(listSaasRenewalAlerts);

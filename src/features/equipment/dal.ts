@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { employees, equipment } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -37,7 +37,7 @@ export type EquipmentEmployeeOption = {
   name: string;
 };
 
-export async function listEquipment(
+async function listEquipment(
   context: AccessContext,
   filters: EquipmentFilters = {},
   options: { limit?: number; ownOnly?: boolean } = {},
@@ -105,7 +105,7 @@ export async function listEquipment(
   ).slice(0, options.limit);
 }
 
-export async function listEquipmentEmployeeOptions(
+async function listEquipmentEmployeeOptions(
   context: AccessContext,
 ): Promise<EquipmentEmployeeOption[]> {
   assertCanAny(["equipment.write", "equipment.configure"], context);
@@ -121,7 +121,7 @@ export async function listEquipmentEmployeeOptions(
     .orderBy(asc(employees.fullName));
 }
 
-export async function listEquipmentReturnAlerts(
+async function listEquipmentReturnAlerts(
   context: AccessContext,
   options: { limit?: number } = {},
 ) {
@@ -137,3 +137,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListEquipment as listEquipment,
+  tenantListEquipmentEmployeeOptions as listEquipmentEmployeeOptions,
+  tenantListEquipmentReturnAlerts as listEquipmentReturnAlerts,
+};
+
+const tenantListEquipment = bindTenantContext(listEquipment);
+const tenantListEquipmentEmployeeOptions = bindTenantContext(listEquipmentEmployeeOptions);
+const tenantListEquipmentReturnAlerts = bindTenantContext(listEquipmentReturnAlerts);
