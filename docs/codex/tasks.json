@@ -142,8 +142,7 @@
       "title": "Contrato transacional compartilhado",
       "doc": "docs/01-prd-core-erp.md",
       "dependsOn": [
-        "SEC-001",
-        "SEC-002"
+        "SEC-001"
       ],
       "branch": "feature/codex-core-001",
       "automation": true,
@@ -702,6 +701,7 @@
       "title": "Dashboard da Gráfica",
       "doc": "docs/03-prd-grafica.md",
       "dependsOn": [
+        "GRF-007",
         "GRF-010"
       ],
       "branch": "feature/codex-grf-012",
@@ -721,7 +721,7 @@
       "title": "Importador histórico",
       "doc": "docs/03-prd-grafica.md",
       "dependsOn": [
-        "GRF-006"
+        "GRF-010"
       ],
       "branch": "feature/codex-grf-013",
       "automation": true,
@@ -740,6 +740,16 @@
       "title": "E2E do fluxo completo",
       "doc": "docs/03-prd-grafica.md",
       "dependsOn": [
+        "GRF-001",
+        "GRF-002",
+        "GRF-003",
+        "GRF-004",
+        "GRF-005",
+        "GRF-006",
+        "GRF-007",
+        "GRF-008",
+        "GRF-009",
+        "GRF-010",
         "GRF-011",
         "GRF-012",
         "GRF-013"
@@ -762,7 +772,8 @@
       "title": "Provisões e recorrências v2",
       "doc": "docs/02-prd-financeiro.md",
       "dependsOn": [
-        "FIN-006"
+        "FIN-001",
+        "FIN-002"
       ],
       "branch": "feature/codex-fin-007",
       "automation": true,
@@ -781,8 +792,8 @@
       "title": "Documentos e comprovantes financeiros",
       "doc": "docs/02-prd-financeiro.md",
       "dependsOn": [
-        "FIN-006",
-        "DOC-002"
+        "DOC-002",
+        "FIN-003"
       ],
       "branch": "feature/codex-fin-008",
       "automation": true,
@@ -801,7 +812,8 @@
       "title": "Relatórios competência/caixa/AR/AP",
       "doc": "docs/02-prd-financeiro.md",
       "dependsOn": [
-        "FIN-006"
+        "FIN-005",
+        "FIN-007"
       ],
       "branch": "feature/codex-fin-009",
       "automation": true,
@@ -820,9 +832,10 @@
       "title": "Compatibilidade e deprecação do fluxo antigo",
       "doc": "docs/02-prd-financeiro.md",
       "dependsOn": [
-        "FIN-007",
-        "FIN-008",
-        "FIN-009"
+        "FIN-005",
+        "GRF-014",
+        "INV-004",
+        "REI-004"
       ],
       "branch": "feature/codex-fin-010",
       "automation": true,
@@ -842,8 +855,8 @@
       "doc": "docs/01-prd-core-erp.md",
       "dependsOn": [
         "CORE-004",
-        "FIN-009",
-        "GRF-012"
+        "FIN-005",
+        "GRF-009"
       ],
       "branch": "feature/codex-core-005",
       "automation": true,
@@ -881,8 +894,7 @@
       "title": "Reserva e concorrência",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "VAC-001",
-        "CORE-001"
+        "VAC-001"
       ],
       "branch": "feature/codex-vac-002",
       "automation": true,
@@ -901,7 +913,8 @@
       "title": "Aprovação/rejeição/cancelamento",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "VAC-002"
+        "VAC-002",
+        "CORE-006"
       ],
       "branch": "feature/codex-vac-003",
       "automation": true,
@@ -939,6 +952,8 @@
       "title": "Portal e E2E férias",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
+        "VAC-001",
+        "VAC-002",
         "VAC-003",
         "VAC-004"
       ],
@@ -960,7 +975,8 @@
       "title": "Relação NF ↔ AP",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "FIN-002"
+        "FIN-004",
+        "CORE-001"
       ],
       "branch": "feature/codex-inv-001",
       "automation": true,
@@ -979,8 +995,7 @@
       "title": "Aprovação transacional",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "INV-001",
-        "CORE-001"
+        "INV-001"
       ],
       "branch": "feature/codex-inv-002",
       "automation": true,
@@ -999,7 +1014,7 @@
       "title": "Reembolso direto → AP",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "FIN-002"
+        "FIN-004"
       ],
       "branch": "feature/codex-rei-002",
       "automation": true,
@@ -1018,9 +1033,8 @@
       "title": "Inclusão/exclusão em NF transacional",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "INV-002",
-        "REI-002",
-        "CORE-001"
+        "CORE-001",
+        "INV-001"
       ],
       "branch": "feature/codex-rei-003",
       "automation": true,
@@ -1059,8 +1073,9 @@
       "title": "E2E NF→AP→pagamento",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "INV-003",
-        "FIN-005"
+        "INV-001",
+        "INV-002",
+        "INV-003"
       ],
       "branch": "feature/codex-inv-004",
       "automation": true,
@@ -1080,8 +1095,8 @@
       "title": "E2E e anti-duplicidade",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "REI-003",
-        "FIN-005"
+        "REI-002",
+        "REI-003"
       ],
       "branch": "feature/codex-rei-004",
       "automation": true,
@@ -1101,7 +1116,8 @@
       "title": "Responsáveis e estados de checklist",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "ACC-003"
+        "ACC-003",
+        "CORE-004"
       ],
       "branch": "feature/codex-lif-001",
       "automation": true,
@@ -1119,7 +1135,6 @@
       "title": "Offboarding integrado a acesso",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "LIF-001",
         "ACC-005"
       ],
       "branch": "feature/codex-lif-002",
@@ -1156,8 +1171,7 @@
       "title": "Gate sem Employee vinculado",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "ACC-003",
-        "ACC-002"
+        "ACC-003"
       ],
       "branch": "feature/codex-port-001",
       "automation": true,
@@ -1175,6 +1189,7 @@
       "title": "Escopos próprios/equipe",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
+        "ACC-003",
         "ACC-004"
       ],
       "branch": "feature/codex-acc-006",
@@ -1193,8 +1208,7 @@
       "title": "Own-scope security suite",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "ACC-006",
-        "PORT-001"
+        "ACC-006"
       ],
       "branch": "feature/codex-port-002",
       "automation": true,
@@ -1213,7 +1227,6 @@
       "title": "Classificação gerencial",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "ACC-006",
         "FIN-002"
       ],
       "branch": "feature/codex-rei-001",
@@ -1290,7 +1303,7 @@
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
         "EQP-001",
-        "LIF-001"
+        "CORE-004"
       ],
       "branch": "feature/codex-eqp-003",
       "automation": true,
@@ -1309,7 +1322,7 @@
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
         "EXT-001",
-        "LIF-001"
+        "CORE-004"
       ],
       "branch": "feature/codex-ext-002",
       "automation": true,
@@ -1345,7 +1358,7 @@
       "title": "Renovação e pendências",
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
-        "SAA-002",
+        "SAA-001",
         "CORE-004"
       ],
       "branch": "feature/codex-saa-003",
@@ -1364,10 +1377,9 @@
       "title": "Offboarding integrado a recursos",
       "doc": "docs/04-prd-pessoas-e-portal.md",
       "dependsOn": [
-        "LIF-002",
-        "EQP-003",
+        "EQP-001",
         "EXT-002",
-        "SAA-003"
+        "SAA-002"
       ],
       "branch": "feature/codex-lif-003",
       "automation": true,
@@ -1385,8 +1397,7 @@
       "title": "Segurança e nomenclatura",
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
-        "EXT-002",
-        "SEC-007"
+        "EXT-002"
       ],
       "branch": "feature/codex-ext-003",
       "automation": true,
@@ -1404,8 +1415,7 @@
       "title": "Security tests de download",
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
-        "DOC-002",
-        "SEC-004"
+        "DOC-001"
       ],
       "branch": "feature/codex-doc-004",
       "automation": true,
@@ -1441,8 +1451,8 @@
       "title": "Integração financeira opcional",
       "doc": "docs/05-prd-governanca.md",
       "dependsOn": [
-        "SAA-003",
-        "FIN-007"
+        "FIN-007",
+        "SAA-001"
       ],
       "branch": "feature/codex-saa-004",
       "automation": true,
@@ -1459,11 +1469,9 @@
       "id": "DOC-003",
       "title": "Retenção e orphan safety",
       "doc": "docs/05-prd-governanca.md",
-      "dependsOn": [
-        "DOC-002"
-      ],
+      "dependsOn": [],
       "branch": "feature/codex-doc-003",
-      "automation": true,
+      "automation": false,
       "gates": [
         "typecheck",
         "lint",
@@ -1496,8 +1504,7 @@
       "title": "Timeline humana compartilhada",
       "doc": "docs/01-prd-core-erp.md",
       "dependsOn": [
-        "CORE-004",
-        "CORE-006"
+        "CORE-004"
       ],
       "branch": "feature/codex-core-007",
       "automation": true,

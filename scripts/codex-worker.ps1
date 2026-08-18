@@ -114,7 +114,7 @@ function Run-GatesWithRepair {
     param([int]$MaxAttempts)
     for ($attempt = 0; $attempt -le $MaxAttempts; $attempt++) {
         Write-Host "[$Task] Gates (tentativa $($attempt + 1))..."
-        $ok = Invoke-TaskGates -WorktreePath $worktree -Gates @($taskDef.gates) -LogPath $gateLog
+        $ok = Invoke-TaskGates -WorktreePath $worktree -Gates @($taskDef.gates) -LogPath $gateLog -BaseRef $IntegrationBranch
         if ($ok) { return $true }
         if ($attempt -ge $MaxAttempts) { return $false }
 

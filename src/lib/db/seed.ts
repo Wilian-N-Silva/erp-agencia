@@ -1,5 +1,5 @@
 import { hashPassword } from "better-auth/crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { createRequire } from "node:module";
 
 import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
@@ -62,6 +62,7 @@ const organizationSeed = {
 type DemoUserKey = RoleKey | "all_roles";
 
 async function main() {
+  await assertAdministrativeSeedCredential();
   const organization = await seedOrganization();
   const roleByKey = await seedRoles();
   const permissionByKey = await seedPermissions();
@@ -112,9 +113,31 @@ async function main() {
   console.log(`- admin: ${adminUser?.email ?? "skipped"}`);
   console.log(
     shouldSeedDemo
-      ? `- demo users: ${Object.keys(demoUsers).length} (password: ${getDemoUserPassword()})`
+      ? `- demo users: ${Object.keys(demoUsers).length} (password configured via DEMO_USER_PASSWORD)`
       : "- demo data: skipped (set SEED_DEMO_DATA=true to enable)",
   );
+}
+
+async function assertAdministrativeSeedCredential() {
+  const result = await db.execute<{
+    currentUser: string;
+    isSuperuser: boolean;
+    bypassesRls: boolean;
+  }>(sql`
+    select
+      current_user as "currentUser",
+      rolsuper as "isSuperuser",
+      rolbypassrls as "bypassesRls"
+    from pg_roles
+    where rolname = current_user
+  `);
+  const credential = result.rows[0];
+
+  if (!credential || (!credential.bypassesRls && !credential.isSuperuser)) {
+    throw new Error(
+      "DATABASE_DIRECT_URL must use the controlled migration/seed role with BYPASSRLS (preferred) or, only when unavoidable, SUPERUSER. The runtime DATABASE_URL role must not be used for seed.",
+    );
+  }
 }
 
 async function seedOrganization() {
