@@ -31,6 +31,7 @@ import {
   Dropdown,
   EmptyState,
   KpiCard,
+  MaskedInput,
   MoneyInput,
   Sheet,
   StatusBadge,
@@ -50,7 +51,7 @@ import {
 import { assignEquipmentAction } from "@/features/equipment/actions";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { createLifecycleChecklistAction } from "@/features/lifecycle/actions";
-import { updateEmployeeAction } from "@/features/people/actions";
+import { createEmployeeAccessAction, updateEmployeeAction } from "@/features/people/actions";
 import { createReimbursementAction } from "@/features/portal/actions";
 import type { EmployeeStatus, EmploymentType } from "@/features/people/rules";
 import type {
@@ -78,6 +79,7 @@ type BadgeTone =
 
 type EmployeeView = {
   id: string;
+  userId: string | null;
   registrationNumber: string;
   fullName: string;
   socialName: string | null;
@@ -250,6 +252,7 @@ type AuditLogView = {
 
 type EmployeeDetailActions = {
   canAssignEquipment: boolean;
+  canCreateAccess: boolean;
   canEdit: boolean;
   canExportProfile: boolean;
   canRegisterReimbursement: boolean;
@@ -493,6 +496,25 @@ export function EmployeeDetailView({
               <span>Editar</span>
             </button>
           )}
+          {actions.canCreateAccess ? (
+            <ActionSheet
+              title="Criar acesso"
+              description="Crie o login do portal e vincule ao cadastro deste colaborador."
+              trigger={
+                <button className="fg-btn fg-btn-outline fg-btn-sm" type="button">
+                  <KeyRound size={14} aria-hidden />
+                  <span>Criar acesso</span>
+                </button>
+              }
+            >
+              <CreateAccessForm employee={employee} />
+            </ActionSheet>
+          ) : employee.userId ? (
+            <button className="fg-btn fg-btn-outline fg-btn-sm" type="button" disabled>
+              <KeyRound size={14} aria-hidden />
+              <span>Acesso ativo</span>
+            </button>
+          ) : null}
           {actions.canStartOffboarding ? (
             <ActionSheet
               title="Iniciar desligamento"
@@ -1764,6 +1786,37 @@ function safeFileName(value: string) {
     .slice(0, 80);
 }
 
+function CreateAccessForm({ employee }: { employee: EmployeeView }) {
+  return (
+    <form action={createEmployeeAccessAction} className="fg-form">
+      <input name="employeeId" type="hidden" value={employee.id} />
+
+      <Field label="Email de login" required>
+        <input
+          className="fg-input"
+          defaultValue={employee.corporateEmail ?? employee.personalEmail ?? ""}
+          maxLength={180}
+          name="email"
+          required
+          type="email"
+        />
+      </Field>
+      <Field label="Senha inicial" required>
+        <input className="fg-input" minLength={8} name="password" required type="password" />
+      </Field>
+      <div className="text-sm text-muted-foreground">
+        O usuario sera criado com o perfil Colaborador e vinculado a este cadastro.
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="fg-btn fg-btn-primary fg-btn-default" type="submit">
+          <KeyRound size={14} aria-hidden />
+          <span>Criar acesso</span>
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function EmployeeEditForm({
   employee,
   options,
@@ -1854,7 +1907,12 @@ function EmployeeEditForm({
 
       <div className="fg-form-row">
         <Field label="Telefone">
-          <input className="fg-input" defaultValue={employee.phone ?? ""} maxLength={40} name="phone" />
+          <MaskedInput
+            autoComplete="tel"
+            defaultValue={employee.phone}
+            mask="phone"
+            name="phone"
+          />
         </Field>
         <Field label="Localizacao">
           <input className="fg-input" defaultValue={employee.location ?? ""} maxLength={120} name="location" />
@@ -1863,7 +1921,7 @@ function EmployeeEditForm({
 
       <div className="fg-form-row">
         <Field label="CPF">
-          <input className="fg-input" defaultValue={employee.cpf ?? ""} maxLength={20} name="cpf" />
+          <MaskedInput defaultValue={employee.cpf} mask="cpf" name="cpf" />
         </Field>
         <Field label="RG">
           <input className="fg-input" defaultValue={employee.rg ?? ""} maxLength={30} name="rg" />

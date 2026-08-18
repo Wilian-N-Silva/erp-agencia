@@ -3,7 +3,7 @@ import {
   employmentTypeLabels,
   type EmployeeStatus,
 } from "@/features/people/rules";
-import { MoneyInput } from "@/components/fg";
+import { MaskedInput, MoneyInput } from "@/components/fg";
 
 export type EmployeeFormOptions = {
   areas: { id: string; name: string }[];
@@ -38,7 +38,10 @@ export function EmployeeCreateFields({
       <div className="grid gap-3 lg:grid-cols-4">
         <label className={fieldClassName}>
           Area
-          <select className={inputClassName} name="areaId" required>
+          <select className={inputClassName} name="areaId" required defaultValue="">
+            <option value="" disabled>
+              Selecione a area
+            </option>
             {options.areas.map((area) => (
               <option key={area.id} value={area.id}>
                 {area.name}
@@ -48,7 +51,10 @@ export function EmployeeCreateFields({
         </label>
         <label className={fieldClassName}>
           Cargo
-          <select className={inputClassName} name="positionId" required>
+          <select className={inputClassName} name="positionId" required defaultValue="">
+            <option value="" disabled>
+              Selecione o cargo
+            </option>
             {options.positions.map((position) => (
               <option key={position.id} value={position.id}>
                 {position.name}
@@ -126,7 +132,7 @@ export function EmployeeCreateFields({
         </label>
         <label className={fieldClassName}>
           Telefone
-          <input className={inputClassName} maxLength={40} name="phone" />
+          <MaskedInput autoComplete="tel" className={inputClassName} mask="phone" name="phone" />
         </label>
         <label className={fieldClassName}>
           Localizacao
@@ -137,7 +143,7 @@ export function EmployeeCreateFields({
       <div className="grid gap-3 lg:grid-cols-4">
         <label className={fieldClassName}>
           CPF
-          <input className={inputClassName} maxLength={20} name="cpf" />
+          <MaskedInput className={inputClassName} mask="cpf" name="cpf" />
         </label>
         <label className={fieldClassName}>
           RG

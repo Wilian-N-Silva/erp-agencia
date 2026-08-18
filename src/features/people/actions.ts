@@ -1,6 +1,8 @@
 "use server";
 
+import { hashPassword } from "better-auth/crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { Route } from "next";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -9,6 +11,7 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
+  accounts,
   areas,
   compensationHistory,
   employeeBenefits,
@@ -16,6 +19,9 @@ import {
   lifecycleChecklistItems,
   lifecycleChecklists,
   positions,
+  roles,
+  userRoles,
+  users,
 } from "@/lib/db/schema";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
@@ -26,6 +32,8 @@ import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
 import {
   employeeStatusLabels,
   employmentTypeLabels,
+  formatCpfInput,
+  formatPhoneInput,
   getCompensationDifference,
   getNextRegistrationNumber,
 } from "./rules";
@@ -49,8 +57,8 @@ const employeeBaseSchema = z.object({
   socialName: optionalTextSchema(120),
   corporateEmail: optionalEmailSchema(),
   personalEmail: optionalEmailSchema(),
-  phone: optionalTextSchema(40),
-  cpf: optionalTextSchema(20),
+  phone: optionalMaskedTextSchema(40, formatPhoneInput),
+  cpf: optionalMaskedTextSchema(20, formatCpfInput),
   rg: optionalTextSchema(30),
   birthDate: optionalDateSchema(),
   address: optionalTextSchema(300),
@@ -104,6 +112,12 @@ const createBenefitSchema = z.object({
 const endBenefitSchema = z.object({
   id: z.string().uuid(),
   employeeId: z.string().uuid(),
+});
+
+const createEmployeeAccessSchema = z.object({
+  employeeId: z.string().uuid(),
+  email: z.string().trim().toLowerCase().email().max(180),
+  password: z.string().min(8).max(200),
 });
 
 export async function createEmployeeAction(formData: FormData) {
@@ -255,6 +269,109 @@ export async function updateEmployeeAction(formData: FormData) {
 
   revalidatePath("/app/colaboradores");
   revalidatePath(`/app/colaboradores/${input.id}`);
+}
+
+export async function createEmployeeAccessAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  const input = createEmployeeAccessSchema.parse(formDataToObject(formData));
+  const before = await getEmployeeForWrite(input.employeeId, organizationId);
+
+  if (before.userId) {
+    throw new Error("Colaborador ja possui usuario vinculado.");
+  }
+
+  const [existingUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
+
+  if (existingUser) {
+    throw new Error("Ja existe um usuario com esse e-mail.");
+  }
+
+  const [employeeRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.key, "employee"))
+    .limit(1);
+
+  if (!employeeRole) {
+    throw new Error("Perfil Colaborador nao encontrado.");
+  }
+
+  const [user] = await db
+    .insert(users)
+    .values({
+      id: `user-${randomUUID()}`,
+      organizationId,
+      name: before.socialName || before.fullName,
+      email: input.email,
+      emailVerified: true,
+      isActive: true,
+    })
+    .returning();
+
+  const passwordHash = await hashPassword(input.password);
+
+  await db.insert(accounts).values({
+    id: `credential:${user.id}`,
+    userId: user.id,
+    accountId: user.id,
+    providerId: "credential",
+    password: passwordHash,
+  });
+
+  await db.insert(userRoles).values({
+    userId: user.id,
+    roleId: employeeRole.id,
+    assignedByUserId: context.userId,
+  });
+
+  const [after] = await db
+    .update(employees)
+    .set({
+      userId: user.id,
+      corporateEmail: before.corporateEmail ?? input.email,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(employees.id, input.employeeId),
+        eq(employees.organizationId, organizationId),
+        isNull(employees.deletedAt),
+      ),
+    )
+    .returning();
+
+  await writeAuditLog(context, {
+    action: "create",
+    entityType: "user",
+    entityId: user.id,
+    after: {
+      email: user.email,
+      employeeId: input.employeeId,
+      isActive: user.isActive,
+      name: user.name,
+      roleKeys: ["employee"],
+    },
+  });
+
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "employee",
+    entityId: input.employeeId,
+    before,
+    after,
+    metadata: {
+      section: "access",
+      userId: user.id,
+    },
+  });
+
+  revalidatePath("/app/configuracoes");
+  revalidatePath("/app/colaboradores");
+  revalidatePath(`/app/colaboradores/${input.employeeId}`);
 }
 
 export async function updateEmployeeCompensationAction(formData: FormData) {
@@ -423,6 +540,25 @@ async function requireCompensationWriterContext() {
   };
 }
 
+async function requireSettingsManagerContext() {
+  const context = await getCurrentAccessContext();
+
+  if (!context) {
+    redirect("/login");
+  }
+
+  assertCan("settings.manage", context);
+
+  if (!context.organizationId) {
+    throw new AccessDeniedError();
+  }
+
+  return {
+    context,
+    organizationId: context.organizationId,
+  };
+}
+
 async function requirePeopleWriterWithCompensationContext() {
   const result = await requirePeopleWriterContext();
 
@@ -521,6 +657,23 @@ function optionalTextSchema(maxLength: number) {
     .max(maxLength)
     .optional()
     .transform((value) => value || null);
+}
+
+function optionalMaskedTextSchema(maxLength: number, formatter: (value: string) => string) {
+  return z
+    .string()
+    .trim()
+    .max(maxLength)
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return null;
+      }
+
+      const formatted = formatter(value);
+
+      return formatted || null;
+    });
 }
 
 function optionalDateSchema() {

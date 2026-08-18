@@ -132,6 +132,7 @@ export default async function EmployeeDetailPage({ params }: PageProps) {
     <EmployeeDetailView
       employee={{
         ...employee,
+        userId: employee.userId,
         managerEmployeeId: employee.managerEmployeeId ?? null,
         startDate: toDateKey(employee.startDate),
         endDate: employee.endDate ? toDateKey(employee.endDate) : null,
@@ -141,6 +142,7 @@ export default async function EmployeeDetailPage({ params }: PageProps) {
       options={options}
       actions={{
         canAssignEquipment: canManageEquipment && isActiveEmployee,
+        canCreateAccess: can("settings.manage", context) && isActiveEmployee && !employee.userId,
         canEdit: canWrite && Boolean(options),
         canExportProfile: true,
         canRegisterReimbursement:

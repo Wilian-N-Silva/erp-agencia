@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyPeopleFilters,
   canReadCompensationForTarget,
+  formatCpfInput,
+  formatPhoneInput,
   generateRegistrationNumber,
   getCompensationDifference,
   getNextRegistrationNumber,
@@ -50,6 +52,13 @@ describe("people and compensation rules", () => {
   it("computes compensation difference using integer cents", () => {
     expect(getCompensationDifference("5000.00", "5500.50")).toBe("500.50");
     expect(getCompensationDifference("5000.00", "4500.00")).toBe("-500.00");
+  });
+
+  it("formats CPF and phone inputs before persistence", () => {
+    expect(formatCpfInput("12345678901")).toBe("123.456.789-01");
+    expect(formatCpfInput("123.456.789-01")).toBe("123.456.789-01");
+    expect(formatPhoneInput("11987654321")).toBe("(11) 98765-4321");
+    expect(formatPhoneInput("1133334444")).toBe("(11) 3333-4444");
   });
 
   it("redacts compensation for users without compensation permission", () => {

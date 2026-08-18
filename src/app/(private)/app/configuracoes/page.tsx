@@ -120,7 +120,7 @@ function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
         Senha inicial
         <input className={inputClassName} minLength={8} name="password" required type="password" />
       </label>
-      <RoleCheckboxGrid roles={roles} selected={[]} />
+      <RoleCheckboxGrid roles={roles} selected={["employee"]} />
       <div className="flex justify-end">
         <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
           <UserPlus className="size-4" aria-hidden="true" />

@@ -1,0 +1,1572 @@
+{
+  "version": 1,
+  "baseBranch": "development",
+  "integrationBranch": "feature/codex-integration",
+  "notes": "Catálogo operacional do orquestrador. PRDs continuam sendo a fonte de requisitos; este arquivo só descreve ordem, dependências e automação.",
+  "tasks": [
+    {
+      "id": "DOCS-001",
+      "title": "Adotar documentação v2",
+      "doc": "docs/README.md",
+      "dependsOn": [],
+      "branch": "feature/codex-docs-001",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": true,
+      "candidateBranches": [
+        "chore/docs-v2"
+      ],
+      "order": 1
+    },
+    {
+      "id": "SEC-001",
+      "title": "Runtime DB transacional para RLS",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "DOCS-001"
+      ],
+      "branch": "feature/codex-sec-001",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": true,
+      "candidateBranches": [
+        "feature/security-db-runtime",
+        "feature/task-sec-001",
+        "feature/codex-sec-001"
+      ],
+      "order": 2
+    },
+    {
+      "id": "SEC-002",
+      "title": "App DB role e tenant context helper",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "SEC-001"
+      ],
+      "branch": "feature/codex-sec-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 3
+    },
+    {
+      "id": "SEC-003",
+      "title": "Policies RLS baseline",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "SEC-002"
+      ],
+      "branch": "feature/codex-sec-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 4
+    },
+    {
+      "id": "SEC-004",
+      "title": "RLS security suite",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "SEC-003"
+      ],
+      "branch": "feature/codex-sec-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 5
+    },
+    {
+      "id": "SEC-005",
+      "title": "Rate limit foundation",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "SEC-002"
+      ],
+      "branch": "feature/codex-sec-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 6
+    },
+    {
+      "id": "SEC-006",
+      "title": "Aplicar limites aos fluxos críticos",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "SEC-005"
+      ],
+      "branch": "feature/codex-sec-006",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 7
+    },
+    {
+      "id": "CORE-001",
+      "title": "Contrato transacional compartilhado",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "SEC-001",
+        "SEC-002"
+      ],
+      "branch": "feature/codex-core-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 8
+    },
+    {
+      "id": "ACC-001",
+      "title": "Pré-autorização e invites",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "SEC-003",
+        "SEC-005"
+      ],
+      "branch": "feature/codex-acc-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 9
+    },
+    {
+      "id": "ACC-002",
+      "title": "Status de usuário e gate real",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-001"
+      ],
+      "branch": "feature/codex-acc-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 10
+    },
+    {
+      "id": "ACC-003",
+      "title": "Vínculo User ↔ Employee",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-002"
+      ],
+      "branch": "feature/codex-acc-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 11
+    },
+    {
+      "id": "ACC-004",
+      "title": "RBAC DB como fonte de verdade",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-002",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-acc-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 12
+    },
+    {
+      "id": "ACC-005",
+      "title": "Revogação de sessão",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-002"
+      ],
+      "branch": "feature/codex-acc-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 13
+    },
+    {
+      "id": "SEC-007",
+      "title": "Audit de validação e mass-assignment",
+      "doc": "docs/06-security-and-rls.md",
+      "dependsOn": [
+        "ACC-004"
+      ],
+      "branch": "feature/codex-sec-007",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 14
+    },
+    {
+      "id": "CORE-002",
+      "title": "Cliente independente de fee",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-001",
+        "SEC-003"
+      ],
+      "branch": "feature/codex-core-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 15
+    },
+    {
+      "id": "CORE-004",
+      "title": "Pendências v2",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-001",
+        "SEC-003"
+      ],
+      "branch": "feature/codex-core-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 16
+    },
+    {
+      "id": "FIN-001",
+      "title": "Normalizar conceitos e status de AR/AP",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "CORE-001",
+        "SEC-003"
+      ],
+      "branch": "feature/codex-fin-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 17
+    },
+    {
+      "id": "FIN-002",
+      "title": "Master data financeiro e fornecedores",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-001"
+      ],
+      "branch": "feature/codex-fin-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 18
+    },
+    {
+      "id": "FIN-003",
+      "title": "Movimentações financeiras",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-002"
+      ],
+      "branch": "feature/codex-fin-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 19
+    },
+    {
+      "id": "FIN-004",
+      "title": "Alocações many-to-many",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-003"
+      ],
+      "branch": "feature/codex-fin-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 20
+    },
+    {
+      "id": "FIN-005",
+      "title": "Liquidação parcial e conciliação",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-004",
+        "CORE-004"
+      ],
+      "branch": "feature/codex-fin-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 21
+    },
+    {
+      "id": "CORE-006",
+      "title": "Padrão de estados e correções",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-001"
+      ],
+      "branch": "feature/codex-core-006",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 22
+    },
+    {
+      "id": "FIN-006",
+      "title": "Estorno e correções",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-005",
+        "CORE-006"
+      ],
+      "branch": "feature/codex-fin-006",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 23
+    },
+    {
+      "id": "GRF-001",
+      "title": "Schema base de Trabalhos e Projetos",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "SEC-003",
+        "CORE-001",
+        "FIN-002"
+      ],
+      "branch": "feature/codex-grf-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 24
+    },
+    {
+      "id": "GRF-002",
+      "title": "Tela/listagem/detalhe de Trabalho",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-001"
+      ],
+      "branch": "feature/codex-grf-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 25
+    },
+    {
+      "id": "GRF-003",
+      "title": "Cotações de fornecedores",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-001",
+        "FIN-002"
+      ],
+      "branch": "feature/codex-grf-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 26
+    },
+    {
+      "id": "GRF-004",
+      "title": "Aprovação interna de cotação",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-003",
+        "ACC-004"
+      ],
+      "branch": "feature/codex-grf-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 27
+    },
+    {
+      "id": "DOC-001",
+      "title": "Generalizar owner types",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SEC-003"
+      ],
+      "branch": "feature/codex-doc-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 28
+    },
+    {
+      "id": "DOC-002",
+      "title": "Helper de anexos por domínio",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "DOC-001",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-doc-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 29
+    },
+    {
+      "id": "GRF-005",
+      "title": "Registro de OS e documento",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-004",
+        "DOC-002"
+      ],
+      "branch": "feature/codex-grf-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 30
+    },
+    {
+      "id": "GRF-006",
+      "title": "Aprovação do cliente",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-005"
+      ],
+      "branch": "feature/codex-grf-006",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 31
+    },
+    {
+      "id": "GRF-007",
+      "title": "Produção, bloqueio e entrega",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-006",
+        "CORE-004"
+      ],
+      "branch": "feature/codex-grf-007",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 32
+    },
+    {
+      "id": "GRF-008",
+      "title": "Compromisso fornecedor → AP",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-006",
+        "FIN-004"
+      ],
+      "branch": "feature/codex-grf-008",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 33
+    },
+    {
+      "id": "GRF-009",
+      "title": "Venda aprovada → AR",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-006",
+        "FIN-004"
+      ],
+      "branch": "feature/codex-grf-009",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 34
+    },
+    {
+      "id": "GRF-010",
+      "title": "Resumo financeiro do Trabalho",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-008",
+        "GRF-009",
+        "FIN-005"
+      ],
+      "branch": "feature/codex-grf-010",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 35
+    },
+    {
+      "id": "GRF-011",
+      "title": "Sugestão de conciliação por Gráfica",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-010",
+        "FIN-005"
+      ],
+      "branch": "feature/codex-grf-011",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 36
+    },
+    {
+      "id": "GRF-012",
+      "title": "Dashboard da Gráfica",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-010"
+      ],
+      "branch": "feature/codex-grf-012",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 37
+    },
+    {
+      "id": "GRF-013",
+      "title": "Importador histórico",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-006"
+      ],
+      "branch": "feature/codex-grf-013",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 38
+    },
+    {
+      "id": "GRF-014",
+      "title": "E2E do fluxo completo",
+      "doc": "docs/03-prd-grafica.md",
+      "dependsOn": [
+        "GRF-011",
+        "GRF-012",
+        "GRF-013"
+      ],
+      "branch": "feature/codex-grf-014",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 39
+    },
+    {
+      "id": "FIN-007",
+      "title": "Provisões e recorrências v2",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-006"
+      ],
+      "branch": "feature/codex-fin-007",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 40
+    },
+    {
+      "id": "FIN-008",
+      "title": "Documentos e comprovantes financeiros",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-006",
+        "DOC-002"
+      ],
+      "branch": "feature/codex-fin-008",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 41
+    },
+    {
+      "id": "FIN-009",
+      "title": "Relatórios competência/caixa/AR/AP",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-006"
+      ],
+      "branch": "feature/codex-fin-009",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 42
+    },
+    {
+      "id": "FIN-010",
+      "title": "Compatibilidade e deprecação do fluxo antigo",
+      "doc": "docs/02-prd-financeiro.md",
+      "dependsOn": [
+        "FIN-007",
+        "FIN-008",
+        "FIN-009"
+      ],
+      "branch": "feature/codex-fin-010",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 43
+    },
+    {
+      "id": "CORE-005",
+      "title": "Dashboard orientado a ação",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-004",
+        "FIN-009",
+        "GRF-012"
+      ],
+      "branch": "feature/codex-core-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 44
+    },
+    {
+      "id": "VAC-001",
+      "title": "Modelo de saldo por período",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "SEC-003",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-vac-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 45
+    },
+    {
+      "id": "VAC-002",
+      "title": "Reserva e concorrência",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "VAC-001",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-vac-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 46
+    },
+    {
+      "id": "VAC-003",
+      "title": "Aprovação/rejeição/cancelamento",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "VAC-002"
+      ],
+      "branch": "feature/codex-vac-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 47
+    },
+    {
+      "id": "VAC-004",
+      "title": "Overlap e venda de dias",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "VAC-002"
+      ],
+      "branch": "feature/codex-vac-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 48
+    },
+    {
+      "id": "VAC-005",
+      "title": "Portal e E2E férias",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "VAC-003",
+        "VAC-004"
+      ],
+      "branch": "feature/codex-vac-005",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 49
+    },
+    {
+      "id": "INV-001",
+      "title": "Relação NF ↔ AP",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "FIN-002"
+      ],
+      "branch": "feature/codex-inv-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 50
+    },
+    {
+      "id": "INV-002",
+      "title": "Aprovação transacional",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "INV-001",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-inv-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 51
+    },
+    {
+      "id": "REI-002",
+      "title": "Reembolso direto → AP",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "FIN-002"
+      ],
+      "branch": "feature/codex-rei-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 52
+    },
+    {
+      "id": "REI-003",
+      "title": "Inclusão/exclusão em NF transacional",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "INV-002",
+        "REI-002",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-rei-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 53
+    },
+    {
+      "id": "INV-003",
+      "title": "Remover estado financeiro duplicado",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "INV-002",
+        "FIN-005"
+      ],
+      "branch": "feature/codex-inv-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 54
+    },
+    {
+      "id": "INV-004",
+      "title": "E2E NF→AP→pagamento",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "INV-003",
+        "FIN-005"
+      ],
+      "branch": "feature/codex-inv-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 55
+    },
+    {
+      "id": "REI-004",
+      "title": "E2E e anti-duplicidade",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "REI-003",
+        "FIN-005"
+      ],
+      "branch": "feature/codex-rei-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 56
+    },
+    {
+      "id": "LIF-001",
+      "title": "Responsáveis e estados de checklist",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-003"
+      ],
+      "branch": "feature/codex-lif-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 57
+    },
+    {
+      "id": "LIF-002",
+      "title": "Offboarding integrado a acesso",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "LIF-001",
+        "ACC-005"
+      ],
+      "branch": "feature/codex-lif-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 58
+    },
+    {
+      "id": "LIF-004",
+      "title": "Bloquear bypass de termination",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "LIF-002"
+      ],
+      "branch": "feature/codex-lif-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 59
+    },
+    {
+      "id": "PORT-001",
+      "title": "Gate sem Employee vinculado",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-003",
+        "ACC-002"
+      ],
+      "branch": "feature/codex-port-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 60
+    },
+    {
+      "id": "ACC-006",
+      "title": "Escopos próprios/equipe",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-004"
+      ],
+      "branch": "feature/codex-acc-006",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 61
+    },
+    {
+      "id": "PORT-002",
+      "title": "Own-scope security suite",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-006",
+        "PORT-001"
+      ],
+      "branch": "feature/codex-port-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 62
+    },
+    {
+      "id": "REI-001",
+      "title": "Classificação gerencial",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "ACC-006",
+        "FIN-002"
+      ],
+      "branch": "feature/codex-rei-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 63
+    },
+    {
+      "id": "EQP-001",
+      "title": "Histórico de assignments",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SEC-003",
+        "CORE-001"
+      ],
+      "branch": "feature/codex-eqp-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 64
+    },
+    {
+      "id": "EXT-001",
+      "title": "Catálogo de ferramentas",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SEC-003"
+      ],
+      "branch": "feature/codex-ext-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 65
+    },
+    {
+      "id": "SAA-001",
+      "title": "Modelo SaaS v2",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SEC-003",
+        "FIN-002"
+      ],
+      "branch": "feature/codex-saa-001",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 66
+    },
+    {
+      "id": "EQP-003",
+      "title": "Integração lifecycle de equipamentos",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "EQP-001",
+        "LIF-001"
+      ],
+      "branch": "feature/codex-eqp-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 67
+    },
+    {
+      "id": "EXT-002",
+      "title": "Histórico/revisão de acesso externo",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "EXT-001",
+        "LIF-001"
+      ],
+      "branch": "feature/codex-ext-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 68
+    },
+    {
+      "id": "SAA-002",
+      "title": "Seats e assignments",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SAA-001"
+      ],
+      "branch": "feature/codex-saa-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 69
+    },
+    {
+      "id": "SAA-003",
+      "title": "Renovação e pendências",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SAA-002",
+        "CORE-004"
+      ],
+      "branch": "feature/codex-saa-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 70
+    },
+    {
+      "id": "LIF-003",
+      "title": "Offboarding integrado a recursos",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "LIF-002",
+        "EQP-003",
+        "EXT-002",
+        "SAA-003"
+      ],
+      "branch": "feature/codex-lif-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 71
+    },
+    {
+      "id": "EXT-003",
+      "title": "Segurança e nomenclatura",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "EXT-002",
+        "SEC-007"
+      ],
+      "branch": "feature/codex-ext-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 72
+    },
+    {
+      "id": "DOC-004",
+      "title": "Security tests de download",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "DOC-002",
+        "SEC-004"
+      ],
+      "branch": "feature/codex-doc-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 73
+    },
+    {
+      "id": "EQP-002",
+      "title": "Condição, local e garantia",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "EQP-001"
+      ],
+      "branch": "feature/codex-eqp-002",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 74
+    },
+    {
+      "id": "SAA-004",
+      "title": "Integração financeira opcional",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "SAA-003",
+        "FIN-007"
+      ],
+      "branch": "feature/codex-saa-004",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 75
+    },
+    {
+      "id": "DOC-003",
+      "title": "Retenção e orphan safety",
+      "doc": "docs/05-prd-governanca.md",
+      "dependsOn": [
+        "DOC-002"
+      ],
+      "branch": "feature/codex-doc-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 76
+    },
+    {
+      "id": "CORE-003",
+      "title": "Contatos de cliente",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-002"
+      ],
+      "branch": "feature/codex-core-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 77
+    },
+    {
+      "id": "CORE-007",
+      "title": "Timeline humana compartilhada",
+      "doc": "docs/01-prd-core-erp.md",
+      "dependsOn": [
+        "CORE-004",
+        "CORE-006"
+      ],
+      "branch": "feature/codex-core-007",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 78
+    },
+    {
+      "id": "PORT-003",
+      "title": "Atualização do manual do portal",
+      "doc": "docs/04-prd-pessoas-e-portal.md",
+      "dependsOn": [
+        "PORT-002"
+      ],
+      "branch": "feature/codex-port-003",
+      "automation": true,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 79
+    },
+    {
+      "id": "OPS-001",
+      "title": "Migration from zero + upgrade drill",
+      "doc": "docs/09-migration-rollout.md",
+      "dependsOn": [
+        "FIN-010",
+        "GRF-014",
+        "VAC-005",
+        "INV-004",
+        "REI-004",
+        "DOC-004"
+      ],
+      "branch": "feature/codex-ops-001",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 80
+    },
+    {
+      "id": "OPS-002",
+      "title": "Backup/restore drill real",
+      "doc": "docs/runbooks/backup-restore.md",
+      "dependsOn": [
+        "OPS-001"
+      ],
+      "branch": "feature/codex-ops-002",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 81
+    },
+    {
+      "id": "OPS-003",
+      "title": "Staging E2E por não-dev",
+      "doc": "docs/runbooks/staging-setup.md",
+      "dependsOn": [
+        "OPS-001"
+      ],
+      "branch": "feature/codex-ops-003",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 82
+    },
+    {
+      "id": "OPS-004",
+      "title": "Release candidate",
+      "doc": "docs/08-codex-execution-plan.md",
+      "dependsOn": [
+        "OPS-001",
+        "OPS-002",
+        "OPS-003"
+      ],
+      "branch": "feature/codex-ops-004",
+      "automation": false,
+      "gates": [
+        "typecheck",
+        "lint",
+        "test",
+        "build",
+        "test:e2e"
+      ],
+      "seeded": false,
+      "candidateBranches": [],
+      "order": 83
+    }
+  ]
+}
