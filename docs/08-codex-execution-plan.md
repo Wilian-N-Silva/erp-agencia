@@ -28,7 +28,7 @@ Uma task está `ready` somente quando:
 
 | ID | Task | Status | Branch |
 |---|---|---|---|
-| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `ready` | `chore/docs-v2` |
+| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `done` | `chore/docs-v2` |
 
 ### DOCS-001 — Adotar documentação v2
 
@@ -46,8 +46,8 @@ Ordem majoritariamente serial.
 
 | Ordem | ID | Documento | Dependências | Branch | Status inicial |
 |---:|---|---|---|---|---|
-| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | blocked |
-| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | blocked |
+| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | done |
+| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | ready |
 | 3 | SEC-003 | 06 | SEC-002 | `feature/security-rls-baseline` | blocked |
 | 4 | SEC-004 | 06 | SEC-003 | `test/security-rls-cross-tenant` | blocked |
 | 5 | SEC-005 | 06 | SEC-002 | `feature/security-rate-limit` | blocked |
