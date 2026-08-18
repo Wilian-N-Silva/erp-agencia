@@ -7,9 +7,8 @@ Base inicial para o sistema interno descrito em `docs/PRD-Sistema-Interno-FG-v1.
 - Next.js App Router
 - React
 - shadcn/ui + Tailwind CSS
-- PostgreSQL Neon Serverless
-- Drizzle ORM
-- pg for local Drizzle migration validation
+- PostgreSQL 17 (Neon em produção e Docker local)
+- Drizzle ORM + node-postgres para o runtime transacional
 - Better Auth
 - Vitest
 
@@ -52,12 +51,24 @@ Para validar migrations localmente com Docker, use uma URL como:
 postgres://erp:erp@localhost:55432/erp_agencia
 ```
 
+Para validar o isolamento transacional exigido pelo runtime, configure
+`DATABASE_TEST_URL` com um banco descartável e execute:
+
+```text
+npm.cmd run test:db
+```
+
+Repita essa validação com uma URL pooled de um branch Neon de teste antes de
+promover uma mudança de runtime. Nunca aponte `DATABASE_TEST_URL` para dados de
+staging ou produção.
+
 ## Validacao
 
 ```text
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd run test
+npm.cmd run test:db
 npm.cmd run build
 ```
 
