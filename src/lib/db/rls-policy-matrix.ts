@@ -1,0 +1,49 @@
+export const directTenantPolicyTables = [
+  "access_records",
+  "alerts",
+  "app_settings",
+  "areas",
+  "audit_logs",
+  "client_billing_profiles",
+  "client_payment_reminders",
+  "clients",
+  "compensation_history",
+  "documents",
+  "employee_benefits",
+  "employees",
+  "equipment",
+  "files",
+  "financial_entries",
+  "financial_expenses",
+  "invoice_requests",
+  "lifecycle_checklists",
+  "positions",
+  "provisions",
+  "reimbursement_requests",
+  "saas_subscriptions",
+  "time_off_requests",
+  "vacation_balances",
+] as const;
+
+export const inheritedTenantPolicyTables = {
+  invoice_request_items: "invoice_requests",
+  lifecycle_checklist_items: "lifecycle_checklists",
+  saas_subscription_users: "saas_subscriptions",
+} as const;
+
+export const rlsExemptTables = {
+  account: "Better Auth bootstrap table",
+  organizations: "organization bootstrap before tenant context exists",
+  permissions: "global RBAC catalog",
+  role_permissions: "global RBAC catalog relationship",
+  roles: "global RBAC catalog",
+  session: "Better Auth bootstrap table",
+  user: "Better Auth identity table used before tenant context exists",
+  user_roles: "RBAC bootstrap relationship used to build AccessContext",
+  verification: "Better Auth bootstrap table",
+} as const;
+
+export const tenantPolicyTables = [
+  ...directTenantPolicyTables,
+  ...Object.keys(inheritedTenantPolicyTables),
+] as const;
