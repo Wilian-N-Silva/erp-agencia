@@ -66,6 +66,7 @@ function Test-ProducedWork {
 function Invoke-CodexTolerant {
     param([string]$Prompt, [string]$OutputFile, [string]$Phase)
     $exitCode = Invoke-CodexExec -WorkingDirectory $worktree -Prompt $Prompt -OutputFile $OutputFile -Sandbox "workspace-write" -Model $Model
+    if ($exitCode -isnot [int]) { throw "Invoke-CodexExec retornou um valor invalido em vez de exit code inteiro." }
     if ($exitCode -eq 0) { return $true }
     if (Test-ProducedWork) {
         Write-Warning "[$Task] Codex retornou exit code $exitCode em '$Phase', mas produziu alteracoes. Continuando para os gates."

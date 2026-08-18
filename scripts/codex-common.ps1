@@ -175,8 +175,15 @@ function Invoke-CodexExec {
     $args += $Prompt
     Push-Location $WorkingDirectory
     try {
-        & codex @args
-        return $LASTEXITCODE
+        # Native command stdout must not become part of this function's return value.
+        # Out-Host keeps the Codex stream visible while the function returns only
+        # the integer process exit code to callers.
+        & codex @args 2>&1 | Out-Host
+        $exitCode = $LASTEXITCODE
+        if ($null -eq $exitCode) {
+            throw "Codex terminou sem fornecer exit code."
+        }
+        return [int]$exitCode
     }
     finally { Pop-Location }
 }
