@@ -136,10 +136,134 @@ function Ensure-LocalExclude {
     }
 }
 
+function ConvertTo-WindowsCommandLineArgument {
+    param([AllowEmptyString()][string]$Argument)
+
+    if ($null -eq $Argument -or $Argument.Length -eq 0) { return '""' }
+    if ($Argument -notmatch '[\s"]') { return $Argument }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+
+    foreach ($char in $Argument.ToCharArray()) {
+        if ($char -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($char -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+            }
+            [void]$builder.Append('\"')
+            $backslashes = 0
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+        [void]$builder.Append($char)
+    }
+
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Get-NativeCommandPath {
+    param([string]$CommandName)
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $command) { throw "Comando '$CommandName' nao encontrado no PATH." }
+
+    if ($command.CommandType -eq 'Application') {
+        return $command.Source
+    }
+
+    throw "'$CommandName' precisa resolver para um executavel nativo. Resolvido como $($command.CommandType): $($command.Source)"
+}
+
+function New-NativeProcessStartInfo {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FileName
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $false
+    if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
+    $psi.Arguments = (($Arguments | ForEach-Object { ConvertTo-WindowsCommandLineArgument $_ }) -join ' ')
+    return $psi
+}
+
+function Invoke-NativeCaptureProcess {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory = ""
+    )
+
+    $psi = New-NativeProcessStartInfo -FileName $FileName -Arguments $Arguments -WorkingDirectory $WorkingDirectory
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Falha ao iniciar '$FileName'." }
+
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdoutTask.Wait()
+    $stderrTask.Wait()
+
+    return [pscustomobject]@{
+        ExitCode = [int]$process.ExitCode
+        StdOut   = [string]$stdoutTask.Result
+        StdErr   = [string]$stderrTask.Result
+    }
+}
+
+function Invoke-NativeConsoleProcess {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory = ""
+    )
+
+    # Do not pipe native stdout/stderr through PowerShell. Windows PowerShell 5.1
+    # can promote native stderr to NativeCommandError when ErrorActionPreference=Stop.
+    # Inheriting the console keeps Codex output live and leaves failure detection to
+    # the real native process ExitCode.
+    $psi = New-NativeProcessStartInfo -FileName $FileName -Arguments $Arguments -WorkingDirectory $WorkingDirectory
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Falha ao iniciar '$FileName'." }
+    $process.WaitForExit()
+    return [int]$process.ExitCode
+}
+
+function Get-CodexHelpText {
+    param([string[]]$Arguments)
+    $codexPath = Get-NativeCommandPath -CommandName "codex"
+    $result = Invoke-NativeCaptureProcess -FileName $codexPath -Arguments $Arguments
+    if ($result.ExitCode -ne 0) {
+        throw "codex $($Arguments -join ' ') falhou com exit code $($result.ExitCode).`n$($result.StdErr)"
+    }
+    return ($result.StdOut + "`n" + $result.StdErr)
+}
+
 function Get-CodexBaseArgs {
     param([ValidateSet("workspace-write","read-only")][string]$Sandbox, [string]$Model)
-    $topHelp = (& codex --help 2>&1 | Out-String)
-    $execHelp = (& codex exec --help 2>&1 | Out-String)
+    $topHelp = Get-CodexHelpText -Arguments @("--help")
+    $execHelp = Get-CodexHelpText -Arguments @("exec", "--help")
     $args = @()
     if ($topHelp -match "--ask-for-approval" -or $topHelp -match "-a,") {
         $args += @("-a", "never")
@@ -158,11 +282,10 @@ function Invoke-CodexExec {
         [ValidateSet("workspace-write","read-only")][string]$Sandbox = "workspace-write",
         [string]$Model = ""
     )
-    if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
-        throw "Comando 'codex' nao encontrado no PATH."
-    }
+
+    $codexPath = Get-NativeCommandPath -CommandName "codex"
     $args = Get-CodexBaseArgs -Sandbox $Sandbox -Model $Model
-    $execHelp = (& codex exec --help 2>&1 | Out-String)
+    $execHelp = Get-CodexHelpText -Arguments @("exec", "--help")
     if ($OutputFile) {
         New-Item -ItemType Directory -Force -Path (Split-Path $OutputFile -Parent) | Out-Null
         if ($execHelp -match "--output-last-message") {
@@ -173,19 +296,10 @@ function Invoke-CodexExec {
         }
     }
     $args += $Prompt
-    Push-Location $WorkingDirectory
-    try {
-        # Native command stdout must not become part of this function's return value.
-        # Out-Host keeps the Codex stream visible while the function returns only
-        # the integer process exit code to callers.
-        & codex @args 2>&1 | Out-Host
-        $exitCode = $LASTEXITCODE
-        if ($null -eq $exitCode) {
-            throw "Codex terminou sem fornecer exit code."
-        }
-        return [int]$exitCode
-    }
-    finally { Pop-Location }
+
+    $exitCode = Invoke-NativeConsoleProcess -FileName $codexPath -Arguments $args -WorkingDirectory $WorkingDirectory
+    if ($null -eq $exitCode) { throw "Codex terminou sem fornecer exit code." }
+    return [int]$exitCode
 }
 
 function Get-NpmCommand {
