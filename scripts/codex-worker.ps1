@@ -36,6 +36,23 @@ $existingDirty = Test-WorktreeHasChanges -Path $worktree
 $existingAhead = Get-CommitAheadCount -Path $worktree -BaseRef $IntegrationBranch
 $resumeExisting = $existingDirty -or ($existingAhead -gt 0)
 
+# A task branch can have been created by an earlier failed orchestration before
+# dependencies were integrated. If it has no work of its own, safely refresh it
+# to the current integration HEAD. Never reset branches with dirty files or
+# commits ahead of integration.
+if (-not $resumeExisting) {
+    $integrationIsAncestor = Test-GitAncestor -RepoRoot $repoRoot -Ancestor $IntegrationBranch -Descendant $branch
+    if (-not $integrationIsAncestor) {
+        Write-Host "[$Task] Branch limpa e nao iniciada esta desatualizada; reposicionando em $IntegrationBranch..." -ForegroundColor Yellow
+        Push-Location $worktree
+        try {
+            & git reset --hard $IntegrationBranch
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar branch $branch para $IntegrationBranch." }
+        }
+        finally { Pop-Location }
+    }
+}
+
 $runDir = Join-Path $repoRoot ".codex-orchestrator/workers/$($Task.ToLowerInvariant())"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"

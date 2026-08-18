@@ -80,6 +80,23 @@ function Test-GitAncestor {
     finally { Pop-Location }
 }
 
+function Test-TaskIntegrationMarker {
+    param(
+        [string]$RepoRoot,
+        [string]$IntegrationBranch,
+        [string]$TaskId
+    )
+    if (-not (Test-GitRef -RepoRoot $RepoRoot -Ref "refs/heads/$IntegrationBranch")) { return $false }
+    Push-Location $RepoRoot
+    try {
+        $subject = "merge(codex): integrate $TaskId"
+        $matches = @(& git log $IntegrationBranch --fixed-strings --grep=$subject --format=%s 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        return ($matches -contains $subject)
+    }
+    finally { Pop-Location }
+}
+
 function Get-TaskCatalog {
     param([string]$RepoRoot, [string]$CatalogPath = "docs/codex/tasks.json")
     $full = Join-Path $RepoRoot $CatalogPath

@@ -113,9 +113,7 @@ function Get-TaskRef {
 function Test-TaskIntegrated {
     param($TaskDef)
     if ($TaskDef.seeded) { return $true }
-    $ref = Get-TaskRef -TaskDef $TaskDef
-    if (-not $ref) { return $false }
-    return (Test-GitAncestor -RepoRoot $repoRoot -Ancestor $ref -Descendant $IntegrationBranch)
+    return (Test-TaskIntegrationMarker -RepoRoot $repoRoot -IntegrationBranch $IntegrationBranch -TaskId ([string]$TaskDef.id))
 }
 
 function Test-DependenciesIntegrated {
