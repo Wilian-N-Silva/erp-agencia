@@ -315,11 +315,20 @@ function Initialize-CodexTestDatabase {
         [string]$DatabaseName = $(if ($env:CODEX_TEST_DB_NAME) { $env:CODEX_TEST_DB_NAME } else { "erp_agencia_test" }),
         [string]$DatabaseUser = $(if ($env:CODEX_TEST_DB_USER) { $env:CODEX_TEST_DB_USER } else { "erp" }),
         [string]$DatabasePassword = $(if ($env:CODEX_TEST_DB_PASSWORD) { $env:CODEX_TEST_DB_PASSWORD } else { "erp" }),
+        [string]$MigratorRole = $(if ($env:CODEX_TEST_MIGRATOR_ROLE) { $env:CODEX_TEST_MIGRATOR_ROLE } else { "codex_test_migrator" }),
+        [string]$MigratorPassword = $(if ($env:CODEX_TEST_MIGRATOR_PASSWORD) { $env:CODEX_TEST_MIGRATOR_PASSWORD } else { [Guid]::NewGuid().ToString("N") }),
+        [string]$AppRole = $(if ($env:CODEX_TEST_APP_ROLE) { $env:CODEX_TEST_APP_ROLE } else { "codex_test_app" }),
+        [string]$AppPassword = $(if ($env:CODEX_TEST_APP_PASSWORD) { $env:CODEX_TEST_APP_PASSWORD } else { [Guid]::NewGuid().ToString("N") }),
         [int]$HostPort = $(if ($env:CODEX_TEST_DB_PORT) { [int]$env:CODEX_TEST_DB_PORT } else { 55432 })
     )
 
     if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_NAME invalido." }
     if ($DatabaseUser -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_USER invalido." }
+    if ($MigratorRole -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_MIGRATOR_ROLE invalido." }
+    if ($AppRole -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_APP_ROLE invalido." }
+    if ($MigratorRole -eq $AppRole) { throw "As roles de migracao e runtime devem ser diferentes." }
+    if (-not $MigratorPassword -or $MigratorPassword -match "[`r`n`0]") { throw "CODEX_TEST_MIGRATOR_PASSWORD invalido." }
+    if (-not $AppPassword -or $AppPassword -match "[`r`n`0]") { throw "CODEX_TEST_APP_PASSWORD invalido." }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker nao encontrado no PATH." }
 
     $running = (& docker inspect -f "{{.State.Running}}" $ContainerName 2>$null | Out-String).Trim()
@@ -344,13 +353,48 @@ function Initialize-CodexTestDatabase {
     Write-Host "Test DB: resetando $DatabaseName..." -ForegroundColor DarkCyan
     & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DatabaseName WITH (FORCE);"
     if ($LASTEXITCODE -ne 0) { throw "Falha ao remover DB de teste '$DatabaseName'." }
-    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DatabaseName;"
+
+    $migratorPasswordSql = $MigratorPassword.Replace("'", "''")
+    $appPasswordSql = $AppPassword.Replace("'", "''")
+    $roleSql = @"
+DO `$`$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$MigratorRole') THEN
+        CREATE ROLE $MigratorRole;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$AppRole') THEN
+        CREATE ROLE $AppRole;
+    END IF;
+END
+`$`$;
+ALTER ROLE $MigratorRole WITH LOGIN PASSWORD '$migratorPasswordSql' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;
+ALTER ROLE $AppRole WITH LOGIN PASSWORD '$appPasswordSql' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c $roleSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar roles separadas do DB de teste." }
+
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DatabaseName OWNER $MigratorRole;"
     if ($LASTEXITCODE -ne 0) { throw "Falha ao criar DB de teste '$DatabaseName'." }
 
-    $url = "postgresql://${DatabaseUser}:${DatabasePassword}@127.0.0.1:${HostPort}/${DatabaseName}"
-    $env:DATABASE_TEST_URL = $url
-    $env:DATABASE_URL = $url
-    $env:DATABASE_DIRECT_URL = $url
+    $defaultPrivilegesSql = @"
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO $AppRole;
+ALTER DEFAULT PRIVILEGES FOR ROLE $MigratorRole IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $AppRole;
+ALTER DEFAULT PRIVILEGES FOR ROLE $MigratorRole IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO $AppRole;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d $DatabaseName -v ON_ERROR_STOP=1 -c $defaultPrivilegesSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar privilegios default do DB de teste." }
+
+    $encodedMigratorPassword = [Uri]::EscapeDataString($MigratorPassword)
+    $encodedAppPassword = [Uri]::EscapeDataString($AppPassword)
+    $adminUrl = "postgresql://${MigratorRole}:${encodedMigratorPassword}@127.0.0.1:${HostPort}/${DatabaseName}"
+    $appUrl = "postgresql://${AppRole}:${encodedAppPassword}@127.0.0.1:${HostPort}/${DatabaseName}"
+    $env:DATABASE_TEST_ADMIN_URL = $adminUrl
+    $env:DATABASE_DIRECT_URL = $adminUrl
+    $env:DATABASE_TEST_URL = $appUrl
+    $env:DATABASE_URL = $appUrl
 
     Write-Host "Test DB: aplicando migrations..." -ForegroundColor DarkCyan
     $npm = Get-NpmCommand
@@ -361,14 +405,24 @@ function Initialize-CodexTestDatabase {
     }
     finally { Pop-Location }
 
-    return $url
+    $runtimePrivilegesSql = @"
+GRANT CONNECT ON DATABASE $DatabaseName TO $AppRole;
+GRANT USAGE ON SCHEMA public TO $AppRole;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $AppRole;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO $AppRole;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d $DatabaseName -v ON_ERROR_STOP=1 -c $runtimePrivilegesSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao conceder privilegios de runtime no DB de teste." }
+
+    Write-Host "Test DB: pronta com roles separadas de migracao e runtime." -ForegroundColor DarkCyan
 }
 
 function Invoke-TaskGates {
     param(
         [string]$WorktreePath,
         [string[]]$Gates,
-        [string]$LogPath
+        [string]$LogPath,
+        [string]$BaseRef = ""
     )
     $npm = Get-NpmCommand
     $lines = New-Object System.Collections.Generic.List[string]
@@ -376,6 +430,7 @@ function Invoke-TaskGates {
     $oldDatabaseUrl = $env:DATABASE_URL
     $oldDatabaseDirectUrl = $env:DATABASE_DIRECT_URL
     $oldDatabaseTestUrl = $env:DATABASE_TEST_URL
+    $oldDatabaseTestAdminUrl = $env:DATABASE_TEST_ADMIN_URL
 
     Push-Location $WorktreePath
     try {
@@ -384,13 +439,20 @@ function Invoke-TaskGates {
         $lines.Add($out)
         if ($LASTEXITCODE -ne 0) { $ok = $false }
 
+        if ($ok -and $BaseRef) {
+            $lines.Add("# git diff --check $BaseRef...HEAD")
+            $out = (& git diff --check "$BaseRef...HEAD" 2>&1 | Out-String)
+            $lines.Add($out)
+            if ($LASTEXITCODE -ne 0) { $ok = $false }
+        }
+
         foreach ($gate in $Gates) {
             if (-not $ok) { break }
             if ($gate -eq "test:db") {
                 Pop-Location
                 try {
-                    $dbUrl = Initialize-CodexTestDatabase -WorktreePath $WorktreePath
-                    $lines.Add("# disposable database prepared: $dbUrl")
+                    [void](Initialize-CodexTestDatabase -WorktreePath $WorktreePath)
+                    $lines.Add("# disposable database prepared with separate migrator and runtime roles")
                 }
                 finally { Push-Location $WorktreePath }
             }
@@ -405,6 +467,7 @@ function Invoke-TaskGates {
         $env:DATABASE_URL = $oldDatabaseUrl
         $env:DATABASE_DIRECT_URL = $oldDatabaseDirectUrl
         $env:DATABASE_TEST_URL = $oldDatabaseTestUrl
+        $env:DATABASE_TEST_ADMIN_URL = $oldDatabaseTestAdminUrl
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
     Set-Content -Encoding UTF8 -Path $LogPath -Value ($lines -join "`n")

@@ -49,9 +49,11 @@ You need credentials for all of these before starting:
 ### 1. Database
 
 1. Create a fresh Postgres 17 database in Neon.
-2. Capture the direct owner/admin URL as `DATABASE_DIRECT_URL`. Provision the
-   dedicated runtime role with `docs/runbooks/database-roles.md`, then use its pooled
-   URL as `DATABASE_URL`. The roles must be different.
+2. Provision the dedicated migration/seed and runtime roles with
+   `docs/runbooks/database-roles.md`. `DATABASE_DIRECT_URL` must use the controlled
+   migration/seed role with `BYPASSRLS` (preferred; `SUPERUSER` only if the provider
+   makes a dedicated role impossible). `DATABASE_URL` must use the separate
+   `NOBYPASSRLS` runtime role, which must never own application tables.
 3. Run migrations from a clean local checkout against the staging URL:
    ```powershell
    $env:DATABASE_DIRECT_URL = "<staging direct url>"
@@ -59,11 +61,14 @@ You need credentials for all of these before starting:
    ```
 4. Seed initial RBAC + admin (set `SEED_DEMO_DATA=false` for staging — only run demo seed if you want fake data):
    ```powershell
+   $env:DATABASE_DIRECT_URL = "<staging migrator/seed direct url>"
    $env:INITIAL_ADMIN_EMAIL = "you@example.com"
    $env:INITIAL_ADMIN_NAME = "Staging Admin"
    $env:INITIAL_ADMIN_PASSWORD = "<random strong password>"
    npm run db:seed
    ```
+   The seed validates the administrative role before any write and fails if the
+   credential cannot safely seed after `FORCE ROW LEVEL SECURITY`.
 
 ### 2. Object storage
 

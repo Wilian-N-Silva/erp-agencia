@@ -13,6 +13,7 @@ Agentes em feature branches não devem marcar a própria task como `done`.
 - `blocked`
 - `ready`
 - `in_review`
+- `candidate_done` — implementada e integrada em `feature/codex-integration`, mas ainda **não** mergeada em `development`
 - `done`
 - `deferred`
 - `cancelled`
@@ -26,11 +27,17 @@ Uma task está `ready` somente quando:
 3. requisitos não possuem decisão aberta bloqueante;
 4. baseline de testes está verde ou falha preexistente está documentada.
 
+`candidate_done` satisfaz dependências somente quando a branch-base ativa é
+`feature/codex-integration`. Em modo manual baseado em `development`, não repetir
+essa implementação: aguardar a promoção humana da candidata ou continuar pelo
+orquestrador. Uma task só vira `done` depois do merge e da revalidação em
+`development`.
+
 ## 4. Wave 0 — adoção da documentação
 
 | ID | Task | Status | Branch |
 |---|---|---|---|
-| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `ready` | `chore/docs-v2` |
+| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `candidate_done` | `chore/docs-v2` |
 
 ### DOCS-001 — Adotar documentação v2
 
@@ -38,23 +45,27 @@ Uma task está `ready` somente quando:
 
 **Validação:** `git diff --check`, `npm run typecheck`, `npm run lint`, `npm run test`.
 
-**Aceite:** documentação v2 está em `development`, links internos resolvem, nenhum documento histórico foi apagado e `AGENTS.md` aponta para a nova fonte de verdade.
+**Aceite final (ainda pendente de promoção humana):** documentação v2 está em
+`development`, links internos resolvem, nenhum documento histórico foi apagado e
+`AGENTS.md` aponta para a nova fonte de verdade.
 
-Após merge de DOCS-001 em `development`, iniciar código.
+DOCS-001 está apenas na candidata. Não repetir a task em modo manual; código
+dependente pode continuar na candidata, enquanto sessões baseadas em
+`development` aguardam a promoção humana.
 
 ## 5. Wave 1 — fundação de segurança e acesso
 
 Ordem majoritariamente serial.
 
-| Ordem | ID | Documento | Dependências | Branch | Status inicial |
+| Ordem | ID | Documento | Dependências | Branch | Status atual |
 |---:|---|---|---|---|---|
-| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | blocked |
-| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | blocked |
-| 3 | SEC-003 | 06 | SEC-002 | `feature/security-rls-baseline` | blocked |
-| 4 | SEC-004 | 06 | SEC-003 | `test/security-rls-cross-tenant` | blocked |
+| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | candidate_done |
+| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | candidate_done |
+| 3 | SEC-003 | 06 | SEC-002 | `feature/security-rls-baseline` | candidate_done |
+| 4 | SEC-004 | 06 | SEC-003 | `test/security-rls-cross-tenant` | ready |
 | 5 | SEC-005 | 06 | SEC-002 | `feature/security-rate-limit` | blocked |
 | 6 | SEC-006 | 06 | SEC-005 | `feature/security-rate-limit-critical-actions` | blocked |
-| 7 | CORE-001 | 01 | SEC-001/SEC-002 | `feature/core-transaction-contract` | blocked |
+| 7 | CORE-001 | 01 | SEC-001 | `feature/core-transaction-contract` | blocked |
 | 8 | ACC-001 | 04 | SEC-003/SEC-005 | `feature/access-invitations` | blocked |
 | 9 | ACC-002 | 04 | ACC-001 | `fix/access-user-status-enforcement` | blocked |
 | 10 | ACC-003 | 04 | ACC-002 | `feature/user-employee-link` | blocked |
@@ -257,6 +268,7 @@ No fluxo orquestrado:
 
 - o estado real é inferido por `docs/codex/tasks.json` + histórico Git;
 - branch de task contida em `feature/codex-integration` satisfaz dependências para a próxima task da mesma candidata;
+- essa task é `candidate_done` no roteador humano e não deve ser reimplementada por uma sessão manual;
 - isso não significa `done` de release;
 - somente após review humano e eventual merge da candidata em `development` o lote é aceito oficialmente.
 

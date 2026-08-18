@@ -10,5 +10,5 @@ if ($NoMigrate) {
     throw "-NoMigrate nao e suportado nesta versao. O banco descartavel sempre recebe migrations."
 }
 
-$url = Initialize-CodexTestDatabase -WorktreePath $repoRoot
-Write-Host "TEST DB READY: $url" -ForegroundColor Green
+[void](Initialize-CodexTestDatabase -WorktreePath $repoRoot)
+Write-Host "TEST DB READY: separate migrator and runtime roles configured." -ForegroundColor Green

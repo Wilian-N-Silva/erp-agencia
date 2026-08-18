@@ -8,11 +8,39 @@ Provision the roles separately in local, staging, and production environments.
 | Credential            | Purpose                                              | Required properties                                                                                                                                  |
 | --------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`        | Next.js runtime                                      | Dedicated login role; `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOINHERIT`, `NOREPLICATION`, `NOBYPASSRLS`; owns no application tables; DML only |
-| `DATABASE_DIRECT_URL` | drizzle-kit, seed, backup, controlled administration | Migration/admin role on a direct connection; never exposed to the runtime deployment                                                                 |
+| `DATABASE_DIRECT_URL` | drizzle-kit, seed, backup, controlled administration | Dedicated login role with `BYPASSRLS` (preferred) and the DDL/ownership needed for migrations; `SUPERUSER` only if the provider makes a dedicated role impossible; never exposed to runtime |
 
 The runtime role name is encoded in `DATABASE_URL`; there is no separate role-name
 environment variable. Do not use the Neon owner URL, a superuser, or the migration
 role in `DATABASE_URL`. Pooling does not change the role requirements.
+
+The migration/seed role must be able to administer rows after business tables use
+`FORCE ROW LEVEL SECURITY`. Provision it as `BYPASSRLS` whenever the provider
+allows that. The seed fails before writing when `DATABASE_DIRECT_URL` resolves to a
+role that is neither `BYPASSRLS` nor `SUPERUSER`.
+
+## Provision the controlled migration/seed role
+
+Run this once through the provider owner/bootstrap credential, replacing all
+placeholders. The dedicated role should own the database/schema objects it creates.
+
+```sql
+CREATE ROLE erp_migrator
+  LOGIN
+  PASSWORD '<generated-migrator-password>'
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOREPLICATION
+  BYPASSRLS;
+
+ALTER DATABASE erp_agencia OWNER TO erp_migrator;
+```
+
+Use the direct connection for this role as `DATABASE_DIRECT_URL`. If ownership
+transfer is managed differently by the provider, grant the equivalent database and
+schema DDL privileges, but retain `BYPASSRLS`.
 
 ## Provision a runtime role
 
@@ -43,14 +71,24 @@ ALTER DEFAULT PRIVILEGES FOR ROLE erp_migrator IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO erp_app;
 ```
 
-`erp_migrator` must be the role that creates objects through drizzle-kit. On Neon,
-use the actual role from the direct owner URL. Re-run the two `GRANT ... ON ALL ...`
+`erp_migrator` must be the role that creates objects through drizzle-kit. Re-run
+the two `GRANT ... ON ALL ...`
 statements after provisioning against an existing database; default privileges affect
 only objects created later.
 
 Create the pooled connection string for `erp_app` and store it as `DATABASE_URL`.
 Keep the direct owner/admin connection string as `DATABASE_DIRECT_URL` only in CI or
 operator environments that run migrations, seed, or backups.
+
+Before migration/seed, verify the direct role:
+
+```sql
+SELECT current_user, rolsuper, rolbypassrls
+FROM pg_roles
+WHERE rolname = current_user;
+```
+
+Acceptance is `rolbypassrls = true` and preferably `rolsuper = false`.
 
 ## Runtime tenant context
 
