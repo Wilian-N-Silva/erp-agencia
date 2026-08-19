@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { canReadAuditLogs } from "@/lib/audit";
 import { bindTenantContext, db } from "@/lib/db";
@@ -31,6 +32,8 @@ import {
   type EmploymentType,
   type PeopleFilters,
 } from "./rules";
+
+const managers = alias(employees, "employee_managers");
 
 export type PeopleOption = {
   id: string;
@@ -188,6 +191,7 @@ async function getEmployeeDetail(
       areaId: employees.areaId,
       areaName: areas.name,
       managerEmployeeId: employees.managerEmployeeId,
+      managerName: managers.fullName,
       employmentType: employees.employmentType,
       startDate: employees.startDate,
       endDate: employees.endDate,
@@ -204,6 +208,14 @@ async function getEmployeeDetail(
     .from(employees)
     .innerJoin(positions, eq(employees.positionId, positions.id))
     .innerJoin(areas, eq(employees.areaId, areas.id))
+    .leftJoin(
+      managers,
+      and(
+        eq(employees.managerEmployeeId, managers.id),
+        eq(managers.organizationId, organizationId),
+        isNull(managers.deletedAt),
+      ),
+    )
     .where(
       and(
         eq(employees.id, id),
