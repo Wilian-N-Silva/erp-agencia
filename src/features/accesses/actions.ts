@@ -13,6 +13,7 @@ import {
   getCurrentAccessContext,
   type AccessContext,
 } from "@/lib/dal";
+import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import { accessRecordStatusLabels, type AccessRecordStatus } from "./rules";
@@ -162,6 +163,7 @@ async function updateAccessStatus(
   action: "approve" | "status_change",
 ) {
   const context = await requireAccessWriterContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
   const [after] = await db

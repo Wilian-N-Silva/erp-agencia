@@ -13,6 +13,7 @@ import {
   getCurrentAccessContext,
   type AccessContext,
 } from "@/lib/dal";
+import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
@@ -89,6 +90,7 @@ async function createTimeOffRequestAction(formData: FormData) {
 
 async function approveTimeOffRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
 
@@ -107,6 +109,7 @@ async function approveTimeOffRequestAction(formData: FormData) {
 
 async function rejectTimeOffRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
 

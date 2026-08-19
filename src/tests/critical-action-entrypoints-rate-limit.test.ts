@@ -32,6 +32,7 @@ vi.mock("@/lib/rate-limit", () => ({
 vi.mock("@/lib/rbac", () => ({
   AccessDeniedError: class AccessDeniedError extends Error {},
   assertCan: vi.fn(),
+  assertCanAny: vi.fn(),
   can: vi.fn().mockReturnValue(true),
   canAny: vi.fn().mockReturnValue(true),
   isRoleKey: vi.fn().mockReturnValue(true),
@@ -42,6 +43,10 @@ vi.mock("@/lib/storage", () => ({
   putStorageObject: mocks.putStorageObject,
 }));
 
+import {
+  approveAccessRecordAction,
+  markAccessRemovedAction,
+} from "@/features/accesses/actions";
 import { registerDocumentAction } from "@/features/documents/actions";
 import {
   cancelFinancialEntryAction,
@@ -50,11 +55,21 @@ import {
   markFinancialExpensePaidAction,
 } from "@/features/finance/actions";
 import {
+  approveInvoiceRequestAction,
+  approveReimbursementByFinanceAction,
+  approveReimbursementByManagerAction,
   createReimbursementAction,
   markInvoicePaidAction,
   markReimbursementPaidAction,
+  rejectInvoiceRequestAction,
+  rejectReimbursementByFinanceAction,
+  rejectReimbursementByManagerAction,
 } from "@/features/portal/actions";
 import { createSettingsUserAction } from "@/features/settings/actions";
+import {
+  approveTimeOffRequestAction,
+  rejectTimeOffRequestAction,
+} from "@/features/timeoff/actions";
 
 const context = {
   employeeId: "30000000-0000-4000-8000-000000000001",
@@ -109,6 +124,24 @@ describe("critical Action rate-limit entrypoints", () => {
     expectRateLimit("reconciliation");
     expectNoDataOrStorageAccess();
   });
+
+  it.each([
+    ["approving an invoice request", approveInvoiceRequestAction],
+    ["rejecting an invoice request", rejectInvoiceRequestAction],
+    ["manager-approving a reimbursement", approveReimbursementByManagerAction],
+    ["manager-rejecting a reimbursement", rejectReimbursementByManagerAction],
+    ["finance-approving a reimbursement", approveReimbursementByFinanceAction],
+    ["finance-rejecting a reimbursement", rejectReimbursementByFinanceAction],
+    ["approving a time-off request", approveTimeOffRequestAction],
+    ["rejecting a time-off request", rejectTimeOffRequestAction],
+    ["approving an access record", approveAccessRecordAction],
+    ["removing an access record", markAccessRemovedAction],
+  ])("blocks %s before reading or writing business data", async (_label, action) => {
+    await expect(action(new FormData())).rejects.toBe(blockedError);
+
+    expectRateLimit("common_mutation");
+    expectNoDataOrStorageAccess();
+  });
 });
 
 function createDocumentUploadForm() {
@@ -132,7 +165,9 @@ function createReimbursementUploadForm() {
   return formData;
 }
 
-function expectRateLimit(action: "invitation" | "reconciliation" | "upload") {
+function expectRateLimit(
+  action: "common_mutation" | "invitation" | "reconciliation" | "upload",
+) {
   expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledTimes(1);
   expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledWith(action, context);
 }

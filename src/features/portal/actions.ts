@@ -265,6 +265,7 @@ async function submitInvoiceRequestAction(formData: FormData) {
 
 async function approveInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -313,6 +314,7 @@ async function approveInvoiceRequestAction(formData: FormData) {
 
 async function rejectInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = rejectInvoiceSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -460,6 +462,7 @@ async function createReimbursementAction(formData: FormData) {
 
 async function approveReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -480,6 +483,7 @@ async function approveReimbursementByManagerAction(formData: FormData) {
 
 async function rejectReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -500,6 +504,7 @@ async function rejectReimbursementByManagerAction(formData: FormData) {
 
 async function approveReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -520,6 +525,7 @@ async function approveReimbursementByFinanceAction(formData: FormData) {
 
 async function rejectReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
