@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
-import { DocumentRegistrationForm } from "@/app/(private)/app/documentos/page";
+import { DocumentRegistrationForm } from "@/app/(private)/app/documentos/document-registration-form";
 import {
   RateLimitedActionForm,
   ToastProvider,
