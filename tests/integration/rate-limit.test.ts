@@ -1,8 +1,14 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "@/lib/db";
 import {
+  createDatabase,
+  getDb,
+  withTenantDb,
+  type Database,
+} from "@/lib/db";
+import {
+  enforceAuthenticatedRateLimit,
   createPostgresRateLimiter,
   loadRateLimitConfig,
   type RateLimitConfig,
@@ -34,8 +40,14 @@ const baseInput: RateLimitInput = {
 let runtimeDb: Database;
 let adminDb: Database;
 let currentTime: Date;
+let originalDatabaseUrl: string | undefined;
+let originalHashSecret: string | undefined;
 
 beforeAll(() => {
+  originalDatabaseUrl = process.env.DATABASE_URL;
+  originalHashSecret = process.env.RATE_LIMIT_HASH_SECRET;
+  process.env.DATABASE_URL = runtimeUrl;
+  process.env.RATE_LIMIT_HASH_SECRET = secret;
   runtimeDb = createDatabase(runtimeUrl, { allowExitOnIdle: true, max: 20 });
   adminDb = createDatabase(adminUrl, { allowExitOnIdle: true, max: 1 });
 });
@@ -47,7 +59,13 @@ beforeEach(async () => {
 
 afterAll(async () => {
   if (adminDb) await adminDb.execute(sql`delete from rate_limit_buckets`);
-  await Promise.all([runtimeDb?.$client.end(), adminDb?.$client.end()]);
+  await Promise.all([
+    runtimeDb?.$client.end(),
+    adminDb?.$client.end(),
+    getDb().$client.end(),
+  ]);
+  restoreEnvironmentVariable("DATABASE_URL", originalDatabaseUrl);
+  restoreEnvironmentVariable("RATE_LIMIT_HASH_SECRET", originalHashSecret);
 });
 
 describe("PostgreSQL rate limiter", () => {
@@ -137,6 +155,28 @@ describe("PostgreSQL rate limiter", () => {
     expect(buckets[0]?.count).toBe(5);
   });
 
+  it("reuses tenant transaction connections when Actions are concurrent", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 20 }, (_, index) => {
+        const context = {
+          employeeId: null,
+          organizationId: orgA,
+          permissions: [],
+          roles: [],
+          userId: `sec-006-concurrent-user-${index}`,
+        };
+
+        return withTenantDb(context, () =>
+          enforceAuthenticatedRateLimit("common_mutation", context),
+        );
+      }),
+    );
+
+    expect(results).toHaveLength(20);
+    expect(results.every(({ allowed }) => allowed)).toBe(true);
+    expect(await readBuckets()).toHaveLength(20);
+  });
+
   it("deletes expired buckets in bounded batches without removing active ones", async () => {
     const limiter = createLimiter(configWithCommonLimit(2));
 
@@ -194,4 +234,13 @@ async function readBuckets() {
     expiresAt: Date;
     keyHash: string;
   }>;
+}
+
+function restoreEnvironmentVariable(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
 }

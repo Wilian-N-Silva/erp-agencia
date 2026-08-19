@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/db";
+import { db } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { getRequiredEnv } from "@/lib/env";
 
@@ -12,7 +12,7 @@ let defaultLimiter: ReturnType<typeof createPostgresRateLimiter> | undefined;
 function getDefaultLimiter() {
   defaultLimiter ??= createPostgresRateLimiter({
     config: loadRateLimitConfig(),
-    database: getDb(),
+    database: db,
     hashSecret: getRequiredEnv("RATE_LIMIT_HASH_SECRET"),
   });
 
