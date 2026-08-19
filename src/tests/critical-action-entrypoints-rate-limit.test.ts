@@ -126,6 +126,15 @@ describe("critical Action rate-limit entrypoints", () => {
     expectNoDataOrStorageAccess();
   });
 
+  it("blocks legacy document registration without a File before data writes", async () => {
+    await expect(registerDocumentAction(createLegacyDocumentForm())).resolves.toEqual(
+      blockedActionError,
+    );
+
+    expectRateLimit("upload");
+    expectNoDataOrStorageAccess();
+  });
+
   it("blocks portal reimbursement uploads before storage or data writes", async () => {
     await expect(createReimbursementAction(createReimbursementUploadForm())).resolves.toEqual(
       blockedActionError,
@@ -176,6 +185,20 @@ function createDocumentUploadForm() {
   formData.set("sensitivity", "restricted");
   formData.set("visibility", "internal");
   formData.set("file", new File(["document"], "document.pdf", { type: "application/pdf" }));
+  return formData;
+}
+
+function createLegacyDocumentForm() {
+  const formData = new FormData();
+  formData.set("ownerType", "employee");
+  formData.set("ownerId", context.employeeId);
+  formData.set("documentType", "other");
+  formData.set("sensitivity", "restricted");
+  formData.set("visibility", "internal");
+  formData.set("originalName", "legacy-document.pdf");
+  formData.set("mimeType", "application/pdf");
+  formData.set("byteSize", "1024");
+  formData.set("storageKey", "legacy/documents/legacy-document.pdf");
   return formData;
 }
 

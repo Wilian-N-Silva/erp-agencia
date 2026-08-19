@@ -84,11 +84,9 @@ const idSchema = z.object({
 
 async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
+  await enforceAuthenticatedRateLimit("upload", context);
   const metadata = documentMetadataSchema.parse(formDataToObject(formData));
   const uploadedFile = getUploadedFile(formData);
-  if (uploadedFile) {
-    await enforceAuthenticatedRateLimit("upload", context);
-  }
   const input = uploadedFile
     ? await buildUploadedDocumentInput(uploadedFile, metadata, organizationId)
     : buildLegacyDocumentInput(formData);
