@@ -27,7 +27,7 @@ import {
 } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
@@ -1120,31 +1120,31 @@ const tenantCreateInvoiceRequestFormAction = bindCurrentTenantContext(
 const tenantCreateInvoiceRequestAction = bindCurrentTenantContext(
   createInvoiceRequestAction,
 );
-const tenantSubmitInvoiceRequestAction = withRateLimitActionError(
+const tenantSubmitInvoiceRequestAction = withRateLimitActionResult(
   bindCurrentTenantContext(submitInvoiceRequestAction),
 );
-const tenantApproveInvoiceRequestAction = withRateLimitActionError(
+const tenantApproveInvoiceRequestAction = withRateLimitActionResult(
   bindCurrentTenantContext(approveInvoiceRequestAction),
 );
-const tenantRejectInvoiceRequestAction = withRateLimitActionError(
+const tenantRejectInvoiceRequestAction = withRateLimitActionResult(
   bindCurrentTenantContext(rejectInvoiceRequestAction),
 );
-const tenantMarkInvoicePaidAction = withRateLimitActionError(
+const tenantMarkInvoicePaidAction = withRateLimitActionResult(
   bindCurrentTenantContext(markInvoicePaidAction),
 );
-const tenantCreateReimbursementAction = withRateLimitActionError(
+const tenantCreateReimbursementAction = withRateLimitActionResult(
   bindCurrentTenantContext(createReimbursementAction),
 );
-const tenantApproveReimbursementByManagerAction = withRateLimitActionError(
+const tenantApproveReimbursementByManagerAction = withRateLimitActionResult(
   bindCurrentTenantContext(approveReimbursementByManagerAction),
 );
-const tenantRejectReimbursementByManagerAction = withRateLimitActionError(
+const tenantRejectReimbursementByManagerAction = withRateLimitActionResult(
   bindCurrentTenantContext(rejectReimbursementByManagerAction),
 );
-const tenantApproveReimbursementByFinanceAction = withRateLimitActionError(
+const tenantApproveReimbursementByFinanceAction = withRateLimitActionResult(
   bindCurrentTenantContext(approveReimbursementByFinanceAction),
 );
-const tenantRejectReimbursementByFinanceAction = withRateLimitActionError(
+const tenantRejectReimbursementByFinanceAction = withRateLimitActionResult(
   bindCurrentTenantContext(rejectReimbursementByFinanceAction),
 );
 const tenantIncludeReimbursementInInvoiceAction = bindCurrentTenantContext(
@@ -1153,6 +1153,6 @@ const tenantIncludeReimbursementInInvoiceAction = bindCurrentTenantContext(
 const tenantExcludeReimbursementFromInvoiceAction = bindCurrentTenantContext(
   excludeReimbursementFromInvoiceAction,
 );
-const tenantMarkReimbursementPaidAction = withRateLimitActionError(
+const tenantMarkReimbursementPaidAction = withRateLimitActionResult(
   bindCurrentTenantContext(markReimbursementPaidAction),
 );

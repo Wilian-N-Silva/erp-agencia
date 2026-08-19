@@ -32,6 +32,7 @@ import {
   EmptyState,
   KpiCard,
   MoneyInput,
+  RateLimitedActionForm,
   Sheet,
   StatusBadge,
   Tabs,
@@ -1259,10 +1260,9 @@ function DocumentsTab({
 
 function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
   return (
-    <form
+    <RateLimitedActionForm
       action={registerDocumentAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <input name="ownerType" type="hidden" value="employee" />
       <input name="ownerId" type="hidden" value={employee.id} />
@@ -1328,7 +1328,7 @@ function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
           <span>Enviar documento</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -1637,10 +1637,9 @@ function TimeOffRequestForm({ employee }: { employee: EmployeeView }) {
 
 function ReimbursementRequestForm() {
   return (
-    <form
+    <RateLimitedActionForm
       action={createReimbursementAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <Field label="Descricao" required>
         <input className="fg-input" maxLength={180} name="title" required />
@@ -1679,7 +1678,7 @@ function ReimbursementRequestForm() {
           <span>Enviar reembolso</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 

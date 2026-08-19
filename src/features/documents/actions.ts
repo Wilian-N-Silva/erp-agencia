@@ -11,7 +11,7 @@ import { documents, employees, files } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
@@ -320,7 +320,7 @@ export {
   tenantDeleteDocumentAction as deleteDocumentAction,
 };
 
-const tenantRegisterDocumentAction = withRateLimitActionError(
+const tenantRegisterDocumentAction = withRateLimitActionResult(
   bindCurrentTenantContext(registerDocumentAction),
 );
 const tenantDeleteDocumentAction = bindCurrentTenantContext(deleteDocumentAction);

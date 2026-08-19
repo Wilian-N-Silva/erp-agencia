@@ -15,7 +15,7 @@ import {
 } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
@@ -435,10 +435,10 @@ export {
 const tenantCreateTimeOffRequestAction = bindCurrentTenantContext(
   createTimeOffRequestAction,
 );
-const tenantApproveTimeOffRequestAction = withRateLimitActionError(
+const tenantApproveTimeOffRequestAction = withRateLimitActionResult(
   bindCurrentTenantContext(approveTimeOffRequestAction),
 );
-const tenantRejectTimeOffRequestAction = withRateLimitActionError(
+const tenantRejectTimeOffRequestAction = withRateLimitActionResult(
   bindCurrentTenantContext(rejectTimeOffRequestAction),
 );
 const tenantCreateVacationBalanceAction = bindCurrentTenantContext(

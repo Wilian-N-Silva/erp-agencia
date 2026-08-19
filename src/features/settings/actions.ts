@@ -22,7 +22,7 @@ import {
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
@@ -410,7 +410,7 @@ export {
   tenantDeletePositionAction as deletePositionAction,
 };
 
-const tenantCreateSettingsUserAction = withRateLimitActionError(
+const tenantCreateSettingsUserAction = withRateLimitActionResult(
   bindCurrentTenantContext(createSettingsUserAction),
 );
 const tenantUpdateSettingsUserRolesAction = bindCurrentTenantContext(

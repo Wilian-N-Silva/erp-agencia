@@ -2,6 +2,7 @@ import { Ban, Download, FileUp } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { deleteDocumentAction, registerDocumentAction } from "@/features/documents/actions";
+import { RateLimitedActionForm } from "@/components/fg";
 import { ActionDialog } from "@/components/ui/action-dialog";
 import {
   listDocumentEmployeeOptions,
@@ -99,13 +100,16 @@ export default async function DocumentsPage() {
   );
 }
 
-function DocumentRegistrationForm({
+export function DocumentRegistrationForm({
   employeeOptions,
 }: {
   employeeOptions: DocumentOwnerOption[];
 }) {
   return (
-    <form action={registerDocumentAction} className="grid gap-4" encType="multipart/form-data">
+    <RateLimitedActionForm
+      action={registerDocumentAction}
+      className="grid gap-4"
+    >
       <input name="ownerType" type="hidden" value="employee" />
       <div className="grid gap-3 md:grid-cols-2">
         <label className={fieldClassName}>
@@ -168,7 +172,7 @@ function DocumentRegistrationForm({
           Enviar documento
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 

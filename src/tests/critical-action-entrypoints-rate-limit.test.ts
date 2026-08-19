@@ -95,8 +95,9 @@ const blockedError = new RateLimitExceededError({
   retryAfterSeconds,
 });
 const blockedActionError = {
-  code: "RATE_LIMIT_EXCEEDED",
-  error: RATE_LIMIT_ERROR_MESSAGE,
+  code: "RATE_LIMITED",
+  message: RATE_LIMIT_ERROR_MESSAGE,
+  ok: false,
   retryAfterSeconds,
 };
 

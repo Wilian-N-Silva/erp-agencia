@@ -1,4 +1,8 @@
 import type { RateLimitInput, RateLimitResult } from "./postgres";
+import {
+  serverActionSuccess,
+  type ServerActionResult,
+} from "@/lib/server-action-result";
 
 export const RATE_LIMIT_ERROR_MESSAGE =
   "Muitas tentativas. Aguarde um momento e tente novamente.";
@@ -63,32 +67,29 @@ export function toRateLimitActionError(
   } as const;
 }
 
-export function withRateLimitActionError<
+export function withRateLimitActionResult<
   Arguments extends unknown[],
   Result,
 >(operation: (...args: Arguments) => Promise<Result>) {
-  const rateLimitedOperation = async (
-    ...args: Arguments
-  ): Promise<Result | RateLimitActionError> => {
+  return async (...args: Arguments): Promise<ServerActionResult<Result>> => {
     try {
-      return await operation(...args);
+      return serverActionSuccess(await operation(...args));
     } catch (error) {
       const actionError = toRateLimitActionError(error);
 
       if (actionError) {
         await reportRateLimitSecurityEvent(error);
-        return actionError;
+        return {
+          code: "RATE_LIMITED",
+          message: actionError.error,
+          ok: false,
+          retryAfterSeconds: actionError.retryAfterSeconds,
+        };
       }
 
       throw error;
     }
   };
-
-  // React's native form Action type only admits Promise<void>, although Next
-  // serializes the structured value for imperative Server Action callers.
-  return rateLimitedOperation as (
-    ...args: Arguments
-  ) => Promise<Result>;
 }
 
 export async function reportRateLimitSecurityEvent(error: unknown) {

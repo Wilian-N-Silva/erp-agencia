@@ -16,7 +16,7 @@ import {
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
@@ -580,10 +580,10 @@ const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
 const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
   updateFinancialEntryAction,
 );
-const tenantMarkFinancialEntryReceivedAction = withRateLimitActionError(
+const tenantMarkFinancialEntryReceivedAction = withRateLimitActionResult(
   bindCurrentTenantContext(markFinancialEntryReceivedAction),
 );
-const tenantCancelFinancialEntryAction = withRateLimitActionError(
+const tenantCancelFinancialEntryAction = withRateLimitActionResult(
   bindCurrentTenantContext(cancelFinancialEntryAction),
 );
 const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
@@ -592,10 +592,10 @@ const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
 const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
   updateFinancialExpenseAction,
 );
-const tenantMarkFinancialExpensePaidAction = withRateLimitActionError(
+const tenantMarkFinancialExpensePaidAction = withRateLimitActionResult(
   bindCurrentTenantContext(markFinancialExpensePaidAction),
 );
-const tenantCancelFinancialExpenseAction = withRateLimitActionError(
+const tenantCancelFinancialExpenseAction = withRateLimitActionResult(
   bindCurrentTenantContext(cancelFinancialExpenseAction),
 );
 const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);

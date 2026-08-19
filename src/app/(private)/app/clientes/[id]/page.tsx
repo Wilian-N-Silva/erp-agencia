@@ -11,7 +11,15 @@ import Link from "next/link";
 import type { Route } from "next";
 import { notFound, redirect } from "next/navigation";
 
-import { ActionSheet, Button, KpiCard, MoneyInput, Page, StatusBadge } from "@/components/fg";
+import {
+  ActionSheet,
+  Button,
+  KpiCard,
+  MoneyInput,
+  Page,
+  RateLimitedActionForm,
+  StatusBadge,
+} from "@/components/fg";
 import { Card, InlineAlert } from "@/components/fg/atoms";
 import {
   generateClientExpectedEntryAction,
@@ -484,7 +492,7 @@ function PaymentsTab({
                   {canWriteFinance ? (
                     <td className="right">
                       {p.status !== "received" && p.status !== "cancelled" ? (
-                        <form
+                        <RateLimitedActionForm
                           action={markClientPaymentReceivedAction}
                           style={{ display: "inline-flex", justifyContent: "flex-end" }}
                         >
@@ -502,7 +510,7 @@ function PaymentsTab({
                           >
                             <CheckCircle2 size={14} />
                           </button>
-                        </form>
+                        </RateLimitedActionForm>
                       ) : null}
                     </td>
                   ) : null}

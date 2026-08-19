@@ -15,7 +15,7 @@ import {
 } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
-  withRateLimitActionError,
+  withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
@@ -294,10 +294,10 @@ export {
 
 const tenantCreateAccessRecordAction = bindCurrentTenantContext(createAccessRecordAction);
 const tenantUpdateAccessRecordAction = bindCurrentTenantContext(updateAccessRecordAction);
-const tenantApproveAccessRecordAction = withRateLimitActionError(
+const tenantApproveAccessRecordAction = withRateLimitActionResult(
   bindCurrentTenantContext(approveAccessRecordAction),
 );
-const tenantMarkAccessRemovedAction = withRateLimitActionError(
+const tenantMarkAccessRemovedAction = withRateLimitActionResult(
   bindCurrentTenantContext(markAccessRemovedAction),
 );
 const tenantReviewAccessRecordAction = bindCurrentTenantContext(reviewAccessRecordAction);

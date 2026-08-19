@@ -2,6 +2,7 @@ import { Ban, CheckCircle2, Plus, Save, Trash2, UserPlus } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { RateLimitedActionForm } from "@/components/fg";
 import {
   createAreaAction,
   createPositionAction,
@@ -105,7 +106,7 @@ export default async function SettingsPage() {
 
 function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
   return (
-    <form action={createSettingsUserAction} className="grid gap-4">
+    <RateLimitedActionForm action={createSettingsUserAction} className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className={fieldClassName}>
           Nome
@@ -127,7 +128,7 @@ function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
           Criar usuario
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 

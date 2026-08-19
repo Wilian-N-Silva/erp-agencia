@@ -77,8 +77,9 @@ describe("client financial Action rate limits", () => {
     formData.set("id", "20000000-0000-4000-8000-000000000001");
 
     await expect(markClientPaymentReceivedAction(formData)).resolves.toEqual({
-      code: "RATE_LIMIT_EXCEEDED",
-      error: RATE_LIMIT_ERROR_MESSAGE,
+      code: "RATE_LIMITED",
+      message: RATE_LIMIT_ERROR_MESSAGE,
+      ok: false,
       retryAfterSeconds: 37,
     });
 
