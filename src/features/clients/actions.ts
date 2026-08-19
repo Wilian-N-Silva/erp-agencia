@@ -20,7 +20,10 @@ import {
   getCurrentAccessContext,
   runWithCurrentTenantDb,
 } from "@/lib/dal";
-import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionError,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -826,8 +829,8 @@ const tenantUpdateClientBillingProfileAction = bindCurrentTenantContext(
 const tenantGenerateClientExpectedEntryAction = bindCurrentTenantContext(
   generateClientExpectedEntryAction,
 );
-const tenantMarkClientPaymentReceivedAction = bindCurrentTenantContext(
-  markClientPaymentReceivedAction,
+const tenantMarkClientPaymentReceivedAction = withRateLimitActionError(
+  bindCurrentTenantContext(markClientPaymentReceivedAction),
 );
 const tenantUpdateClientInternalNotesAction = bindCurrentTenantContext(
   updateClientInternalNotesAction,

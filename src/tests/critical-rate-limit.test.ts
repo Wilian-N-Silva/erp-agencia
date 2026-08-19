@@ -6,6 +6,7 @@ import {
   RateLimitExceededError,
   buildAuthenticatedRateLimitInput,
   enforceAuthenticatedRateLimitWithConsumer,
+  reportRateLimitSecurityEvent,
   toRateLimitResponse,
   type RateLimitAction,
   type RateLimitConsumer,
@@ -25,6 +26,7 @@ const blockedResult: RateLimitResult = {
   remaining: 0,
   resetAt: new Date("2026-08-18T12:00:30.000Z"),
   retryAfterSeconds: 30,
+  shouldEmitSecurityEvent: true,
 };
 
 const criticalActions: RateLimitAction[] = [
@@ -94,4 +96,43 @@ describe("critical authenticated rate limits", () => {
       });
     },
   );
+
+  it("reports one aggregated security event without repeating blocked-event spam", async () => {
+    const repeatedBlockedResult = {
+      ...blockedResult,
+      shouldEmitSecurityEvent: false,
+    };
+    const consume = vi
+      .fn()
+      .mockResolvedValueOnce(blockedResult)
+      .mockResolvedValueOnce(repeatedBlockedResult);
+    const reportSecurityEvent = vi.fn().mockResolvedValue(undefined);
+
+    const firstError = await enforceAuthenticatedRateLimitWithConsumer(
+      "upload",
+      context,
+      consume,
+      reportSecurityEvent,
+    ).catch((error: unknown) => error);
+    const repeatedError = await enforceAuthenticatedRateLimitWithConsumer(
+      "upload",
+      context,
+      consume,
+      reportSecurityEvent,
+    ).catch((error: unknown) => error);
+
+    expect(firstError).toBeInstanceOf(RateLimitExceededError);
+    expect(repeatedError).toBeInstanceOf(RateLimitExceededError);
+    expect(reportSecurityEvent).not.toHaveBeenCalled();
+
+    await reportRateLimitSecurityEvent(firstError);
+    await reportRateLimitSecurityEvent(firstError);
+    await reportRateLimitSecurityEvent(repeatedError);
+    expect(reportSecurityEvent).toHaveBeenCalledOnce();
+    expect(reportSecurityEvent).toHaveBeenCalledWith({
+      action: "upload",
+      context,
+      result: blockedResult,
+    });
+  });
 });

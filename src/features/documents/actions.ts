@@ -9,7 +9,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
-import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionError,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -317,5 +320,7 @@ export {
   tenantDeleteDocumentAction as deleteDocumentAction,
 };
 
-const tenantRegisterDocumentAction = bindCurrentTenantContext(registerDocumentAction);
+const tenantRegisterDocumentAction = withRateLimitActionError(
+  bindCurrentTenantContext(registerDocumentAction),
+);
 const tenantDeleteDocumentAction = bindCurrentTenantContext(deleteDocumentAction);

@@ -26,9 +26,14 @@ vi.mock("@/lib/dal", () => ({
   getCurrentAccessContext: mocks.getCurrentAccessContext,
   runWithCurrentTenantDb: (operation: () => unknown) => operation(),
 }));
-vi.mock("@/lib/rate-limit", () => ({
-  enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
-}));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+
+  return {
+    ...actual,
+    enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
+  };
+});
 vi.mock("@/lib/rbac", () => ({
   AccessDeniedError: class AccessDeniedError extends Error {},
   assertCan: vi.fn(),
@@ -70,6 +75,10 @@ import {
   approveTimeOffRequestAction,
   rejectTimeOffRequestAction,
 } from "@/features/timeoff/actions";
+import {
+  RATE_LIMIT_ERROR_MESSAGE,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 const context = {
   employeeId: "30000000-0000-4000-8000-000000000001",
@@ -77,7 +86,19 @@ const context = {
   roles: ["finance"],
   userId: "user-1",
 };
-const blockedError = new Error("rate limit exceeded");
+const retryAfterSeconds = 37;
+const blockedError = new RateLimitExceededError({
+  allowed: false,
+  limit: 1,
+  remaining: 0,
+  resetAt: new Date("2026-08-18T12:01:00.000Z"),
+  retryAfterSeconds,
+});
+const blockedActionError = {
+  code: "RATE_LIMIT_EXCEEDED",
+  error: RATE_LIMIT_ERROR_MESSAGE,
+  retryAfterSeconds,
+};
 
 describe("critical Action rate-limit entrypoints", () => {
   beforeEach(() => {
@@ -87,15 +108,17 @@ describe("critical Action rate-limit entrypoints", () => {
   });
 
   it("blocks invitations before validating or writing user data", async () => {
-    await expect(createSettingsUserAction(new FormData())).rejects.toBe(blockedError);
+    await expect(createSettingsUserAction(new FormData())).resolves.toEqual(
+      blockedActionError,
+    );
 
     expectRateLimit("invitation");
     expectNoDataOrStorageAccess();
   });
 
   it("blocks document uploads before reading or writing document data", async () => {
-    await expect(registerDocumentAction(createDocumentUploadForm())).rejects.toBe(
-      blockedError,
+    await expect(registerDocumentAction(createDocumentUploadForm())).resolves.toEqual(
+      blockedActionError,
     );
 
     expectRateLimit("upload");
@@ -103,8 +126,8 @@ describe("critical Action rate-limit entrypoints", () => {
   });
 
   it("blocks portal reimbursement uploads before storage or data writes", async () => {
-    await expect(createReimbursementAction(createReimbursementUploadForm())).rejects.toBe(
-      blockedError,
+    await expect(createReimbursementAction(createReimbursementUploadForm())).resolves.toEqual(
+      blockedActionError,
     );
 
     expectRateLimit("upload");
@@ -119,7 +142,7 @@ describe("critical Action rate-limit entrypoints", () => {
     ["paying an invoice request", markInvoicePaidAction],
     ["paying a reimbursement", markReimbursementPaidAction],
   ])("blocks %s before reading or writing financial data", async (_label, action) => {
-    await expect(action(new FormData())).rejects.toBe(blockedError);
+    await expect(action(new FormData())).resolves.toEqual(blockedActionError);
 
     expectRateLimit("reconciliation");
     expectNoDataOrStorageAccess();
@@ -137,7 +160,7 @@ describe("critical Action rate-limit entrypoints", () => {
     ["approving an access record", approveAccessRecordAction],
     ["removing an access record", markAccessRemovedAction],
   ])("blocks %s before reading or writing business data", async (_label, action) => {
-    await expect(action(new FormData())).rejects.toBe(blockedError);
+    await expect(action(new FormData())).resolves.toEqual(blockedActionError);
 
     expectRateLimit("common_mutation");
     expectNoDataOrStorageAccess();

@@ -6,6 +6,7 @@ import { enforceAuthenticatedRateLimitWithConsumer } from "./authenticated";
 import { loadRateLimitConfig } from "./config";
 import { enforceRateLimitWithConsumer } from "./helpers";
 import { createPostgresRateLimiter, type RateLimitInput } from "./postgres";
+import { writeRateLimitSecurityEvent } from "./telemetry";
 
 let defaultLimiter: ReturnType<typeof createPostgresRateLimiter> | undefined;
 let defaultLimiterDatabase: Database | undefined;
@@ -51,6 +52,7 @@ export function enforceAuthenticatedRateLimit(
     action,
     context,
     consumeRateLimit,
+    writeRateLimitSecurityEvent,
   );
 }
 
@@ -63,3 +65,4 @@ export * from "./authenticated";
 export * from "./helpers";
 export * from "./identity";
 export * from "./postgres";
+export * from "./telemetry";

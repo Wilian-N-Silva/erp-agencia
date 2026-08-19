@@ -7,6 +7,7 @@ import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
 import {
   enforceAuthenticatedRateLimit,
+  reportRateLimitSecurityEvent,
   toRateLimitResponse,
 } from "@/lib/rate-limit";
 
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
   try {
     await enforceAuthenticatedRateLimit("export", context);
   } catch (error) {
+    await reportRateLimitSecurityEvent(error);
     const response = toRateLimitResponse(error);
     if (response) return response;
     throw error;

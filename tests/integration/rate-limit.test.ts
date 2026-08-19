@@ -84,6 +84,11 @@ describe("PostgreSQL rate limiter", () => {
       allowed: false,
       remaining: 0,
       retryAfterSeconds: 30,
+      shouldEmitSecurityEvent: true,
+    });
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: false,
+      shouldEmitSecurityEvent: false,
     });
 
     currentTime = new Date("2026-08-18T12:01:00.000Z");
@@ -93,7 +98,7 @@ describe("PostgreSQL rate limiter", () => {
     });
 
     const buckets = await readBuckets();
-    expect(buckets.map(({ count }) => count).sort()).toEqual([1, 2]);
+    expect(buckets.map(({ count }) => count).sort()).toEqual([1, 3]);
   });
 
   it("isolates users, organizations, actions, and hashed IP subjects", async () => {
@@ -149,10 +154,13 @@ describe("PostgreSQL rate limiter", () => {
 
     expect(results.filter(({ allowed }) => allowed)).toHaveLength(5);
     expect(results.filter(({ allowed }) => !allowed)).toHaveLength(15);
+    expect(
+      results.filter(({ shouldEmitSecurityEvent }) => shouldEmitSecurityEvent),
+    ).toHaveLength(1);
 
     const buckets = await readBuckets();
     expect(buckets).toHaveLength(1);
-    expect(buckets[0]?.count).toBe(5);
+    expect(buckets[0]?.count).toBe(6);
   });
 
   it("reuses tenant transaction connections when Actions are concurrent", async () => {

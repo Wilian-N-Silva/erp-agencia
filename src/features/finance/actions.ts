@@ -14,7 +14,10 @@ import {
   provisions,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
-import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionError,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "./rules";
@@ -577,11 +580,11 @@ const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
 const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
   updateFinancialEntryAction,
 );
-const tenantMarkFinancialEntryReceivedAction = bindCurrentTenantContext(
-  markFinancialEntryReceivedAction,
+const tenantMarkFinancialEntryReceivedAction = withRateLimitActionError(
+  bindCurrentTenantContext(markFinancialEntryReceivedAction),
 );
-const tenantCancelFinancialEntryAction = bindCurrentTenantContext(
-  cancelFinancialEntryAction,
+const tenantCancelFinancialEntryAction = withRateLimitActionError(
+  bindCurrentTenantContext(cancelFinancialEntryAction),
 );
 const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
   createFinancialExpenseAction,
@@ -589,11 +592,11 @@ const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
 const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
   updateFinancialExpenseAction,
 );
-const tenantMarkFinancialExpensePaidAction = bindCurrentTenantContext(
-  markFinancialExpensePaidAction,
+const tenantMarkFinancialExpensePaidAction = withRateLimitActionError(
+  bindCurrentTenantContext(markFinancialExpensePaidAction),
 );
-const tenantCancelFinancialExpenseAction = bindCurrentTenantContext(
-  cancelFinancialExpenseAction,
+const tenantCancelFinancialExpenseAction = withRateLimitActionError(
+  bindCurrentTenantContext(cancelFinancialExpenseAction),
 );
 const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);
 const tenantDeactivateProvisionAction = bindCurrentTenantContext(

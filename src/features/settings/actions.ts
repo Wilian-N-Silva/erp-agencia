@@ -20,7 +20,10 @@ import {
   users,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
-import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionError,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
@@ -407,7 +410,9 @@ export {
   tenantDeletePositionAction as deletePositionAction,
 };
 
-const tenantCreateSettingsUserAction = bindCurrentTenantContext(createSettingsUserAction);
+const tenantCreateSettingsUserAction = withRateLimitActionError(
+  bindCurrentTenantContext(createSettingsUserAction),
+);
 const tenantUpdateSettingsUserRolesAction = bindCurrentTenantContext(
   updateSettingsUserRolesAction,
 );

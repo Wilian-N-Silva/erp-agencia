@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentAccessContext: vi.fn(),
   getFinanceDashboard: vi.fn(),
   listAuditLogs: vi.fn(),
+  reportRateLimitSecurityEvent: vi.fn(),
   toRateLimitResponse: vi.fn(),
   writeAuditLog: vi.fn(),
 }));
@@ -15,6 +16,7 @@ vi.mock("@/lib/dal", () => ({
 }));
 vi.mock("@/lib/rate-limit", () => ({
   enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
+  reportRateLimitSecurityEvent: mocks.reportRateLimitSecurityEvent,
   toRateLimitResponse: mocks.toRateLimitResponse,
 }));
 vi.mock("@/lib/rbac", () => ({ can: vi.fn().mockReturnValue(true) }));
@@ -53,6 +55,7 @@ describe("critical export route rate limits", () => {
     vi.clearAllMocks();
     mocks.getCurrentAccessContext.mockResolvedValue(context);
     mocks.enforceAuthenticatedRateLimit.mockRejectedValue(blockedError);
+    mocks.reportRateLimitSecurityEvent.mockResolvedValue(undefined);
     mocks.toRateLimitResponse.mockReturnValue(
       Response.json(
         { error: { code: "RATE_LIMIT_EXCEEDED", message: "Too many requests." } },
@@ -72,6 +75,7 @@ describe("critical export route rate limits", () => {
     expect(response.status).toBe(429);
     expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledTimes(1);
     expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledWith("export", context);
+    expect(mocks.reportRateLimitSecurityEvent).toHaveBeenCalledWith(blockedError);
     expect(mocks.toRateLimitResponse).toHaveBeenCalledWith(blockedError);
     expect(mocks.listAuditLogs).not.toHaveBeenCalled();
     expect(mocks.getFinanceDashboard).not.toHaveBeenCalled();

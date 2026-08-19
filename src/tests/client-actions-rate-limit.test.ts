@@ -31,9 +31,14 @@ vi.mock("@/lib/dal", () => ({
   runWithCurrentTenantDb: (operation: () => unknown) => operation(),
 }));
 
-vi.mock("@/lib/rate-limit", () => ({
-  enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
-}));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+
+  return {
+    ...actual,
+    enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
+  };
+});
 
 vi.mock("@/lib/rbac", () => ({
   AccessDeniedError: class AccessDeniedError extends Error {},
@@ -42,6 +47,10 @@ vi.mock("@/lib/rbac", () => ({
 }));
 
 import { markClientPaymentReceivedAction } from "@/features/clients/actions";
+import {
+  RATE_LIMIT_ERROR_MESSAGE,
+  RateLimitExceededError,
+} from "@/lib/rate-limit";
 
 describe("client financial Action rate limits", () => {
   beforeEach(() => {
@@ -54,14 +63,24 @@ describe("client financial Action rate limits", () => {
       roles: ["finance"],
       userId: "user-1",
     };
-    const blockedError = new Error("rate limit exceeded");
+    const blockedError = new RateLimitExceededError({
+      allowed: false,
+      limit: 1,
+      remaining: 0,
+      resetAt: new Date("2026-08-18T12:01:00.000Z"),
+      retryAfterSeconds: 37,
+    });
     mocks.getCurrentAccessContext.mockResolvedValue(context);
     mocks.enforceAuthenticatedRateLimit.mockRejectedValue(blockedError);
 
     const formData = new FormData();
     formData.set("id", "20000000-0000-4000-8000-000000000001");
 
-    await expect(markClientPaymentReceivedAction(formData)).rejects.toBe(blockedError);
+    await expect(markClientPaymentReceivedAction(formData)).resolves.toEqual({
+      code: "RATE_LIMIT_EXCEEDED",
+      error: RATE_LIMIT_ERROR_MESSAGE,
+      retryAfterSeconds: 37,
+    });
 
     expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledWith(
       "reconciliation",

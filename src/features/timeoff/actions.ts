@@ -13,7 +13,10 @@ import {
   getCurrentAccessContext,
   type AccessContext,
 } from "@/lib/dal";
-import { enforceAuthenticatedRateLimit } from "@/lib/rate-limit";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionError,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
@@ -432,11 +435,11 @@ export {
 const tenantCreateTimeOffRequestAction = bindCurrentTenantContext(
   createTimeOffRequestAction,
 );
-const tenantApproveTimeOffRequestAction = bindCurrentTenantContext(
-  approveTimeOffRequestAction,
+const tenantApproveTimeOffRequestAction = withRateLimitActionError(
+  bindCurrentTenantContext(approveTimeOffRequestAction),
 );
-const tenantRejectTimeOffRequestAction = bindCurrentTenantContext(
-  rejectTimeOffRequestAction,
+const tenantRejectTimeOffRequestAction = withRateLimitActionError(
+  bindCurrentTenantContext(rejectTimeOffRequestAction),
 );
 const tenantCreateVacationBalanceAction = bindCurrentTenantContext(
   createVacationBalanceAction,
