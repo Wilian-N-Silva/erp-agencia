@@ -13,6 +13,7 @@ export type { MoneyInputProps } from "./money-input";
 export { NavIcon, navIconMap } from "./icon-map";
 export { PageHeader, Page } from "./page-header";
 export { Pagination } from "./pagination";
+export { RateLimitedActionForm } from "./rate-limited-action-form";
 export { Sheet } from "./sheet";
 export { ShellChrome } from "./shell-chrome";
 export { ThemeToggle, useThemeToggle } from "./theme-toggle";

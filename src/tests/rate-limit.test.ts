@@ -9,6 +9,7 @@ import {
   rateLimitSubjectSchema,
   toRateLimitActionError,
   toRateLimitResponse,
+  withRateLimitActionResult,
   type RateLimitInput,
   type RateLimitResult,
 } from "@/lib/rate-limit";
@@ -172,5 +173,18 @@ describe("Action and route helpers", () => {
     });
     expect(toRateLimitActionError(new Error("other"))).toBeNull();
     expect(toRateLimitResponse(new Error("other"))).toBeNull();
+  });
+
+  it("returns the safe error from a production Action boundary", async () => {
+    const operation = withRateLimitActionResult(
+      vi.fn().mockRejectedValue(new RateLimitExceededError(blockedResult)),
+    );
+
+    await expect(operation()).resolves.toEqual({
+      code: "RATE_LIMITED",
+      message: RATE_LIMIT_ERROR_MESSAGE,
+      ok: false,
+      retryAfterSeconds: 37,
+    });
   });
 });

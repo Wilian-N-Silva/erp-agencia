@@ -2,7 +2,7 @@ import { Ban, Check, CheckCircle2, DollarSign, FileMinus2, FilePlus2 } from "luc
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { ActionSheet, Button } from "@/components/fg";
+import { ActionSheet, Button, RateLimitedActionForm } from "@/components/fg";
 import {
   approveReimbursementByFinanceAction,
   approveReimbursementByManagerAction,
@@ -153,7 +153,10 @@ function RowActionForms({
   return (
     <>
       {canManagerApprove ? (
-        <form action={approveReimbursementByManagerAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={approveReimbursementByManagerAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={reimbursementId} />
           <button
             type="submit"
@@ -163,10 +166,13 @@ function RowActionForms({
           >
             <Check size={13} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
       {canFinanceApprove ? (
-        <form action={approveReimbursementByFinanceAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={approveReimbursementByFinanceAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={reimbursementId} />
           <button
             type="submit"
@@ -176,10 +182,13 @@ function RowActionForms({
           >
             <CheckCircle2 size={13} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
       {canPay ? (
-        <form action={markReimbursementPaidAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={markReimbursementPaidAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={reimbursementId} />
           <button
             type="submit"
@@ -189,7 +198,7 @@ function RowActionForms({
           >
             <DollarSign size={13} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
     </>
   );
@@ -221,43 +230,58 @@ function DetailActionForms({
     <>
       {canManagerApprove ? (
         <>
-          <form action={rejectReimbursementByManagerAction} style={{ display: "inline" }}>
+          <RateLimitedActionForm
+            action={rejectReimbursementByManagerAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={reimbursementId} />
             <Button type="submit" variant="destructive" size="sm" icon={<Ban size={13} />}>
               Recusar
             </Button>
-          </form>
-          <form action={approveReimbursementByManagerAction} style={{ display: "inline" }}>
+          </RateLimitedActionForm>
+          <RateLimitedActionForm
+            action={approveReimbursementByManagerAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={reimbursementId} />
             <Button type="submit" variant="primary" size="sm" icon={<Check size={13} />}>
               Aprovar como gestor
             </Button>
-          </form>
+          </RateLimitedActionForm>
         </>
       ) : null}
       {canFinanceApprove ? (
         <>
-          <form action={rejectReimbursementByFinanceAction} style={{ display: "inline" }}>
+          <RateLimitedActionForm
+            action={rejectReimbursementByFinanceAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={reimbursementId} />
             <Button type="submit" variant="destructive" size="sm" icon={<Ban size={13} />}>
               Recusar
             </Button>
-          </form>
-          <form action={approveReimbursementByFinanceAction} style={{ display: "inline" }}>
+          </RateLimitedActionForm>
+          <RateLimitedActionForm
+            action={approveReimbursementByFinanceAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={reimbursementId} />
             <Button type="submit" variant="primary" size="sm" icon={<CheckCircle2 size={13} />}>
               Aprovar para pagamento
             </Button>
-          </form>
+          </RateLimitedActionForm>
         </>
       ) : null}
       {canPay ? (
-        <form action={markReimbursementPaidAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={markReimbursementPaidAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={reimbursementId} />
           <Button type="submit" variant="primary" size="sm" icon={<DollarSign size={13} />}>
             Marcar pago
           </Button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
       {showInclude ? (
         <IncludeInInvoiceSheet

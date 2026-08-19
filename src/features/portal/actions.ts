@@ -25,6 +25,10 @@ import {
   getCurrentAccessContext,
   type AccessContext,
 } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -264,6 +268,7 @@ async function submitInvoiceRequestAction(formData: FormData) {
 
 async function approveInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -312,6 +317,7 @@ async function approveInvoiceRequestAction(formData: FormData) {
 
 async function rejectInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = rejectInvoiceSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -344,6 +350,7 @@ async function rejectInvoiceRequestAction(formData: FormData) {
 
 async function markInvoicePaidAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -458,6 +465,7 @@ async function createReimbursementAction(formData: FormData) {
 
 async function approveReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -478,6 +486,7 @@ async function approveReimbursementByManagerAction(formData: FormData) {
 
 async function rejectReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -498,6 +507,7 @@ async function rejectReimbursementByManagerAction(formData: FormData) {
 
 async function approveReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -518,6 +528,7 @@ async function approveReimbursementByFinanceAction(formData: FormData) {
 
 async function rejectReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -668,6 +679,7 @@ async function excludeReimbursementFromInvoiceAction(formData: FormData) {
 
 async function markReimbursementPaidAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -916,6 +928,7 @@ async function updateReimbursementStatus(
 }
 
 async function storePortalDocument(input: StorePortalDocumentInput) {
+  await enforceAuthenticatedRateLimit("upload", input.context);
   const originalName = input.uploadedFile.name;
   const mimeType = input.uploadedFile.type || "application/octet-stream";
   const byteSize = input.uploadedFile.size;
@@ -1107,30 +1120,32 @@ const tenantCreateInvoiceRequestFormAction = bindCurrentTenantContext(
 const tenantCreateInvoiceRequestAction = bindCurrentTenantContext(
   createInvoiceRequestAction,
 );
-const tenantSubmitInvoiceRequestAction = bindCurrentTenantContext(
-  submitInvoiceRequestAction,
+const tenantSubmitInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(submitInvoiceRequestAction),
 );
-const tenantApproveInvoiceRequestAction = bindCurrentTenantContext(
-  approveInvoiceRequestAction,
+const tenantApproveInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveInvoiceRequestAction),
 );
-const tenantRejectInvoiceRequestAction = bindCurrentTenantContext(
-  rejectInvoiceRequestAction,
+const tenantRejectInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectInvoiceRequestAction),
 );
-const tenantMarkInvoicePaidAction = bindCurrentTenantContext(markInvoicePaidAction);
-const tenantCreateReimbursementAction = bindCurrentTenantContext(
-  createReimbursementAction,
+const tenantMarkInvoicePaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markInvoicePaidAction),
 );
-const tenantApproveReimbursementByManagerAction = bindCurrentTenantContext(
-  approveReimbursementByManagerAction,
+const tenantCreateReimbursementAction = withRateLimitActionResult(
+  bindCurrentTenantContext(createReimbursementAction),
 );
-const tenantRejectReimbursementByManagerAction = bindCurrentTenantContext(
-  rejectReimbursementByManagerAction,
+const tenantApproveReimbursementByManagerAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveReimbursementByManagerAction),
 );
-const tenantApproveReimbursementByFinanceAction = bindCurrentTenantContext(
-  approveReimbursementByFinanceAction,
+const tenantRejectReimbursementByManagerAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectReimbursementByManagerAction),
 );
-const tenantRejectReimbursementByFinanceAction = bindCurrentTenantContext(
-  rejectReimbursementByFinanceAction,
+const tenantApproveReimbursementByFinanceAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveReimbursementByFinanceAction),
+);
+const tenantRejectReimbursementByFinanceAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectReimbursementByFinanceAction),
 );
 const tenantIncludeReimbursementInInvoiceAction = bindCurrentTenantContext(
   includeReimbursementInInvoiceAction,
@@ -1138,6 +1153,6 @@ const tenantIncludeReimbursementInInvoiceAction = bindCurrentTenantContext(
 const tenantExcludeReimbursementFromInvoiceAction = bindCurrentTenantContext(
   excludeReimbursementFromInvoiceAction,
 );
-const tenantMarkReimbursementPaidAction = bindCurrentTenantContext(
-  markReimbursementPaidAction,
+const tenantMarkReimbursementPaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markReimbursementPaidAction),
 );

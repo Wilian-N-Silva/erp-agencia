@@ -2,6 +2,7 @@ import { Ban, CheckCircle2, Plus, Save, Trash2, UserPlus } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { RateLimitedActionForm } from "@/components/fg";
 import {
   createAreaAction,
   createPositionAction,
@@ -105,7 +106,7 @@ export default async function SettingsPage() {
 
 function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
   return (
-    <form action={createSettingsUserAction} className="grid gap-4">
+    <RateLimitedActionForm action={createSettingsUserAction} className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className={fieldClassName}>
           Nome
@@ -127,7 +128,7 @@ function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
           Criar usuario
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -177,7 +178,10 @@ function UserManagementRow({
       </div>
 
       {canManage ? (
-        <form action={updateSettingsUserRolesAction} className="grid gap-3">
+        <RateLimitedActionForm
+          action={updateSettingsUserRolesAction}
+          className="grid gap-3"
+        >
           <input name="userId" type="hidden" value={user.id} />
           <RoleCheckboxGrid roles={roles} selected={user.roles} />
           <div className="flex justify-end">
@@ -186,7 +190,7 @@ function UserManagementRow({
               Salvar perfis
             </button>
           </div>
-        </form>
+        </RateLimitedActionForm>
       ) : (
         <div className="flex flex-wrap gap-2">
           {user.roles.map((role) => (
@@ -196,7 +200,10 @@ function UserManagementRow({
       )}
 
       {canManage ? (
-        <form action={updateSettingsUserStatusAction} className="flex items-start justify-end">
+        <RateLimitedActionForm
+          action={updateSettingsUserStatusAction}
+          className="flex items-start justify-end"
+        >
           <input name="userId" type="hidden" value={user.id} />
           <input name="isActive" type="hidden" value={user.isActive ? "false" : "true"} />
           <IconSubmitButton
@@ -204,7 +211,7 @@ function UserManagementRow({
             label={user.isActive ? "Desativar usuario" : "Ativar usuario"}
             tone={user.isActive ? "destructive" : "primary"}
           />
-        </form>
+        </RateLimitedActionForm>
       ) : null}
     </div>
   );

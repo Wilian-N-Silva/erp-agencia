@@ -1,8 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ZodError } from "zod";
 
-import { buildAuditCsv } from "@/features/audit/export";
-import { listAuditLogs } from "@/features/audit/dal";
-import { canExportAuditReport, normalizeAuditFilters } from "@/features/audit/rules";
+import { listEmployees } from "@/features/people/dal";
+import {
+  buildPeopleCsv,
+  filterPeopleForExport,
+  parsePeopleExportFilters,
+} from "@/features/people/export";
+import { canReadPeople } from "@/features/people/rules";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
 import {
@@ -20,7 +25,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (!canExportAuditReport(context)) {
+  if (!canReadPeople(context)) {
     return NextResponse.redirect(new URL("/acesso-negado", request.url));
   }
 
@@ -33,26 +38,43 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 
-  const filters = normalizeAuditFilters(
-    Object.fromEntries(request.nextUrl.searchParams.entries()),
-  );
-  const logs = await listAuditLogs(context, filters, { limit: 1000 });
-  const csv = buildAuditCsv(logs, filters);
+  let filters;
+  try {
+    filters = parsePeopleExportFilters(request.nextUrl.searchParams);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "INVALID_EXPORT_FILTERS",
+            message: "Filtros de exportacao invalidos.",
+          },
+        },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
+
+  const employees = filterPeopleForExport(await listEmployees(context), filters);
+  const csv = buildPeopleCsv(employees);
   const auditMetadata = getRequestAuditMetadata(request.headers);
 
   await writeAuditLog(context, {
     action: "export",
-    entityType: "audit_log",
+    entityType: "employee",
     metadata: {
       filters,
-      rows: logs.length,
+      format: "csv",
+      rows: employees.length,
     },
     ...auditMetadata,
   });
 
   return new NextResponse(csv, {
     headers: {
-      "content-disposition": `attachment; filename="auditoria-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "cache-control": "private, no-store",
+      "content-disposition": 'attachment; filename="colaboradores.csv"',
       "content-type": "text/csv; charset=utf-8",
     },
   });

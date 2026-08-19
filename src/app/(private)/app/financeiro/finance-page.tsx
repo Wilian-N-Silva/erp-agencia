@@ -2,7 +2,12 @@ import { Ban, CheckCircle2, Pencil, Plus, Save, Upload } from "lucide-react";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { ActionSheet, Button, MoneyInput } from "@/components/fg";
+import {
+  ActionSheet,
+  Button,
+  MoneyInput,
+  RateLimitedActionForm,
+} from "@/components/fg";
 import { listClients } from "@/features/clients/dal";
 import {
   cancelFinancialEntryAction,
@@ -717,7 +722,10 @@ function EntryRowActions({
         />
       </ActionSheet>
       {entry.status !== "received" && entry.status !== "cancelled" ? (
-        <form action={markFinancialEntryReceivedAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={markFinancialEntryReceivedAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={entry.id} />
           <button
             type="submit"
@@ -727,10 +735,13 @@ function EntryRowActions({
           >
             <CheckCircle2 size={14} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
       {entry.status !== "cancelled" ? (
-        <form action={cancelFinancialEntryAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={cancelFinancialEntryAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={entry.id} />
           <button
             type="submit"
@@ -741,7 +752,7 @@ function EntryRowActions({
           >
             <Ban size={14} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
     </div>
   );
@@ -771,7 +782,10 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
         />
       </ActionSheet>
       {expense.status !== "paid" && expense.status !== "cancelled" ? (
-        <form action={markFinancialExpensePaidAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={markFinancialExpensePaidAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={expense.id} />
           <button
             type="submit"
@@ -781,10 +795,13 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
           >
             <CheckCircle2 size={14} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
       {expense.status !== "cancelled" ? (
-        <form action={cancelFinancialExpenseAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={cancelFinancialExpenseAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={expense.id} />
           <button
             type="submit"
@@ -795,7 +812,7 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
           >
             <Ban size={14} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
     </div>
   );

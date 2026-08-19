@@ -52,7 +52,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fg-toasts">
         {toasts.map((t) => (
-          <div key={t.id} className={`fg-toast fg-toast-${t.tone ?? "default"}`}>
+          <div
+            key={t.id}
+            className={`fg-toast fg-toast-${t.tone ?? "default"}`}
+            role={t.tone === "error" ? "alert" : "status"}
+          >
             <span className="fg-toast-icon">
               {t.tone === "success" ? (
                 <CheckCircle size={16} />

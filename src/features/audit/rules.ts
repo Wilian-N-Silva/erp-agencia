@@ -11,6 +11,7 @@ export const auditActionLabels: Record<AuditAction, string> = {
   delete: "Exclusao",
   export: "Exportacao",
   permission_change: "Permissao",
+  rate_limit_exceeded: "Limite de tentativas excedido",
   reject: "Recusa",
   sensitive_read: "Leitura sensivel",
   status_change: "Status",

@@ -1,8 +1,14 @@
 import { CheckCircle2, FileText, Upload } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { Button, Card, EmptyState, StatusBadge } from "@/components/fg";
-import { MoneyInput } from "@/components/fg";
+import {
+  Button,
+  Card,
+  EmptyState,
+  MoneyInput,
+  RateLimitedActionForm,
+  StatusBadge,
+} from "@/components/fg";
 import { submitInvoiceRequestAction } from "@/features/portal/actions";
 import {
   getPortalEmployeeSummary,
@@ -151,9 +157,8 @@ function DescriptionCard({ invoice }: { invoice: InvoiceRequestListItem }) {
 function SubmitCard({ invoice }: { invoice: InvoiceRequestListItem }) {
   return (
     <Card title="Enviar NF emitida" description="Faça upload do PDF e informe os dados da nota emitida.">
-      <form
+      <RateLimitedActionForm
         action={submitInvoiceRequestAction}
-        encType="multipart/form-data"
         style={{ display: "flex", flexDirection: "column", gap: 14 }}
       >
         <input type="hidden" name="id" value={invoice.id} />
@@ -188,7 +193,7 @@ function SubmitCard({ invoice }: { invoice: InvoiceRequestListItem }) {
             Enviar NF para aprovação
           </Button>
         </div>
-      </form>
+      </RateLimitedActionForm>
     </Card>
   );
 }

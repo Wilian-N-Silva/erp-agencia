@@ -32,10 +32,12 @@ import {
   EmptyState,
   KpiCard,
   MoneyInput,
+  RateLimitedActionForm,
   Sheet,
   StatusBadge,
   Tabs,
   Tag,
+  useToast,
 } from "@/components/fg";
 import { registerDocumentAction } from "@/features/documents/actions";
 import {
@@ -67,6 +69,10 @@ import type {
   AccessReviewState,
 } from "@/features/accesses/rules";
 import type { EquipmentStatus } from "@/features/equipment/rules";
+import {
+  downloadFile,
+  fileDownloadErrorFeedback,
+} from "@/lib/client-file-download";
 
 type BadgeTone =
   | "success"
@@ -95,6 +101,7 @@ type EmployeeView = {
   areaId: string;
   areaName: string;
   managerEmployeeId: string | null;
+  managerName: string | null;
   employmentType: EmploymentType;
   startDate: string;
   endDate: string | null;
@@ -414,14 +421,14 @@ export function EmployeeDetailView({
   invoiceRequests,
   reimbursements,
 }: EmployeeDetailViewProps) {
+  const pushToast = useToast();
   const [tab, setTab] = useState("resumo");
+  const [exportingProfile, setExportingProfile] = useState(false);
   const [activeAction, setActiveAction] = useState<
     "timeoff" | "reimbursement" | "equipment" | null
   >(null);
   const displayName = employee.socialName || employee.fullName;
-  const managerName =
-    options?.managers.find((manager) => manager.id === employee.managerEmployeeId)
-      ?.name ?? null;
+  const managerName = employee.managerName;
   const tabs = useMemo(
     () =>
       BASE_TABS.filter((item) => {
@@ -435,6 +442,23 @@ export function EmployeeDetailView({
   );
   const canAssignEquipment =
     actions.canAssignEquipment && assignableEquipmentItems.length > 0;
+
+  const exportEmployeeProfile = async () => {
+    setExportingProfile(true);
+    try {
+      await downloadFile(
+        `/app/colaboradores/${employee.id}/exportar`,
+        `ficha-${employee.registrationNumber}.txt`,
+      );
+    } catch (error) {
+      pushToast({
+        ...fileDownloadErrorFeedback(error),
+        tone: "error",
+      });
+    } finally {
+      setExportingProfile(false);
+    }
+  };
 
   return (
     <div className="fg-page">
@@ -540,10 +564,10 @@ export function EmployeeDetailView({
               },
               { separator: true },
               {
-                label: "Exportar ficha",
+                label: exportingProfile ? "Exportando ficha..." : "Exportar ficha",
                 icon: <Download size={13} />,
-                disabled: !actions.canExportProfile,
-                onClick: () => exportEmployeeProfile(employee, managerName),
+                disabled: !actions.canExportProfile || exportingProfile,
+                onClick: exportEmployeeProfile,
               },
             ]}
           />
@@ -1259,10 +1283,9 @@ function DocumentsTab({
 
 function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
   return (
-    <form
+    <RateLimitedActionForm
       action={registerDocumentAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <input name="ownerType" type="hidden" value="employee" />
       <input name="ownerId" type="hidden" value={employee.id} />
@@ -1328,7 +1351,7 @@ function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
           <span>Enviar documento</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -1637,10 +1660,9 @@ function TimeOffRequestForm({ employee }: { employee: EmployeeView }) {
 
 function ReimbursementRequestForm() {
   return (
-    <form
+    <RateLimitedActionForm
       action={createReimbursementAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <Field label="Descricao" required>
         <input className="fg-input" maxLength={180} name="title" required />
@@ -1679,7 +1701,7 @@ function ReimbursementRequestForm() {
           <span>Enviar reembolso</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -1718,50 +1740,6 @@ function AssignEquipmentForm({
       </div>
     </form>
   );
-}
-
-function exportEmployeeProfile(employee: EmployeeView, managerName: string | null) {
-  const lines = [
-    "Ficha do colaborador",
-    "",
-    `Matricula: ${employee.registrationNumber}`,
-    `Nome: ${employee.fullName}`,
-    employee.socialName ? `Nome social: ${employee.socialName}` : null,
-    `Status: ${employeeStatusLabels[employee.status]}`,
-    `Vinculo: ${employmentTypeLabels[employee.employmentType]}`,
-    `Area: ${employee.areaName}`,
-    `Cargo: ${employee.positionName}`,
-    `Gestor: ${managerName ?? "-"}`,
-    `Entrada: ${formatDate(employee.startDate)}`,
-    `Saida: ${formatDate(employee.endDate)}`,
-    `Modelo: ${employee.workModel ?? "-"}`,
-    `Localizacao: ${employee.location ?? "-"}`,
-    `Email corporativo: ${employee.corporateEmail ?? "-"}`,
-    `Email pessoal: ${employee.sensitiveProfileHidden ? "Restrito" : employee.personalEmail ?? "-"}`,
-    `Telefone: ${employee.sensitiveProfileHidden ? "Restrito" : employee.phone ?? "-"}`,
-  ].filter(Boolean);
-  const blob = new Blob([lines.join("\n")], {
-    type: "text/plain;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `ficha-${safeFileName(employee.registrationNumber || employee.fullName)}.txt`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function safeFileName(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
 }
 
 function EmployeeEditForm({

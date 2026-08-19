@@ -1,8 +1,15 @@
 import { Paperclip, Plus, Receipt } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { ActionSheet, Button, Card, EmptyState, StatusBadge } from "@/components/fg";
-import { MoneyInput } from "@/components/fg";
+import {
+  ActionSheet,
+  Button,
+  Card,
+  EmptyState,
+  MoneyInput,
+  RateLimitedActionForm,
+  StatusBadge,
+} from "@/components/fg";
 import { createReimbursementAction } from "@/features/portal/actions";
 import { listReimbursements, type ReimbursementListItem } from "@/features/portal/dal";
 import {
@@ -95,9 +102,8 @@ function NewReimbursementSheet() {
         </Button>
       }
     >
-      <form
+      <RateLimitedActionForm
         action={createReimbursementAction}
-        encType="multipart/form-data"
         style={{ display: "flex", flexDirection: "column", gap: 14 }}
       >
         <div className="fg-field">
@@ -173,7 +179,7 @@ function NewReimbursementSheet() {
             Enviar para aprovação
           </Button>
         </div>
-      </form>
+      </RateLimitedActionForm>
     </ActionSheet>
   );
 }

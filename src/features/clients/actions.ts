@@ -20,6 +20,10 @@ import {
   getCurrentAccessContext,
   runWithCurrentTenantDb,
 } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -364,6 +368,7 @@ async function generateClientExpectedEntryAction(formData: FormData) {
 
 async function markClientPaymentReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireClientFinancialWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = markClientPaymentReceivedSchema.parse(formDataToObject(formData));
   const before = await getFinancialEntryForWrite(input.id, organizationId);
 
@@ -824,8 +829,8 @@ const tenantUpdateClientBillingProfileAction = bindCurrentTenantContext(
 const tenantGenerateClientExpectedEntryAction = bindCurrentTenantContext(
   generateClientExpectedEntryAction,
 );
-const tenantMarkClientPaymentReceivedAction = bindCurrentTenantContext(
-  markClientPaymentReceivedAction,
+const tenantMarkClientPaymentReceivedAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markClientPaymentReceivedAction),
 );
 const tenantUpdateClientInternalNotesAction = bindCurrentTenantContext(
   updateClientInternalNotesAction,

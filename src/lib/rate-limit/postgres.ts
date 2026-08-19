@@ -38,6 +38,7 @@ export type RateLimitResult = {
   remaining: number;
   resetAt: Date;
   retryAfterSeconds: number;
+  shouldEmitSecurityEvent?: boolean;
 };
 
 type RateLimitDatabase = Pick<Database, "execute">;
@@ -87,7 +88,7 @@ export function createPostgresRateLimiter({
       do update set
         count = rate_limit_buckets.count + 1,
         expires_at = excluded.expires_at
-      where rate_limit_buckets.count < ${rule.limit}
+      where rate_limit_buckets.count <= ${rule.limit}
       returning count
     `);
 
@@ -95,8 +96,8 @@ export function createPostgresRateLimiter({
       await cleanup({ batchSize: config.cleanup.batchSize });
     }
 
-    const count = Number(result.rows[0]?.count ?? rule.limit);
-    const allowed = result.rows.length === 1;
+    const count = Number(result.rows[0]?.count ?? rule.limit + 1);
+    const allowed = result.rows.length === 1 && count <= rule.limit;
 
     return {
       allowed,
@@ -109,6 +110,10 @@ export function createPostgresRateLimiter({
             1,
             Math.ceil((resetAt.getTime() - currentTime.getTime()) / 1000),
           ),
+      // The atomic counter advances once beyond the threshold. Exactly that
+      // request owns the aggregated security event for this subject/window;
+      // later blocked attempts neither increment nor emit audit spam.
+      shouldEmitSecurityEvent: !allowed && result.rows.length === 1,
     };
   }
 

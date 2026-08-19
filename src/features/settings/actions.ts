@@ -20,6 +20,10 @@ import {
   users,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
@@ -55,6 +59,7 @@ const deleteOrgUnitSchema = z.object({
 
 async function createSettingsUserAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
   const input = createUserSchema.parse(formDataToObject(formData));
   const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
 
@@ -109,6 +114,7 @@ async function createSettingsUserAction(formData: FormData) {
 
 async function updateSettingsUserRolesAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateRolesSchema.parse(formDataToObject(formData));
   const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
 
@@ -135,6 +141,7 @@ async function updateSettingsUserRolesAction(formData: FormData) {
 
 async function updateSettingsUserStatusAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateStatusSchema.parse(formDataToObject(formData));
 
   if (input.userId === context.userId && !input.isActive) {
@@ -405,12 +412,14 @@ export {
   tenantDeletePositionAction as deletePositionAction,
 };
 
-const tenantCreateSettingsUserAction = bindCurrentTenantContext(createSettingsUserAction);
-const tenantUpdateSettingsUserRolesAction = bindCurrentTenantContext(
-  updateSettingsUserRolesAction,
+const tenantCreateSettingsUserAction = withRateLimitActionResult(
+  bindCurrentTenantContext(createSettingsUserAction),
 );
-const tenantUpdateSettingsUserStatusAction = bindCurrentTenantContext(
-  updateSettingsUserStatusAction,
+const tenantUpdateSettingsUserRolesAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserRolesAction),
+);
+const tenantUpdateSettingsUserStatusAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserStatusAction),
 );
 const tenantUpdateAppSettingAction = bindCurrentTenantContext(updateAppSettingAction);
 const tenantCreateAreaAction = bindCurrentTenantContext(createAreaAction);

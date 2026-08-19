@@ -14,6 +14,10 @@ import {
   provisions,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { normalizeMoneyInput, toDateKey } from "./rules";
@@ -170,6 +174,7 @@ async function updateFinancialEntryAction(formData: FormData) {
 
 async function markFinancialEntryReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -214,6 +219,7 @@ async function markFinancialEntryReceivedAction(formData: FormData) {
 
 async function cancelFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -320,6 +326,7 @@ async function updateFinancialExpenseAction(formData: FormData) {
 
 async function markFinancialExpensePaidAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 
@@ -359,6 +366,7 @@ async function markFinancialExpensePaidAction(formData: FormData) {
 
 async function cancelFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 
@@ -572,11 +580,11 @@ const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
 const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
   updateFinancialEntryAction,
 );
-const tenantMarkFinancialEntryReceivedAction = bindCurrentTenantContext(
-  markFinancialEntryReceivedAction,
+const tenantMarkFinancialEntryReceivedAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markFinancialEntryReceivedAction),
 );
-const tenantCancelFinancialEntryAction = bindCurrentTenantContext(
-  cancelFinancialEntryAction,
+const tenantCancelFinancialEntryAction = withRateLimitActionResult(
+  bindCurrentTenantContext(cancelFinancialEntryAction),
 );
 const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
   createFinancialExpenseAction,
@@ -584,11 +592,11 @@ const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
 const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
   updateFinancialExpenseAction,
 );
-const tenantMarkFinancialExpensePaidAction = bindCurrentTenantContext(
-  markFinancialExpensePaidAction,
+const tenantMarkFinancialExpensePaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markFinancialExpensePaidAction),
 );
-const tenantCancelFinancialExpenseAction = bindCurrentTenantContext(
-  cancelFinancialExpenseAction,
+const tenantCancelFinancialExpenseAction = withRateLimitActionResult(
+  bindCurrentTenantContext(cancelFinancialExpenseAction),
 );
 const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);
 const tenantDeactivateProvisionAction = bindCurrentTenantContext(

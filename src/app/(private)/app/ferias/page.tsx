@@ -2,7 +2,7 @@ import { Ban, Check } from "lucide-react";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/fg";
+import { Button, RateLimitedActionForm } from "@/components/fg";
 import {
   approveTimeOffRequestAction,
   rejectTimeOffRequestAction,
@@ -45,7 +45,10 @@ export default async function TimeOffPage() {
 
     rowActions[request.id] = (
       <>
-        <form action={approveTimeOffRequestAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={approveTimeOffRequestAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={request.id} />
           <button
             type="submit"
@@ -55,8 +58,11 @@ export default async function TimeOffPage() {
           >
             <Check size={13} />
           </button>
-        </form>
-        <form action={rejectTimeOffRequestAction} style={{ display: "inline" }}>
+        </RateLimitedActionForm>
+        <RateLimitedActionForm
+          action={rejectTimeOffRequestAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={request.id} />
           <button
             type="submit"
@@ -66,24 +72,30 @@ export default async function TimeOffPage() {
           >
             <Ban size={13} />
           </button>
-        </form>
+        </RateLimitedActionForm>
       </>
     );
 
     detailActions[request.id] = (
       <>
-        <form action={rejectTimeOffRequestAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={rejectTimeOffRequestAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={request.id} />
           <Button type="submit" variant="destructive" size="sm" icon={<Ban size={13} />}>
             Recusar
           </Button>
-        </form>
-        <form action={approveTimeOffRequestAction} style={{ display: "inline" }}>
+        </RateLimitedActionForm>
+        <RateLimitedActionForm
+          action={approveTimeOffRequestAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={request.id} />
           <Button type="submit" variant="primary" size="sm" icon={<Check size={13} />}>
             Aprovar
           </Button>
-        </form>
+        </RateLimitedActionForm>
       </>
     );
   }

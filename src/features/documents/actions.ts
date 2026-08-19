@@ -9,6 +9,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { documents, employees, files } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import {
   createStorageKey,
@@ -80,6 +84,7 @@ const idSchema = z.object({
 
 async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
+  await enforceAuthenticatedRateLimit("upload", context);
   const metadata = documentMetadataSchema.parse(formDataToObject(formData));
   const uploadedFile = getUploadedFile(formData);
   const input = uploadedFile
@@ -313,5 +318,7 @@ export {
   tenantDeleteDocumentAction as deleteDocumentAction,
 };
 
-const tenantRegisterDocumentAction = bindCurrentTenantContext(registerDocumentAction);
+const tenantRegisterDocumentAction = withRateLimitActionResult(
+  bindCurrentTenantContext(registerDocumentAction),
+);
 const tenantDeleteDocumentAction = bindCurrentTenantContext(deleteDocumentAction);
