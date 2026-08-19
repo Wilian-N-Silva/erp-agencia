@@ -177,6 +177,30 @@ describe("PostgreSQL rate limiter", () => {
     expect(await readBuckets()).toHaveLength(20);
   });
 
+  it("persists Action consumption after the tenant transaction rolls back", async () => {
+    const context = {
+      employeeId: null,
+      organizationId: orgA,
+      permissions: [],
+      roles: [],
+      userId: "sec-006-rollback-user",
+    };
+
+    await expect(
+      withTenantDb(context, async () => {
+        await enforceAuthenticatedRateLimit("common_mutation", context);
+        throw new Error("simulated Action failure");
+      }),
+    ).rejects.toThrow("simulated Action failure");
+
+    const buckets = await readBuckets();
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]).toMatchObject({
+      action: "common_mutation",
+      count: 1,
+    });
+  });
+
   it("deletes expired buckets in bounded batches without removing active ones", async () => {
     const limiter = createLimiter(configWithCommonLimit(2));
 
