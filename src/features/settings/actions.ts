@@ -114,6 +114,7 @@ async function createSettingsUserAction(formData: FormData) {
 
 async function updateSettingsUserRolesAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateRolesSchema.parse(formDataToObject(formData));
   const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
 
@@ -140,6 +141,7 @@ async function updateSettingsUserRolesAction(formData: FormData) {
 
 async function updateSettingsUserStatusAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateStatusSchema.parse(formDataToObject(formData));
 
   if (input.userId === context.userId && !input.isActive) {
@@ -413,11 +415,11 @@ export {
 const tenantCreateSettingsUserAction = withRateLimitActionResult(
   bindCurrentTenantContext(createSettingsUserAction),
 );
-const tenantUpdateSettingsUserRolesAction = bindCurrentTenantContext(
-  updateSettingsUserRolesAction,
+const tenantUpdateSettingsUserRolesAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserRolesAction),
 );
-const tenantUpdateSettingsUserStatusAction = bindCurrentTenantContext(
-  updateSettingsUserStatusAction,
+const tenantUpdateSettingsUserStatusAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserStatusAction),
 );
 const tenantUpdateAppSettingAction = bindCurrentTenantContext(updateAppSettingAction);
 const tenantCreateAreaAction = bindCurrentTenantContext(createAreaAction);

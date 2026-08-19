@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  delete: vi.fn(),
   enforceAuthenticatedRateLimit: vi.fn(),
   getCurrentAccessContext: vi.fn(),
   insert: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ writeAuditLog: mocks.writeAuditLog }));
 vi.mock("@/lib/db", () => ({
   db: {
+    delete: mocks.delete,
     insert: mocks.insert,
     select: mocks.select,
     update: mocks.update,
@@ -70,7 +72,11 @@ import {
   rejectReimbursementByFinanceAction,
   rejectReimbursementByManagerAction,
 } from "@/features/portal/actions";
-import { createSettingsUserAction } from "@/features/settings/actions";
+import {
+  createSettingsUserAction,
+  updateSettingsUserRolesAction,
+  updateSettingsUserStatusAction,
+} from "@/features/settings/actions";
 import {
   approveTimeOffRequestAction,
   rejectTimeOffRequestAction,
@@ -112,6 +118,16 @@ describe("critical Action rate-limit entrypoints", () => {
     await expect(createSettingsUserAction(new FormData())).resolves.toEqual(
       blockedActionError,
     );
+
+    expectRateLimit("invitation");
+    expectNoDataOrStorageAccess();
+  });
+
+  it.each([
+    ["role changes", updateSettingsUserRolesAction],
+    ["activation changes", updateSettingsUserStatusAction],
+  ])("blocks user %s before validating or writing access data", async (_label, action) => {
+    await expect(action(new FormData())).resolves.toEqual(blockedActionError);
 
     expectRateLimit("invitation");
     expectNoDataOrStorageAccess();
@@ -223,6 +239,7 @@ function expectNoDataOrStorageAccess() {
   expect(mocks.select).not.toHaveBeenCalled();
   expect(mocks.insert).not.toHaveBeenCalled();
   expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.delete).not.toHaveBeenCalled();
   expect(mocks.putStorageObject).not.toHaveBeenCalled();
   expect(mocks.writeAuditLog).not.toHaveBeenCalled();
 }
