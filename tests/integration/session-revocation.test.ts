@@ -1,9 +1,16 @@
 import { makeSignature } from "better-auth/crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { terminateEmployeeAndRevokeSessions } from "@/features/lifecycle/offboarding-access";
 import { updateUserAccessStatus } from "@/features/settings/access";
-import { createDatabase, getDb, type Database } from "@/lib/db";
+import {
+  createDatabase,
+  createWithTenantDb,
+  getDb,
+  type Database,
+} from "@/lib/db";
+import { areas, employees, positions } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 
 const runtimeUrl = process.env.DATABASE_TEST_URL;
@@ -17,8 +24,11 @@ if (!runtimeUrl || !adminUrl) {
 
 const authSecret = "acc-005-integration-secret-at-least-32-characters";
 const ids = {
+  areaA: "69000000-0000-4000-8000-000000000011",
+  employeeA: "69000000-0000-4000-8000-000000000013",
   orgA: "69000000-0000-4000-8000-000000000001",
   orgB: "69000000-0000-4000-8000-000000000002",
+  positionA: "69000000-0000-4000-8000-000000000012",
 } as const;
 const users = {
   actorA: "acc-005-actor-a",
@@ -59,6 +69,7 @@ beforeAll(async () => {
 
   await removeFixtures();
   await createFixtures();
+  await createOffboardingFixtures();
 });
 
 beforeEach(async () => {
@@ -128,6 +139,64 @@ describe("ACC-005 session revocation", () => {
       userId: users.targetA,
     });
 
+    await expect(listSessionTokens()).resolves.toEqual([
+      otherTenantSessionToken,
+      ...targetSessionTokens,
+    ]);
+  });
+
+  it("offboarding termination revokes sessions for the linked employee user", async () => {
+    const withTenantDb = createWithTenantDb(runtimeDb);
+
+    await expect(
+      withTenantDb(contextA, (transaction) =>
+        terminateEmployeeAndRevokeSessions(transaction, {
+          employeeId: ids.employeeA,
+          endDate: "2026-08-24",
+          organizationId: ids.orgA,
+        }),
+      ),
+    ).resolves.toBe(2);
+
+    const employeeRows = await adminDb
+      .select({
+        endDate: employees.endDate,
+        status: employees.status,
+      })
+      .from(employees)
+      .where(eq(employees.id, ids.employeeA));
+
+    expect(employeeRows).toEqual([
+      { endDate: "2026-08-24", status: "terminated" },
+    ]);
+    await expect(listSessionTokens()).resolves.toEqual([
+      otherTenantSessionToken,
+    ]);
+  });
+
+  it("rolls back offboarding termination and session revocation together", async () => {
+    const withTenantDb = createWithTenantDb(runtimeDb);
+
+    await expect(
+      withTenantDb(contextA, async (transaction) => {
+        await terminateEmployeeAndRevokeSessions(transaction, {
+          employeeId: ids.employeeA,
+          endDate: "2026-08-24",
+          organizationId: ids.orgA,
+        });
+        throw new Error("force offboarding rollback");
+      }),
+    ).rejects.toThrow("force offboarding rollback");
+
+    const employeeRows = await adminDb
+      .select({
+        endDate: employees.endDate,
+        status: employees.status,
+      })
+      .from(employees)
+      .where(eq(employees.id, ids.employeeA));
+
+    expect(employeeRows).toEqual([{ endDate: null, status: "active" }]);
     await expect(listSessionTokens()).resolves.toEqual([
       otherTenantSessionToken,
       ...targetSessionTokens,
@@ -295,6 +364,15 @@ async function createFixtures() {
 }
 
 async function resetMutableFixtures() {
+  await adminDb
+    .update(employees)
+    .set({
+      endDate: null,
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(employees.id, ids.employeeA));
+
   await adminDb.transaction(async (transaction) => {
     await transaction.execute(sql`
       delete from audit_logs
@@ -331,6 +409,10 @@ async function resetMutableFixtures() {
 }
 
 async function removeFixtures() {
+  await adminDb?.delete(employees).where(eq(employees.id, ids.employeeA));
+  await adminDb?.delete(positions).where(eq(positions.id, ids.positionA));
+  await adminDb?.delete(areas).where(eq(areas.id, ids.areaA));
+
   await adminDb.transaction(async (transaction) => {
     await transaction.execute(sql`
       delete from audit_logs
@@ -352,6 +434,31 @@ async function removeFixtures() {
     await transaction.execute(sql`
       delete from organizations where id in (${ids.orgA}, ${ids.orgB})
     `);
+  });
+}
+
+async function createOffboardingFixtures() {
+  await adminDb.insert(areas).values({
+    id: ids.areaA,
+    name: "ACC-005 Area A",
+    organizationId: ids.orgA,
+  });
+  await adminDb.insert(positions).values({
+    id: ids.positionA,
+    name: "ACC-005 Position A",
+    organizationId: ids.orgA,
+  });
+  await adminDb.insert(employees).values({
+    areaId: ids.areaA,
+    currentCompensation: "1000.00",
+    employmentType: "clt",
+    fullName: "ACC-005 Employee A",
+    id: ids.employeeA,
+    organizationId: ids.orgA,
+    positionId: ids.positionA,
+    registrationNumber: "ACC005-1",
+    startDate: "2026-01-01",
+    userId: users.targetA,
   });
 }
 
