@@ -406,7 +406,7 @@ export const employees = pgTable(
       table.organizationId,
       table.corporateEmail,
     ),
-    userIdx: index("employees_user_idx").on(table.userId),
+    userIdx: uniqueIndex("employees_user_idx").on(table.userId),
     statusIdx: index("employees_status_idx").on(table.organizationId, table.status),
   }),
 );

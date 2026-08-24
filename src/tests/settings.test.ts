@@ -7,7 +7,10 @@ import {
   parseSettingValue,
   stringifySettingValue,
 } from "@/features/settings/rules";
-import { updateUserAccessStatusSchema } from "@/features/settings/schemas";
+import {
+  updateUserAccessStatusSchema,
+  updateUserEmployeeLinkSchema,
+} from "@/features/settings/schemas";
 import { createAccessContext } from "@/lib/dal";
 
 describe("settings authorization", () => {
@@ -74,6 +77,38 @@ describe("user access status input", () => {
     expect(() =>
       updateUserAccessStatusSchema.parse({
         accessStatus: "active",
+        organizationId: "20000000-0000-4000-8000-000000000001",
+        userId: "user_1",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("user employee link input", () => {
+  const employeeId = "30000000-0000-4000-8000-000000000001";
+
+  it("accepts an explicit employee or an explicit unlink", () => {
+    expect(
+      updateUserEmployeeLinkSchema.parse({ employeeId, userId: "user_1" }),
+    ).toEqual({ employeeId, userId: "user_1" });
+    expect(
+      updateUserEmployeeLinkSchema.parse({ employeeId: "", userId: "user_1" }),
+    ).toEqual({ employeeId: null, userId: "user_1" });
+  });
+
+  it("rejects invalid ids and server-owned organization fields", () => {
+    expect(() =>
+      updateUserEmployeeLinkSchema.parse({
+        employeeId: "not-an-id",
+        userId: "user_1",
+      }),
+    ).toThrow();
+    expect(() =>
+      updateUserEmployeeLinkSchema.parse({ userId: "user_1" }),
+    ).toThrow();
+    expect(() =>
+      updateUserEmployeeLinkSchema.parse({
+        employeeId,
         organizationId: "20000000-0000-4000-8000-000000000001",
         userId: "user_1",
       }),

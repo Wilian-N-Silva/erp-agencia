@@ -27,11 +27,19 @@ export type SettingsUserListItem = {
   accessStatus: UserAccessStatus;
   id: string;
   email: string;
+  employeeId: string | null;
   employeeName: string | null;
   name: string;
   roles: RoleKey[];
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type SettingsEmployeeOption = {
+  id: string;
+  linkedUserId: string | null;
+  name: string;
+  registrationNumber: string;
 };
 
 export type SettingsRoleItem = {
@@ -66,6 +74,7 @@ export type SettingsOrgUnitItem = {
 export type SettingsDashboard = {
   appSettings: AppSettingListItem[];
   areas: SettingsOrgUnitItem[];
+  employees: SettingsEmployeeOption[];
   permissions: SettingsPermissionItem[];
   positions: SettingsOrgUnitItem[];
   roles: SettingsRoleItem[];
@@ -86,12 +95,14 @@ async function getSettingsDashboard(
     settingRows,
     areaRows,
     positionRows,
+    employeeRows,
   ] = await Promise.all([
       db
         .select({
           accessStatus: users.accessStatus,
           id: users.id,
           email: users.email,
+          employeeId: employees.id,
           employeeName: employees.fullName,
           name: users.name,
           createdAt: users.createdAt,
@@ -155,6 +166,21 @@ async function getSettingsDashboard(
         .where(eq(positions.organizationId, organizationId))
         .groupBy(positions.id, positions.name)
         .orderBy(asc(positions.name)),
+      db
+        .select({
+          id: employees.id,
+          linkedUserId: employees.userId,
+          name: employees.fullName,
+          registrationNumber: employees.registrationNumber,
+        })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.organizationId, organizationId),
+            isNull(employees.deletedAt),
+          ),
+        )
+        .orderBy(asc(employees.fullName)),
     ]);
   const rolePermissionsByRoleId = groupRolePermissions(rolePermissionRows);
   const rolesByUserId = groupUserRoles(userRoleRows);
@@ -162,6 +188,7 @@ async function getSettingsDashboard(
   return {
     appSettings: settingRows,
     areas: areaRows,
+    employees: employeeRows,
     positions: positionRows,
     permissions: permissionRows.flatMap((permission) => {
       if (!isPermissionKey(permission.key)) {

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ToastProvider } from "@/components/fg/toast";
 import { PortalShell } from "@/components/layout/portal-shell";
 import { getPortalEmployeeSummary } from "@/features/portal/dal";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,22 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   const summary = await getPortalEmployeeSummary(context);
 
+  if (!summary) {
+    return (
+      <ToastProvider>
+        <PortalEmployeeLinkRequired />
+      </ToastProvider>
+    );
+  }
+
   return (
     <ToastProvider>
       <PortalShell
         user={{
-          name: summary?.fullName ?? "Colaborador",
-          registrationNumber: summary?.registrationNumber ?? null,
+          name: summary.fullName,
+          registrationNumber: summary.registrationNumber,
         }}
-        employmentType={summary?.employmentType ?? "clt"}
+        employmentType={summary.employmentType}
       >
         {children}
       </PortalShell>
