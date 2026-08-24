@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
@@ -11,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   writeAuditLog: vi.fn(),
 }));
 
-vi.mock("better-auth/crypto", () => ({ hashPassword: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ writeAuditLog: mocks.writeAuditLog }));
@@ -43,6 +44,15 @@ vi.mock("@/lib/rbac", () => ({
   can: vi.fn().mockReturnValue(true),
   canAny: vi.fn().mockReturnValue(true),
   isRoleKey: vi.fn().mockReturnValue(true),
+  roleKeys: [
+    "technical_admin",
+    "director",
+    "finance",
+    "hr_admin",
+    "it_governance",
+    "leadership",
+    "employee",
+  ],
 }));
 vi.mock("@/lib/storage", () => ({
   createStorageKey: vi.fn(),
@@ -54,6 +64,7 @@ import {
   approveAccessRecordAction,
   markAccessRemovedAction,
 } from "@/features/accesses/actions";
+import { createAccessInvitationAction } from "@/features/access-invitations/actions";
 import { registerDocumentAction } from "@/features/documents/actions";
 import {
   cancelFinancialEntryAction,
@@ -72,11 +83,7 @@ import {
   rejectReimbursementByFinanceAction,
   rejectReimbursementByManagerAction,
 } from "@/features/portal/actions";
-import {
-  createSettingsUserAction,
-  updateSettingsUserRolesAction,
-  updateSettingsUserStatusAction,
-} from "@/features/settings/actions";
+import * as settingsActions from "@/features/settings/actions";
 import {
   approveTimeOffRequestAction,
   rejectTimeOffRequestAction,
@@ -106,6 +113,10 @@ const blockedActionError = {
   ok: false,
   retryAfterSeconds,
 };
+const {
+  updateSettingsUserRolesAction,
+  updateSettingsUserStatusAction,
+} = settingsActions;
 
 describe("critical Action rate-limit entrypoints", () => {
   beforeEach(() => {
@@ -115,12 +126,38 @@ describe("critical Action rate-limit entrypoints", () => {
   });
 
   it("blocks invitations before validating or writing user data", async () => {
-    await expect(createSettingsUserAction(new FormData())).resolves.toEqual(
+    await expect(createAccessInvitationAction(new FormData())).resolves.toEqual(
       blockedActionError,
     );
 
     expectRateLimit("invitation");
     expectNoDataOrStorageAccess();
+  });
+
+  it("keeps invitations as the only public user provisioning path", async () => {
+    const [settingsSource, invitationSource] = await Promise.all([
+      readFile(
+        join(process.cwd(), "src/features/settings/actions.ts"),
+        "utf8",
+      ),
+      readFile(
+        join(process.cwd(), "src/features/access-invitations/actions.ts"),
+        "utf8",
+      ),
+    ]);
+
+    expect(settingsActions).not.toHaveProperty("createSettingsUserAction");
+    expect(
+      Object.keys(settingsActions).filter((name) => /create.*user/i.test(name)),
+    ).toEqual([]);
+    expect(settingsSource).not.toMatch(/\.insert\s*\(\s*users\s*\)/);
+    expect(settingsSource).not.toMatch(/\.insert\s*\(\s*accounts\s*\)/);
+    expect(settingsSource).not.toContain("hashPassword");
+    expect(settingsSource).not.toContain("emailVerified: true");
+    expect(invitationSource).toContain(".insert(accessInvitations)");
+    expect(invitationSource).not.toMatch(
+      /\.insert\s*\(\s*(?:accounts|users|userRoles)\s*\)/,
+    );
   });
 
   it.each([

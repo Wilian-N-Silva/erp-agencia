@@ -1,4 +1,5 @@
 export const directTenantPolicyTables = [
+  "access_invitations",
   "access_records",
   "alerts",
   "app_settings",

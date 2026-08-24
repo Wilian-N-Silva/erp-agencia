@@ -1,12 +1,21 @@
-import { Ban, CheckCircle2, Plus, Save, Trash2, UserPlus } from "lucide-react";
+import { Ban, CheckCircle2, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
 import { RateLimitedActionForm } from "@/components/fg";
+import { createAccessInvitationAction } from "@/features/access-invitations/actions";
+import {
+  listAccessInvitations,
+  type AccessInvitationListItem,
+} from "@/features/access-invitations/dal";
+import {
+  getAccessInvitationState,
+  invitationExpiryOptions,
+  type AccessInvitationState,
+} from "@/features/access-invitations/rules";
 import {
   createAreaAction,
   createPositionAction,
-  createSettingsUserAction,
   deleteAreaAction,
   deletePositionAction,
   updateAppSettingAction,
@@ -44,7 +53,10 @@ export default async function SettingsPage() {
     redirect("/acesso-negado");
   }
 
-  const dashboard = await getSettingsDashboard(context);
+  const [dashboard, invitations] = await Promise.all([
+    getSettingsDashboard(context),
+    listAccessInvitations(context),
+  ]);
   const canManage = canManageSettings(context);
 
   return (
@@ -58,27 +70,40 @@ export default async function SettingsPage() {
         </div>
         {canManage ? (
           <ActionDialog
-            title="Criar usuario"
+            title="Convidar usuario"
             trigger={
               <>
-                <UserPlus className="size-4" aria-hidden="true" />
-                Criar usuario
+                <Send className="size-4" aria-hidden="true" />
+                Enviar convite
               </>
             }
             triggerClassName={`${primaryButtonClassName} sm:w-auto`}
-            triggerLabel="Criar usuario"
+            triggerLabel="Enviar convite"
           >
-            <CreateUserForm roles={dashboard.roles} />
+            <CreateInvitationForm roles={dashboard.roles} />
           </ActionDialog>
         ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <SummaryCard label="Usuarios" value={String(dashboard.users.length)} />
+        <SummaryCard
+          label="Convites pendentes"
+          value={String(
+            invitations.filter(
+              (invitation) => getAccessInvitationState(invitation) === "pending",
+            ).length,
+          )}
+        />
         <SummaryCard label="Perfis" value={String(dashboard.roles.length)} />
         <SummaryCard label="Permissoes" value={String(dashboard.permissions.length)} />
       </div>
 
+      <InvitationsSection
+        canManage={canManage}
+        invitations={invitations}
+        roles={dashboard.roles}
+      />
       <UsersSection canManage={canManage} roles={dashboard.roles} users={dashboard.users} />
       <OrgUnitsSection
         canManage={canManage}
@@ -104,31 +129,123 @@ export default async function SettingsPage() {
   );
 }
 
-function CreateUserForm({ roles }: { roles: SettingsRoleItem[] }) {
+function CreateInvitationForm({ roles }: { roles: SettingsRoleItem[] }) {
   return (
-    <RateLimitedActionForm action={createSettingsUserAction} className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={fieldClassName}>
-          Nome
-          <input className={inputClassName} maxLength={180} name="name" required />
-        </label>
-        <label className={fieldClassName}>
-          Email
-          <input className={inputClassName} maxLength={180} name="email" required type="email" />
-        </label>
-      </div>
+    <RateLimitedActionForm action={createAccessInvitationAction} className="grid gap-4">
       <label className={fieldClassName}>
-        Senha inicial
-        <input className={inputClassName} minLength={8} name="password" required type="password" />
+        Email
+        <input className={inputClassName} maxLength={180} name="email" required type="email" />
+      </label>
+      <label className={fieldClassName}>
+        Validade
+        <select className={inputClassName} defaultValue="7" name="expiresInDays">
+          {invitationExpiryOptions.map((days) => (
+            <option key={days} value={days}>
+              {days} {days === 1 ? "dia" : "dias"}
+            </option>
+          ))}
+        </select>
       </label>
       <RoleCheckboxGrid roles={roles} selected={[]} />
       <div className="flex justify-end">
         <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
-          <UserPlus className="size-4" aria-hidden="true" />
-          Criar usuario
+          <Send className="size-4" aria-hidden="true" />
+          Enviar convite
         </button>
       </div>
     </RateLimitedActionForm>
+  );
+}
+
+function InvitationsSection({
+  canManage,
+  invitations,
+  roles,
+}: {
+  canManage: boolean;
+  invitations: AccessInvitationListItem[];
+  roles: SettingsRoleItem[];
+}) {
+  return (
+    <section className="rounded-lg border bg-card">
+      <div className="border-b px-4 py-3">
+        <h2 className="text-base font-semibold">Convites de acesso</h2>
+      </div>
+      {invitations.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">Nenhum convite enviado.</p>
+      ) : (
+        <div className="divide-y">
+          {invitations.map((invitation) => {
+            const state = getAccessInvitationState(invitation);
+
+            return (
+              <div
+                className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.5fr)_auto]"
+                key={invitation.id}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="break-words font-medium">{invitation.email}</p>
+                    <InvitationStateBadge state={state} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Expira em {formatDate(invitation.expiresAt)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {invitation.roleKeys.map((role) => (
+                    <Badge key={role} label={roleLabels[role]} />
+                  ))}
+                </div>
+                {canManage && state !== "used" ? (
+                  <RateLimitedActionForm
+                    action={createAccessInvitationAction}
+                    className="flex items-start justify-end"
+                  >
+                    <input name="email" type="hidden" value={invitation.email} />
+                    <input name="expiresInDays" type="hidden" value="7" />
+                    {invitation.roleKeys.map((role) => (
+                      <input key={role} name="roleKeys" type="hidden" value={role} />
+                    ))}
+                    <button
+                      className={secondaryButtonClassName}
+                      title="Renova a validade por 7 dias"
+                      type="submit"
+                    >
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                      Reenviar
+                    </button>
+                  </RateLimitedActionForm>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {roles.length === 0 ? (
+        <p className="border-t p-4 text-sm text-destructive">
+          Cadastre ao menos um perfil antes de enviar convites.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function InvitationStateBadge({ state }: { state: AccessInvitationState }) {
+  const labels: Record<AccessInvitationState, string> = {
+    expired: "Expirado",
+    pending: "Pendente",
+    used: "Utilizado",
+  };
+  const className =
+    state === "pending"
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : "border-muted bg-muted text-muted-foreground";
+
+  return (
+    <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${className}`}>
+      {labels[state]}
+    </span>
   );
 }
 
