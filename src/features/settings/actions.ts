@@ -21,7 +21,7 @@ import {
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
-import { replaceUserRoles } from "./access";
+import { replaceUserRoles, updateUserAccessStatus } from "./access";
 import { parseSettingValue } from "./rules";
 import {
   updateUserAccessStatusSchema,
@@ -56,44 +56,10 @@ async function updateSettingsUserRolesAction(formData: FormData) {
 }
 
 async function updateSettingsUserStatusAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
+  const { context } = await requireSettingsManagerContext();
   await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateUserAccessStatusSchema.parse(formDataToObject(formData));
-
-  if (input.userId === context.userId && input.accessStatus !== "active") {
-    throw new Error("User cannot deactivate themselves.");
-  }
-
-  const before = await getUserForSettings(input.userId, organizationId);
-  const [after] = await db
-    .update(users)
-    .set({
-      accessStatus: input.accessStatus,
-      isActive: input.accessStatus === "active",
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(users.id, input.userId),
-        eq(users.organizationId, organizationId),
-      ),
-    )
-    .returning();
-
-  if (!after) {
-    throw new AccessDeniedError();
-  }
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "user",
-    entityId: input.userId,
-    before,
-    after,
-    metadata: {
-      accessStatus: input.accessStatus,
-    },
-  });
+  await updateUserAccessStatus(context, input);
 
   revalidatePath("/app/configuracoes");
 }

@@ -22,7 +22,10 @@ vi.mock("@/lib/auth/session", async (importOriginal) => {
   };
 });
 
-import { replaceUserRoles } from "@/features/settings/access";
+import {
+  replaceUserRoles,
+  updateUserAccessStatus,
+} from "@/features/settings/access";
 import { lastSettingsAdministratorError } from "@/features/settings/rules";
 import { createDatabase, getDb, type Database } from "@/lib/db";
 import { createAccessContext, getCurrentAccessContext } from "@/lib/dal";
@@ -42,6 +45,7 @@ const ids = {
 } as const;
 const users = {
   adminA: "acc-004-admin-a",
+  adminPeerA: "acc-004-admin-peer-a",
   rollbackA: "acc-004-rollback-a",
   targetA: "acc-004-target-a",
   targetB: "acc-004-target-b",
@@ -67,12 +71,22 @@ beforeEach(async () => {
   await adminDb.execute(sql`
     delete from audit_logs
     where entity_type = 'user'
-      and entity_id in (${users.adminA}, ${users.rollbackA}, ${users.targetA})
+      and entity_id in (
+        ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA}, ${users.targetA}
+      )
+  `);
+  await adminDb.execute(sql`
+    update "user"
+    set access_status = 'active', is_active = true
+    where id in (
+      ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA}, ${users.targetA}
+    )
   `);
   await adminDb.execute(sql`
     delete from user_roles
     where user_id in (
-      ${users.adminA}, ${users.rollbackA}, ${users.targetA}, ${users.targetB}
+      ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA},
+      ${users.targetA}, ${users.targetB}
     )
   `);
   await adminDb.execute(sql`
@@ -81,6 +95,7 @@ beforeEach(async () => {
     from (
       values
         (${users.adminA}, 'technical_admin'),
+        (${users.adminPeerA}, 'finance'),
         (${users.rollbackA}, 'finance'),
         (${users.targetA}, 'finance'),
         (${users.targetB}, 'finance')
@@ -152,6 +167,44 @@ describe("ACC-004 persisted RBAC", () => {
     await expectAuditCount(users.adminA, 0);
   });
 
+  it("serializes concurrent suspensions and keeps one active settings administrator", async () => {
+    await assignRole(users.adminPeerA, "technical_admin");
+
+    const results = await Promise.allSettled([
+      updateUserAccessStatus(adminContext(), {
+        accessStatus: "suspended",
+        userId: users.adminPeerA,
+      }),
+      updateUserAccessStatus(peerAdminContext(), {
+        accessStatus: "suspended",
+        userId: users.adminA,
+      }),
+    ]);
+
+    expectSuccessfulAndProtectedMutation(results);
+    await expectActiveSettingsAdministratorCount(1);
+    await expectAdministratorMutationAuditCount(1);
+  });
+
+  it("serializes a suspension against a concurrent role removal", async () => {
+    await assignRole(users.adminPeerA, "technical_admin");
+
+    const results = await Promise.allSettled([
+      updateUserAccessStatus(adminContext(), {
+        accessStatus: "suspended",
+        userId: users.adminPeerA,
+      }),
+      replaceUserRoles(peerAdminContext(), {
+        roleKeys: ["employee"],
+        userId: users.adminA,
+      }),
+    ]);
+
+    expectSuccessfulAndProtectedMutation(results);
+    await expectActiveSettingsAdministratorCount(1);
+    await expectAdministratorMutationAuditCount(1);
+  });
+
   it("rejects a known cross-tenant user id without changing or auditing it", async () => {
     await expect(
       replaceUserRoles(adminContext(), {
@@ -219,6 +272,70 @@ function adminContext() {
   });
 }
 
+function peerAdminContext() {
+  return createAccessContext({
+    organizationId: ids.orgA,
+    permissions: ["settings.manage"],
+    roles: ["technical_admin"],
+    userId: users.adminPeerA,
+  });
+}
+
+function expectSuccessfulAndProtectedMutation(
+  results: PromiseSettledResult<unknown>[],
+) {
+  const fulfilled = results.filter((result) => result.status === "fulfilled");
+  const rejected = results.filter((result) => result.status === "rejected");
+
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect(rejected[0]).toMatchObject({
+    reason: expect.objectContaining({
+      message: lastSettingsAdministratorError,
+    }),
+  });
+}
+
+async function assignRole(userId: string, roleKey: string) {
+  await adminDb.execute(sql`
+    delete from user_roles where user_id = ${userId}
+  `);
+  await adminDb.execute(sql`
+    insert into user_roles (user_id, role_id, assigned_by_user_id)
+    select ${userId}, roles.id, ${users.adminA}
+    from roles
+    where roles.key = ${roleKey}
+  `);
+}
+
+async function expectActiveSettingsAdministratorCount(expected: number) {
+  const result = await adminDb.execute(sql<{ count: number }>`
+    select count(distinct "user".id)::int as count
+    from "user"
+    inner join user_roles on user_roles.user_id = "user".id
+    inner join role_permissions on role_permissions.role_id = user_roles.role_id
+    inner join permissions on permissions.id = role_permissions.permission_id
+    where "user".organization_id = ${ids.orgA}
+      and "user".access_status = 'active'
+      and "user".is_active = true
+      and permissions.key = 'settings.manage'
+  `);
+
+  expect(result.rows[0]?.count).toBe(expected);
+}
+
+async function expectAdministratorMutationAuditCount(expected: number) {
+  const result = await adminDb.execute(sql<{ count: number }>`
+    select count(*)::int as count
+    from audit_logs
+    where entity_type = 'user'
+      and entity_id in (${users.adminA}, ${users.adminPeerA})
+      and action in ('permission_change', 'status_change')
+  `);
+
+  expect(result.rows[0]?.count).toBe(expected);
+}
+
 async function expectRoleKeys(userId: string, expected: string[]) {
   const result = await adminDb.execute(sql<{ key: string }>`
     select roles.key
@@ -253,6 +370,7 @@ async function createFixtures() {
         id, organization_id, name, email, email_verified, access_status, is_active
       ) values
         (${users.adminA}, ${ids.orgA}, 'ACC-004 Admin A', 'acc-004-admin-a@example.test', true, 'active', true),
+        (${users.adminPeerA}, ${ids.orgA}, 'ACC-004 Admin Peer A', 'acc-004-admin-peer-a@example.test', true, 'active', true),
         (${users.rollbackA}, ${ids.orgA}, 'ACC-004 Rollback A', 'acc-004-rollback-a@example.test', true, 'active', true),
         (${users.targetA}, ${ids.orgA}, 'ACC-004 Target A', 'acc-004-target-a@example.test', true, 'active', true),
         (${users.targetB}, ${ids.orgB}, 'ACC-004 Target B', 'acc-004-target-b@example.test', true, 'active', true)
@@ -292,19 +410,22 @@ async function removeFixtures() {
       delete from audit_logs
       where entity_type = 'user'
         and entity_id in (
-          ${users.adminA}, ${users.rollbackA}, ${users.targetA}, ${users.targetB}
+          ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA},
+          ${users.targetA}, ${users.targetB}
         )
     `);
     await transaction.execute(sql`
       delete from user_roles
       where user_id in (
-        ${users.adminA}, ${users.rollbackA}, ${users.targetA}, ${users.targetB}
+        ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA},
+        ${users.targetA}, ${users.targetB}
       )
     `);
     await transaction.execute(sql`
       delete from "user"
       where id in (
-        ${users.adminA}, ${users.rollbackA}, ${users.targetA}, ${users.targetB}
+        ${users.adminA}, ${users.adminPeerA}, ${users.rollbackA},
+        ${users.targetA}, ${users.targetB}
       )
     `);
     await transaction.execute(sql`
