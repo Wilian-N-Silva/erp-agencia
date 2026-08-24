@@ -17,6 +17,10 @@ export type TenantTransaction = Parameters<
   Parameters<Database["transaction"]>[0]
 >[0];
 
+export type TenantDbOperation<Result> = (
+  transaction: TenantTransaction,
+) => Promise<Result>;
+
 type TransactionalDatabase = Pick<Database, "transaction">;
 
 type TenantTransactionContext = {
@@ -25,16 +29,23 @@ type TenantTransactionContext = {
   userId: string;
 };
 
-const tenantTransactionStorage = new AsyncLocalStorage<TenantTransactionContext>();
+const tenantTransactionStorage =
+  new AsyncLocalStorage<TenantTransactionContext>();
 
 export function getActiveTenantTransaction() {
   return tenantTransactionStorage.getStore()?.transaction;
 }
 
+/**
+ * Runs tenant database work in one transaction with transaction-local RLS
+ * identity. Throwing from the operation rolls back every awaited write.
+ * Nested calls for the same identity reuse the active transaction; switching
+ * organization or user while it is active is denied.
+ */
 export function createWithTenantDb(database: TransactionalDatabase) {
   return async function withConfiguredTenantDb<T>(
-    context: AccessContext | null | undefined,
-    callback: (transaction: TenantTransaction) => Promise<T>,
+    context: AccessContext,
+    operation: TenantDbOperation<T>,
   ): Promise<T> {
     const identity = tenantIdentitySchema.safeParse(context);
 
@@ -52,7 +63,7 @@ export function createWithTenantDb(database: TransactionalDatabase) {
         throw new AccessDeniedError();
       }
 
-      return callback(activeContext.transaction);
+      return operation(activeContext.transaction);
     }
 
     return database.transaction(async (transaction) => {
@@ -68,7 +79,7 @@ export function createWithTenantDb(database: TransactionalDatabase) {
           transaction,
           userId: identity.data.userId,
         },
-        () => callback(transaction),
+        () => operation(transaction),
       );
     });
   };

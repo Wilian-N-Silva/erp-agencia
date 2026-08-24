@@ -40,15 +40,17 @@ export const db = new Proxy({} as Database, {
 
 export const withTenantDb = createWithTenantDb(db);
 
+export type TenantBoundOperation<Arguments extends unknown[], Result> = (
+  context: AccessContext,
+  ...args: Arguments
+) => Promise<Result>;
+
 export function bindTenantContext<Arguments extends unknown[], Result>(
-  operation: (
-    context: AccessContext,
-    ...args: Arguments
-  ) => Promise<Result>,
-) {
+  operation: TenantBoundOperation<Arguments, Result>,
+): TenantBoundOperation<Arguments, Result> {
   return async (context: AccessContext, ...args: Arguments) =>
     withTenantDb(context, () => operation(context, ...args));
 }
 
 export { createWithTenantDb };
-export type { TenantTransaction } from "./tenant";
+export type { TenantDbOperation, TenantTransaction } from "./tenant";
