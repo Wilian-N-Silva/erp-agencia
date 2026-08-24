@@ -40,6 +40,8 @@ const users = {
   inviterA: "acc-001-inviter-a",
   inviterB: "acc-001-inviter-b",
   invitee: "acc-001-invitee",
+  legacyWriter: "acc-002-legacy-writer",
+  suspendable: "acc-002-suspendable",
   used: "acc-001-used-user",
   unauthorized: "acc-001-unauthorized",
 } as const;
@@ -48,7 +50,9 @@ const emails = {
   expired: "acc-001-expired@example.test",
   used: "acc-001-used@example.test",
   consume: "acc-001-consume@example.test",
+  legacyWriter: "acc-002-legacy-writer@example.test",
   orgB: "acc-001-org-b@example.test",
+  suspendable: "acc-002-suspendable@example.test",
   unauthorized: "acc-001-unauthorized@example.test",
 } as const;
 const contextA: AccessContext = {
@@ -85,6 +89,29 @@ afterAll(async () => {
 });
 
 describe("access invitation authentication", () => {
+  it("keeps expand defaults compatible with the previous invitation writer", async () => {
+    const userRows = await adminDb.execute(sql<{
+      accessStatus: string;
+      isActive: boolean;
+    }>`
+      select
+        access_status as "accessStatus",
+        is_active as "isActive"
+      from "user"
+      where id = ${users.legacyWriter}
+    `);
+
+    expect(userRows.rows).toEqual([
+      {
+        accessStatus: "active",
+        isActive: true,
+      },
+    ]);
+    await expect(
+      assertSessionUserIsAuthorized(users.legacyWriter),
+    ).resolves.toBeUndefined();
+  });
+
   it("finds only a matching, unused, unexpired invitation", async () => {
     await expect(
       findValidInvitationForEmail(`  ${emails.valid.toUpperCase()}  `),
@@ -186,6 +213,36 @@ describe("access invitation authentication", () => {
         organizationId: ids.orgA,
       },
     ]);
+  });
+
+  it("denies an existing session after a persisted active to suspended transition", async () => {
+    await expect(
+      assertSessionUserIsAuthorized(users.suspendable),
+    ).resolves.toBeUndefined();
+
+    const suspendedRows = await adminDb.execute(sql<{
+      accessStatus: string;
+      isActive: boolean;
+    }>`
+      update "user"
+      set access_status = 'suspended', is_active = false
+      where id = ${users.suspendable}
+      returning
+        access_status as "accessStatus",
+        is_active as "isActive"
+    `);
+    expect(suspendedRows.rows).toEqual([
+      {
+        accessStatus: "suspended",
+        isActive: false,
+      },
+    ]);
+
+    await expect(
+      assertSessionUserIsAuthorized(users.suspendable),
+    ).rejects.toMatchObject({
+      code: invitationAuthErrorCodes.inactiveSession,
+    });
   });
 });
 
@@ -400,33 +457,55 @@ async function createFixtures() {
     `);
     await transaction.execute(sql`
       insert into "user" (
-        id, organization_id, name, email, email_verified
+        id, organization_id, name, email, email_verified,
+        access_status, is_active
       ) values
         (
           ${users.inviterA}, ${ids.orgA}, 'ACC-001 Inviter A',
-          'acc-001-inviter-a@example.test', true
+          'acc-001-inviter-a@example.test', true, 'active', true
         ),
         (
           ${users.inviterB}, ${ids.orgB}, 'ACC-001 Inviter B',
-          'acc-001-inviter-b@example.test', true
+          'acc-001-inviter-b@example.test', true, 'active', true
         ),
         (
           ${users.invitee}, ${ids.orgA}, 'ACC-001 Legacy Invitee',
-          ${emails.consume}, true
+          ${emails.consume}, true, 'active', true
+        ),
+        (
+          ${users.suspendable}, ${ids.orgA}, 'ACC-002 Suspendable',
+          ${emails.suspendable}, true, 'active', true
         ),
         (
           ${users.used}, ${ids.orgA}, 'ACC-001 Used',
-          ${emails.used}, true
+          ${emails.used}, true, 'active', true
         ),
         (
           ${users.unauthorized}, null, 'ACC-001 Unauthorized',
-          ${emails.unauthorized}, true
+          ${emails.unauthorized}, true, 'active', true
         )
     `);
     await transaction.execute(sql`
       insert into roles (id, key, name)
       values (${ids.roleFallback}, 'employee', 'Colaborador')
       on conflict (key) do nothing
+    `);
+    await transaction.execute(sql`
+      insert into "user" (
+        id, organization_id, name, email, email_verified
+      ) values (
+        ${users.legacyWriter}, ${ids.orgA}, 'ACC-002 Legacy Writer',
+        ${emails.legacyWriter}, true
+      )
+    `);
+    await transaction.execute(sql`
+      insert into user_roles (user_id, role_id, assigned_by_user_id)
+      select fixture.user_id, roles.id, ${users.inviterA}
+      from (
+        values (${users.legacyWriter}), (${users.suspendable})
+      ) as fixture(user_id)
+      cross join roles
+      where roles.key = 'employee'
     `);
     await transaction.execute(sql`
       insert into access_invitations (
@@ -485,6 +564,8 @@ async function removeFixtures() {
         ${users.inviterA},
         ${users.inviterB},
         ${users.invitee},
+        ${users.legacyWriter},
+        ${users.suspendable},
         ${users.used},
         ${users.unauthorized}
       )
@@ -495,6 +576,8 @@ async function removeFixtures() {
         ${users.inviterA},
         ${users.inviterB},
         ${users.invitee},
+        ${users.legacyWriter},
+        ${users.suspendable},
         ${users.used},
         ${users.unauthorized}
       )

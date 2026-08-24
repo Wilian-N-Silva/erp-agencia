@@ -130,8 +130,9 @@ export const users = pgTable(
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
-    accessStatus: userAccessStatusEnum("access_status").notNull().default("pending"),
-    isActive: boolean("is_active").notNull().default(false),
+    // Expand-phase defaults preserve compatibility; the current auth writer sets pending/false explicitly.
+    accessStatus: userAccessStatusEnum("access_status").notNull().default("active"),
+    isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
