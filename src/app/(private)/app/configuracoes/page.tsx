@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
+import { Link2, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
@@ -19,6 +19,7 @@ import {
   deleteAreaAction,
   deletePositionAction,
   updateAppSettingAction,
+  updateSettingsUserEmployeeLinkAction,
   updateSettingsUserRolesAction,
   updateSettingsUserStatusAction,
 } from "@/features/settings/actions";
@@ -26,6 +27,7 @@ import {
   getSettingsDashboard,
   type AppSettingListItem,
   type SettingsOrgUnitItem,
+  type SettingsEmployeeOption,
   type SettingsPermissionItem,
   type SettingsRoleItem,
   type SettingsUserListItem,
@@ -104,7 +106,12 @@ export default async function SettingsPage() {
         invitations={invitations}
         roles={dashboard.roles}
       />
-      <UsersSection canManage={canManage} roles={dashboard.roles} users={dashboard.users} />
+      <UsersSection
+        canManage={canManage}
+        employees={dashboard.employees}
+        roles={dashboard.roles}
+        users={dashboard.users}
+      />
       <OrgUnitsSection
         canManage={canManage}
         title="Areas"
@@ -251,10 +258,12 @@ function InvitationStateBadge({ state }: { state: AccessInvitationState }) {
 
 function UsersSection({
   canManage,
+  employees,
   roles,
   users,
 }: {
   canManage: boolean;
+  employees: SettingsEmployeeOption[];
   roles: SettingsRoleItem[];
   users: SettingsUserListItem[];
 }) {
@@ -265,7 +274,13 @@ function UsersSection({
       </div>
       <div className="divide-y">
         {users.map((user) => (
-          <UserManagementRow canManage={canManage} key={user.id} roles={roles} user={user} />
+          <UserManagementRow
+            canManage={canManage}
+            employees={employees}
+            key={user.id}
+            roles={roles}
+            user={user}
+          />
         ))}
       </div>
     </section>
@@ -274,24 +289,36 @@ function UsersSection({
 
 function UserManagementRow({
   canManage,
+  employees,
   roles,
   user,
 }: {
   canManage: boolean;
+  employees: SettingsEmployeeOption[];
   roles: SettingsRoleItem[];
   user: SettingsUserListItem;
 }) {
   return (
-    <div className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(16rem,0.5fr)_minmax(20rem,1fr)_auto]">
+    <div className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(14rem,0.45fr)_minmax(20rem,1fr)_minmax(14rem,0.45fr)_auto]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{user.name}</p>
           <StatusBadge status={user.accessStatus} />
         </div>
         <p className="break-words text-sm text-muted-foreground">{user.email}</p>
-        <p className="text-xs text-muted-foreground">
-          {user.employeeName ?? "Sem colaborador vinculado"} - atualizado {formatDate(user.updatedAt)}
-        </p>
+        {user.employeeLinkConflict ? (
+          <p className="text-xs text-amber-700">
+            Conflito legado: {user.employeeLinks.length} colaboradores vinculados
+            ({user.employeeLinks.map((employee) =>
+              `${employee.name}${employee.deletedAt ? " [excluído]" : ""}`
+            ).join(", ")}).
+            Selecione explicitamente o cadastro correto.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {user.employeeName ?? "Sem colaborador vinculado"} - atualizado {formatDate(user.updatedAt)}
+          </p>
+        )}
       </div>
 
       {canManage ? (
@@ -315,6 +342,39 @@ function UserManagementRow({
           ))}
         </div>
       )}
+
+      {canManage ? (
+        <RateLimitedActionForm
+          action={updateSettingsUserEmployeeLinkAction}
+          className="grid min-w-56 gap-2"
+        >
+          <input name="userId" type="hidden" value={user.id} />
+          <label className={fieldClassName}>
+            Colaborador vinculado
+            <select
+              className={inputClassName}
+              defaultValue={user.employeeId ?? ""}
+              name="employeeId"
+            >
+              <option value="">Sem vínculo</option>
+              {employees
+                .filter(
+                  (employee) =>
+                    !employee.linkedUserId || employee.linkedUserId === user.id,
+                )
+                .map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name} ({employee.registrationNumber})
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button className={secondaryButtonClassName} type="submit">
+            <Link2 className="size-4" aria-hidden="true" />
+            Salvar vínculo
+          </button>
+        </RateLimitedActionForm>
+      ) : null}
 
       {canManage ? (
         <RateLimitedActionForm

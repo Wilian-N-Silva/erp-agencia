@@ -406,6 +406,7 @@ export const employees = pgTable(
       table.organizationId,
       table.corporateEmail,
     ),
+    // ACC-003 remains in expand/cleanup rollout until legacy duplicate links are resolved.
     userIdx: index("employees_user_idx").on(table.userId),
     statusIdx: index("employees_status_idx").on(table.organizationId, table.status),
   }),

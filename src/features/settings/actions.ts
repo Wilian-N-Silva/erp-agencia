@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -24,7 +24,10 @@ import {
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
-import { updateUserAccessStatusSchema } from "./schemas";
+import {
+  updateUserAccessStatusSchema,
+  updateUserEmployeeLinkSchema,
+} from "./schemas";
 
 const updateRolesSchema = z.object({
   userId: z.string().min(1).max(200),
@@ -112,6 +115,85 @@ async function updateSettingsUserStatusAction(formData: FormData) {
   });
 
   revalidatePath("/app/configuracoes");
+}
+
+async function updateSettingsUserEmployeeLinkAction(formData: FormData) {
+  const { context, organizationId } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
+  const input = updateUserEmployeeLinkSchema.parse(formDataToObject(formData));
+  const user = await getUserForSettings(input.userId, organizationId);
+  await db.execute(sql`
+    select pg_advisory_xact_lock(
+      hashtextextended(${`acc-003:user:${input.userId}`}, 0)
+    )
+  `);
+  const currentLinks = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.organizationId, organizationId),
+        eq(employees.userId, input.userId),
+      ),
+    );
+  const targetEmployee = input.employeeId
+    ? await getEmployeeLinkTarget(input.employeeId, organizationId)
+    : null;
+
+  if (targetEmployee?.userId && targetEmployee.userId !== input.userId) {
+    throw new Error("Colaborador já está vinculado a outro usuário.");
+  }
+
+  const before = {
+    employeeIds: currentLinks.map((employee) => employee.id),
+    userId: user.id,
+  };
+
+  await db
+    .update(employees)
+    .set({ userId: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(employees.organizationId, organizationId),
+        eq(employees.userId, input.userId),
+      ),
+    );
+
+  if (targetEmployee) {
+    const [linkedEmployee] = await db
+      .update(employees)
+      .set({ userId: input.userId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(employees.id, targetEmployee.id),
+          eq(employees.organizationId, organizationId),
+          isNull(employees.deletedAt),
+          isNull(employees.userId),
+        ),
+      )
+      .returning({ id: employees.id });
+
+    if (!linkedEmployee) {
+      throw new Error("Não foi possível vincular o colaborador.");
+    }
+  }
+
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "user_employee_link",
+    entityId: input.userId,
+    before,
+    after: {
+      employeeIds: targetEmployee ? [targetEmployee.id] : [],
+      userId: user.id,
+    },
+    metadata: {
+      employeeId: targetEmployee?.id ?? null,
+    },
+  });
+
+  revalidatePath("/app/configuracoes");
+  revalidatePath("/portal");
 }
 
 async function updateAppSettingAction(formData: FormData) {
@@ -321,6 +403,29 @@ async function getUserForSettings(userId: string, organizationId: string) {
   return user;
 }
 
+async function getEmployeeLinkTarget(id: string, organizationId: string) {
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.id, id),
+        eq(employees.organizationId, organizationId),
+        isNull(employees.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!employee) {
+    throw new AccessDeniedError();
+  }
+
+  return employee;
+}
+
 async function requireSettingsManagerContext() {
   const context = await getCurrentAccessContext();
 
@@ -347,6 +452,7 @@ function formDataToObject(formData: FormData) {
 export {
   tenantUpdateSettingsUserRolesAction as updateSettingsUserRolesAction,
   tenantUpdateSettingsUserStatusAction as updateSettingsUserStatusAction,
+  tenantUpdateSettingsUserEmployeeLinkAction as updateSettingsUserEmployeeLinkAction,
   tenantUpdateAppSettingAction as updateAppSettingAction,
   tenantCreateAreaAction as createAreaAction,
   tenantDeleteAreaAction as deleteAreaAction,
@@ -359,6 +465,9 @@ const tenantUpdateSettingsUserRolesAction = withRateLimitActionResult(
 );
 const tenantUpdateSettingsUserStatusAction = withRateLimitActionResult(
   bindCurrentTenantContext(updateSettingsUserStatusAction),
+);
+const tenantUpdateSettingsUserEmployeeLinkAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserEmployeeLinkAction),
 );
 const tenantUpdateAppSettingAction = bindCurrentTenantContext(updateAppSettingAction);
 const tenantCreateAreaAction = bindCurrentTenantContext(createAreaAction);

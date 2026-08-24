@@ -27,11 +27,21 @@ export type SettingsUserListItem = {
   accessStatus: UserAccessStatus;
   id: string;
   email: string;
+  employeeId: string | null;
+  employeeLinkConflict: boolean;
+  employeeLinks: { deletedAt: Date | null; id: string; name: string }[];
   employeeName: string | null;
   name: string;
   roles: RoleKey[];
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type SettingsEmployeeOption = {
+  id: string;
+  linkedUserId: string | null;
+  name: string;
+  registrationNumber: string;
 };
 
 export type SettingsRoleItem = {
@@ -66,6 +76,7 @@ export type SettingsOrgUnitItem = {
 export type SettingsDashboard = {
   appSettings: AppSettingListItem[];
   areas: SettingsOrgUnitItem[];
+  employees: SettingsEmployeeOption[];
   permissions: SettingsPermissionItem[];
   positions: SettingsOrgUnitItem[];
   roles: SettingsRoleItem[];
@@ -86,22 +97,22 @@ async function getSettingsDashboard(
     settingRows,
     areaRows,
     positionRows,
+    employeeRows,
   ] = await Promise.all([
       db
         .select({
           accessStatus: users.accessStatus,
           id: users.id,
           email: users.email,
+          employeeDeletedAt: employees.deletedAt,
+          employeeId: employees.id,
           employeeName: employees.fullName,
           name: users.name,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
         })
         .from(users)
-        .leftJoin(
-          employees,
-          and(eq(employees.userId, users.id), isNull(employees.deletedAt)),
-        )
+        .leftJoin(employees, eq(employees.userId, users.id))
         .where(eq(users.organizationId, organizationId))
         .orderBy(asc(users.name), asc(users.email)),
       db.select().from(roles).orderBy(asc(roles.name)),
@@ -155,6 +166,21 @@ async function getSettingsDashboard(
         .where(eq(positions.organizationId, organizationId))
         .groupBy(positions.id, positions.name)
         .orderBy(asc(positions.name)),
+      db
+        .select({
+          id: employees.id,
+          linkedUserId: employees.userId,
+          name: employees.fullName,
+          registrationNumber: employees.registrationNumber,
+        })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.organizationId, organizationId),
+            isNull(employees.deletedAt),
+          ),
+        )
+        .orderBy(asc(employees.fullName)),
     ]);
   const rolePermissionsByRoleId = groupRolePermissions(rolePermissionRows);
   const rolesByUserId = groupUserRoles(userRoleRows);
@@ -162,6 +188,7 @@ async function getSettingsDashboard(
   return {
     appSettings: settingRows,
     areas: areaRows,
+    employees: employeeRows,
     positions: positionRows,
     permissions: permissionRows.flatMap((permission) => {
       if (!isPermissionKey(permission.key)) {
@@ -187,11 +214,60 @@ async function getSettingsDashboard(
         permissions: rolePermissionsByRoleId.get(role.id) ?? [],
       }];
     }),
-    users: userRows.map((user) => ({
+    users: groupSettingsUsers(userRows).map((user) => ({
       ...user,
       roles: rolesByUserId.get(user.id) ?? [],
     })),
   };
+}
+
+function groupSettingsUsers(
+  rows: Array<{
+    accessStatus: UserAccessStatus;
+    id: string;
+    email: string;
+    employeeDeletedAt: Date | null;
+    employeeId: string | null;
+    employeeName: string | null;
+    name: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }>,
+): Array<Omit<SettingsUserListItem, "roles">> {
+  const rowsByUserId = new Map<string, typeof rows>();
+
+  for (const row of rows) {
+    const userRows = rowsByUserId.get(row.id) ?? [];
+    userRows.push(row);
+    rowsByUserId.set(row.id, userRows);
+  }
+
+  return [...rowsByUserId.values()].map((userRows) => {
+    const user = userRows[0]!;
+    const employeeLinks = userRows.flatMap((row) =>
+      row.employeeId && row.employeeName
+        ? [{
+            deletedAt: row.employeeDeletedAt,
+            id: row.employeeId,
+            name: row.employeeName,
+          }]
+        : [],
+    );
+    const unambiguousLink = employeeLinks.length === 1 ? employeeLinks[0] : null;
+
+    return {
+      accessStatus: user.accessStatus,
+      id: user.id,
+      email: user.email,
+      employeeId: unambiguousLink?.id ?? null,
+      employeeLinkConflict: employeeLinks.length > 1,
+      employeeLinks,
+      employeeName: unambiguousLink?.name ?? null,
+      name: user.name,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  });
 }
 
 function groupRolePermissions(
