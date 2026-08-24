@@ -103,7 +103,7 @@ describe("access invitation authentication", () => {
     ).resolves.toBeNull();
   });
 
-  it("consumes exactly once under concurrency, assigns roles, and audits", async () => {
+  it("upgrades a same-organization legacy account exactly once and audits it", async () => {
     await expect(
       assertSessionUserIsAuthorized(users.invitee),
     ).rejects.toMatchObject({
@@ -411,7 +411,7 @@ async function createFixtures() {
           'acc-001-inviter-b@example.test', true
         ),
         (
-          ${users.invitee}, null, 'ACC-001 Invitee',
+          ${users.invitee}, ${ids.orgA}, 'ACC-001 Legacy Invitee',
           ${emails.consume}, true
         ),
         (

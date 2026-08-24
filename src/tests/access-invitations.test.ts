@@ -7,6 +7,7 @@ import {
   type ValidAccessInvitation,
 } from "@/features/access-invitations/lifecycle";
 import {
+  canInviteExistingAccount,
   getAccessInvitationState,
   getAllowedInvitationDomain,
   isInvitationEmailAllowed,
@@ -20,6 +21,30 @@ const invitation: ValidAccessInvitation = {
 };
 
 describe("access invitation rules", () => {
+  it("allows a roleless legacy account to be invited only within its organization", () => {
+    expect(
+      canInviteExistingAccount({
+        accountOrganizationId: invitation.organizationId,
+        hasExplicitRole: false,
+        invitationOrganizationId: invitation.organizationId,
+      }),
+    ).toBe(true);
+    expect(
+      canInviteExistingAccount({
+        accountOrganizationId: "20000000-0000-4000-8000-000000000002",
+        hasExplicitRole: false,
+        invitationOrganizationId: invitation.organizationId,
+      }),
+    ).toBe(false);
+    expect(
+      canInviteExistingAccount({
+        accountOrganizationId: invitation.organizationId,
+        hasExplicitRole: true,
+        invitationOrganizationId: invitation.organizationId,
+      }),
+    ).toBe(false);
+  });
+
   it("normalizes emails and accepts only known, unique roles", () => {
     expect(normalizeInvitationEmail(" User@Example.COM ")).toBe(
       "user@example.com",
@@ -137,7 +162,7 @@ describe("access invitation authentication lifecycle", () => {
     });
   });
 
-  it("redeems a valid invitation before creating a session for an existing user", async () => {
+  it("upgrades a roleless legacy account through a valid invitation", async () => {
     gateway.assertSessionUserIsAuthorized
       .mockRejectedValueOnce(
         new AccessInvitationAuthError(

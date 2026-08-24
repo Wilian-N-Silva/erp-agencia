@@ -23,6 +23,17 @@ export const invitationExpiryOptions = [1, 3, 7, 14, 30] as const;
 export type InvitationExpiryDays = (typeof invitationExpiryOptions)[number];
 export type AccessInvitationState = "expired" | "pending" | "used";
 
+export function canInviteExistingAccount(input: {
+  accountOrganizationId: string | null;
+  hasExplicitRole: boolean;
+  invitationOrganizationId: string;
+}) {
+  return (
+    input.accountOrganizationId === input.invitationOrganizationId &&
+    !input.hasExplicitRole
+  );
+}
+
 export function normalizeInvitationEmail(email: string) {
   return email.trim().toLowerCase();
 }

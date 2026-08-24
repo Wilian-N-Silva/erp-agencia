@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import {
   accessInvitations,
   appSettings,
+  userRoles,
   users,
 } from "@/lib/db/schema";
 import {
@@ -27,6 +28,7 @@ import {
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
+  canInviteExistingAccount,
   invitationExpiryOptions,
   isInvitationEmailAllowed,
   normalizeInvitationEmail,
@@ -70,14 +72,37 @@ async function createAccessInvitationAction(formData: FormData) {
 
   await assertInvitationDomainIsAllowed(email, context.organizationId);
 
-  const [existingUser] = await db
-    .select({ id: users.id })
+  const existingUsers = await db
+    .select({
+      id: users.id,
+      organizationId: users.organizationId,
+    })
     .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
+    .where(sql`lower(btrim(${users.email})) = ${email}`)
+    .limit(2);
+
+  if (existingUsers.length > 1) {
+    throw new Error("This email cannot be invited.");
+  }
+
+  const [existingUser] = existingUsers;
 
   if (existingUser) {
-    throw new Error("This email already has a user account.");
+    const [assignedRole] = await db
+      .select({ roleId: userRoles.roleId })
+      .from(userRoles)
+      .where(eq(userRoles.userId, existingUser.id))
+      .limit(1);
+
+    if (
+      !canInviteExistingAccount({
+        accountOrganizationId: existingUser.organizationId,
+        hasExplicitRole: Boolean(assignedRole),
+        invitationOrganizationId: context.organizationId,
+      })
+    ) {
+      throw new Error("This user account cannot be invited.");
+    }
   }
 
   const [before] = await db
