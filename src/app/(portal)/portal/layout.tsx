@@ -1,23 +1,15 @@
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { ToastProvider } from "@/components/fg/toast";
 import { PortalShell } from "@/components/layout/portal-shell";
-import { getPortalEmployeeSummary } from "@/features/portal/dal";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
 import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
-  }
-
-  const summary = await getPortalEmployeeSummary(context);
-
-  if (!summary) {
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
     return (
       <ToastProvider>
         <PortalEmployeeLinkRequired />
@@ -29,10 +21,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     <ToastProvider>
       <PortalShell
         user={{
-          name: summary.fullName,
-          registrationNumber: summary.registrationNumber,
+          name: access.employee.fullName,
+          registrationNumber: access.employee.registrationNumber,
         }}
-        employmentType={summary.employmentType}
+        employmentType={access.employee.employmentType}
       >
         {children}
       </PortalShell>
