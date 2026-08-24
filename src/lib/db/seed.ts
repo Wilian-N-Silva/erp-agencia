@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 
 import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
 import {
-  defaultRolePermissions,
   permissionDescriptions,
   roleKeys,
   roleLabels,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/rbac";
 
 import { createDatabase } from "./index";
+import { defaultRolePermissions } from "./seed-role-permissions";
 import {
   accounts,
   accessRecords,

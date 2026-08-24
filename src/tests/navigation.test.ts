@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getVisibleNavigationItems } from "@/components/layout/navigation-items";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("permission-filtered navigation", () => {
   it("shows finance navigation only for finance permissions", () => {

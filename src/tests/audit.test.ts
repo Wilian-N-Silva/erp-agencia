@@ -16,7 +16,7 @@ import {
   getVisibleAuditEntityTypes,
   normalizeAuditFilters,
 } from "@/features/audit/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("audit payloads", () => {
   it("creates sanitized audit log values", () => {

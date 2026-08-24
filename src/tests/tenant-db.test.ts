@@ -2,7 +2,8 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { db, type Database } from "@/lib/db";
 import { createWithTenantDb, type TenantTransaction } from "@/lib/db/tenant";
-import { createAccessContext, type AccessContext } from "@/lib/dal";
+import type { AccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 import { AccessDeniedError } from "@/lib/rbac";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";

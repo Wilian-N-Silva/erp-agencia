@@ -32,7 +32,8 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => {
 import { updateSettingsUserEmployeeLinkAction } from "@/features/settings/actions";
 import { getSettingsDashboard } from "@/features/settings/dal";
 import { createDatabase, getDb, type Database } from "@/lib/db";
-import { createAccessContext, getCurrentAccessContext } from "@/lib/dal";
+import { getCurrentAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 const runtimeUrl = process.env.DATABASE_TEST_URL;
 const adminUrl = process.env.DATABASE_TEST_ADMIN_URL;
@@ -596,6 +597,20 @@ async function createFixtures() {
         ('technical_admin', 'Admin Tecnico'),
         ('employee', 'Colaborador')
       on conflict (key) do nothing
+    `);
+    await transaction.execute(sql`
+      insert into permissions (key, description)
+      values ('settings.manage', 'Gerenciar configuracoes')
+      on conflict (key) do nothing
+    `);
+    await transaction.execute(sql`
+      insert into role_permissions (role_id, permission_id)
+      select roles.id, permissions.id
+      from roles
+      cross join permissions
+      where roles.key = 'technical_admin'
+        and permissions.key = 'settings.manage'
+      on conflict do nothing
     `);
     await transaction.execute(sql`
       insert into user_roles (user_id, role_id, assigned_by_user_id)

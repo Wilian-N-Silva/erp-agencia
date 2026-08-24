@@ -14,7 +14,7 @@ import {
   getReimbursementScope,
   hasInvoiceDivergence,
 } from "@/features/portal/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("portal invoice rules", () => {
   it("calculates expected invoice totals with discounts", () => {

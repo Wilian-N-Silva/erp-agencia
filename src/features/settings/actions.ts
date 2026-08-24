@@ -12,8 +12,6 @@ import {
   areas,
   employees,
   positions,
-  roles,
-  userRoles,
   users,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
@@ -21,17 +19,15 @@ import {
   enforceAuthenticatedRateLimit,
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
-import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
+import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
-import { normalizeRoleSelection, parseSettingValue } from "./rules";
+import { replaceUserRoles } from "./access";
+import { parseSettingValue } from "./rules";
 import {
   updateUserAccessStatusSchema,
   updateUserEmployeeLinkSchema,
+  updateUserRolesSchema,
 } from "./schemas";
-
-const updateRolesSchema = z.object({
-  userId: z.string().min(1).max(200),
-});
 
 const updateSettingSchema = z.object({
   description: z.string().trim().max(500).optional(),
@@ -48,28 +44,13 @@ const deleteOrgUnitSchema = z.object({
 });
 
 async function updateSettingsUserRolesAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
+  const { context } = await requireSettingsManagerContext();
   await enforceAuthenticatedRateLimit("invitation", context);
-  const input = updateRolesSchema.parse(formDataToObject(formData));
-  const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
-
-  if (roleKeys.length === 0) {
-    throw new Error("At least one role is required.");
-  }
-
-  const before = await getUserForSettings(input.userId, organizationId);
-  await replaceUserRoles(input.userId, roleKeys, context.userId);
-
-  await writeAuditLog(context, {
-    action: "permission_change",
-    entityType: "user",
-    entityId: input.userId,
-    before,
-    after: {
-      ...before,
-      roleKeys,
-    },
+  const input = updateUserRolesSchema.parse({
+    roleKeys: formData.getAll("roleKeys"),
+    userId: formData.get("userId"),
   });
+  await replaceUserRoles(context, input);
 
   revalidatePath("/app/configuracoes");
 }
@@ -353,34 +334,6 @@ async function deletePositionAction(formData: FormData) {
   });
 
   revalidatePath("/app/configuracoes");
-}
-
-async function replaceUserRoles(
-  userId: string,
-  roleKeys: readonly RoleKey[],
-  assignedByUserId: string,
-) {
-  const roleRows = await db.select().from(roles);
-  const roleIds = roleRows.flatMap((role) => {
-    if (!isRoleKey(role.key) || !roleKeys.includes(role.key)) {
-      return [];
-    }
-
-    return [role.id];
-  });
-
-  if (roleIds.length !== roleKeys.length) {
-    throw new Error("Invalid role selection.");
-  }
-
-  await db.delete(userRoles).where(eq(userRoles.userId, userId));
-  await db.insert(userRoles).values(
-    roleIds.map((roleId) => ({
-      userId,
-      roleId,
-      assignedByUserId,
-    })),
-  );
 }
 
 async function getUserForSettings(userId: string, organizationId: string) {

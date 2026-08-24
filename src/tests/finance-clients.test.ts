@@ -27,7 +27,7 @@ import {
   normalizeFinanceFilters,
   normalizeMoneyInput,
 } from "@/features/finance/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("finance status rules", () => {
   it("formats dates and competences for Brazilian display", () => {
