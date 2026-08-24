@@ -9,6 +9,7 @@ import {
   positions,
   rolePermissions,
   roles,
+  type UserAccessStatus,
   userRoles,
   users,
 } from "@/lib/db/schema";
@@ -23,10 +24,10 @@ import {
 } from "@/lib/rbac";
 
 export type SettingsUserListItem = {
+  accessStatus: UserAccessStatus;
   id: string;
   email: string;
   employeeName: string | null;
-  isActive: boolean;
   name: string;
   roles: RoleKey[];
   createdAt: Date;
@@ -88,10 +89,10 @@ async function getSettingsDashboard(
   ] = await Promise.all([
       db
         .select({
+          accessStatus: users.accessStatus,
           id: users.id,
           email: users.email,
           employeeName: employees.fullName,
-          isActive: users.isActive,
           name: users.name,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,

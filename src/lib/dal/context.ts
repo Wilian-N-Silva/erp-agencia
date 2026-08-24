@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   AccessInvitationAuthError,
@@ -62,7 +62,13 @@ export async function getCurrentAccessContext() {
       organizationId: users.organizationId,
     })
     .from(users)
-    .where(eq(users.id, session.user.id))
+    .where(
+      and(
+        eq(users.id, session.user.id),
+        eq(users.accessStatus, "active"),
+        eq(users.isActive, true),
+      ),
+    )
     .limit(1);
 
   const assignedRoles = await db

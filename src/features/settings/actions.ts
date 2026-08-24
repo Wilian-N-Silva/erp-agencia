@@ -24,13 +24,9 @@ import {
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
+import { updateUserAccessStatusSchema } from "./schemas";
 
 const updateRolesSchema = z.object({
-  userId: z.string().min(1).max(200),
-});
-
-const updateStatusSchema = z.object({
-  isActive: z.enum(["false", "true"]).transform((value) => value === "true"),
   userId: z.string().min(1).max(200),
 });
 
@@ -78,9 +74,9 @@ async function updateSettingsUserRolesAction(formData: FormData) {
 async function updateSettingsUserStatusAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   await enforceAuthenticatedRateLimit("invitation", context);
-  const input = updateStatusSchema.parse(formDataToObject(formData));
+  const input = updateUserAccessStatusSchema.parse(formDataToObject(formData));
 
-  if (input.userId === context.userId && !input.isActive) {
+  if (input.userId === context.userId && input.accessStatus !== "active") {
     throw new Error("User cannot deactivate themselves.");
   }
 
@@ -88,11 +84,21 @@ async function updateSettingsUserStatusAction(formData: FormData) {
   const [after] = await db
     .update(users)
     .set({
-      isActive: input.isActive,
+      accessStatus: input.accessStatus,
+      isActive: input.accessStatus === "active",
       updatedAt: new Date(),
     })
-    .where(eq(users.id, input.userId))
+    .where(
+      and(
+        eq(users.id, input.userId),
+        eq(users.organizationId, organizationId),
+      ),
+    )
     .returning();
+
+  if (!after) {
+    throw new AccessDeniedError();
+  }
 
   await writeAuditLog(context, {
     action: "status_change",
@@ -101,7 +107,7 @@ async function updateSettingsUserStatusAction(formData: FormData) {
     before,
     after,
     metadata: {
-      isActive: input.isActive,
+      accessStatus: input.accessStatus,
     },
   });
 
@@ -298,6 +304,7 @@ async function replaceUserRoles(
 async function getUserForSettings(userId: string, organizationId: string) {
   const [user] = await db
     .select({
+      accessStatus: users.accessStatus,
       id: users.id,
       email: users.email,
       isActive: users.isActive,

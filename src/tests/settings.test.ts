@@ -7,6 +7,7 @@ import {
   parseSettingValue,
   stringifySettingValue,
 } from "@/features/settings/rules";
+import { updateUserAccessStatusSchema } from "@/features/settings/schemas";
 import { createAccessContext } from "@/lib/dal";
 
 describe("settings authorization", () => {
@@ -44,5 +45,38 @@ describe("settings values", () => {
       "employee",
       "finance",
     ]);
+  });
+});
+
+describe("user access status input", () => {
+  it.each(["pending", "active", "suspended", "revoked"] as const)(
+    "accepts the explicit %s status",
+    (accessStatus) => {
+      expect(
+        updateUserAccessStatusSchema.parse({
+          accessStatus,
+          userId: "user_1",
+        }),
+      ).toEqual({
+        accessStatus,
+        userId: "user_1",
+      });
+    },
+  );
+
+  it("rejects unknown statuses and server-owned payload fields", () => {
+    expect(() =>
+      updateUserAccessStatusSchema.parse({
+        accessStatus: "disabled",
+        userId: "user_1",
+      }),
+    ).toThrow();
+    expect(() =>
+      updateUserAccessStatusSchema.parse({
+        accessStatus: "active",
+        organizationId: "20000000-0000-4000-8000-000000000001",
+        userId: "user_1",
+      }),
+    ).toThrow();
   });
 });

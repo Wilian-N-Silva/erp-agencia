@@ -1,7 +1,9 @@
 import { normalizeInvitationEmail } from "./rules";
 
 export const invitationAuthErrorCodes = {
+  inactiveSession: "ACCESS_STATUS_NOT_ACTIVE",
   invalidRoles: "ACCESS_INVITATION_ROLES_INVALID",
+  pendingSession: "ACCESS_PENDING",
   required: "ACCESS_INVITATION_REQUIRED",
   unauthorizedSession: "ACCESS_NOT_AUTHORIZED",
 } as const;
@@ -75,7 +77,8 @@ export function createInvitationAuthLifecycle(gateway: InvitationAuthGateway) {
     } catch (error) {
       if (
         !(error instanceof AccessInvitationAuthError) ||
-        error.code !== invitationAuthErrorCodes.unauthorizedSession
+        (error.code !== invitationAuthErrorCodes.unauthorizedSession &&
+          error.code !== invitationAuthErrorCodes.pendingSession)
       ) {
         throw error;
       }

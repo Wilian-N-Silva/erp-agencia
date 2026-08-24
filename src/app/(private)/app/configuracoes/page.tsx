@@ -1,4 +1,4 @@
-import { Ban, CheckCircle2, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
@@ -286,7 +286,7 @@ function UserManagementRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{user.name}</p>
-          <StatusBadge active={user.isActive} />
+          <StatusBadge status={user.accessStatus} />
         </div>
         <p className="break-words text-sm text-muted-foreground">{user.email}</p>
         <p className="text-xs text-muted-foreground">
@@ -319,15 +319,27 @@ function UserManagementRow({
       {canManage ? (
         <RateLimitedActionForm
           action={updateSettingsUserStatusAction}
-          className="flex items-start justify-end"
+          className="grid min-w-48 gap-2"
         >
           <input name="userId" type="hidden" value={user.id} />
-          <input name="isActive" type="hidden" value={user.isActive ? "false" : "true"} />
-          <IconSubmitButton
-            icon={user.isActive ? Ban : CheckCircle2}
-            label={user.isActive ? "Desativar usuario" : "Ativar usuario"}
-            tone={user.isActive ? "destructive" : "primary"}
-          />
+          <label className={fieldClassName}>
+            Status de acesso
+            <select
+              className={inputClassName}
+              defaultValue={user.accessStatus}
+              name="accessStatus"
+            >
+              {Object.entries(userAccessStatusLabels).map(([status, label]) => (
+                <option key={status} value={status}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className={secondaryButtonClassName} type="submit">
+            <Save className="size-4" aria-hidden="true" />
+            Salvar status
+          </button>
         </RateLimitedActionForm>
       ) : null}
     </div>
@@ -552,12 +564,23 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatusBadge({ active }: { active: boolean }) {
-  const className = active
-    ? "border-primary/30 bg-primary/10 text-primary"
-    : "border-muted bg-muted text-muted-foreground";
+function StatusBadge({
+  status,
+}: {
+  status: SettingsUserListItem["accessStatus"];
+}) {
+  const className =
+    status === "active"
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : status === "pending"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+        : "border-destructive/30 bg-destructive/10 text-destructive";
 
-  return <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${className}`}>{active ? "Ativo" : "Inativo"}</span>;
+  return (
+    <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${className}`}>
+      {userAccessStatusLabels[status]}
+    </span>
+  );
 }
 
 function Badge({ label }: { label: string }) {
@@ -573,7 +596,7 @@ function IconSubmitButton({
   label,
   tone,
 }: {
-  icon: typeof Ban;
+  icon: typeof Trash2;
   label: string;
   tone: "destructive" | "primary";
 }) {
@@ -601,6 +624,16 @@ const textareaClassName =
   "min-h-24 w-full min-w-0 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 const fieldClassName = "grid min-w-0 gap-1 text-sm font-medium";
+
+const userAccessStatusLabels: Record<
+  SettingsUserListItem["accessStatus"],
+  string
+> = {
+  active: "Ativo",
+  pending: "Pendente",
+  revoked: "Revogado",
+  suspended: "Suspenso",
+};
 
 const primaryButtonClassName =
   "inline-flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90";

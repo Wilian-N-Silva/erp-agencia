@@ -183,6 +183,45 @@ describe("access invitation authentication lifecycle", () => {
     expect(gateway.assertSessionUserIsAuthorized).toHaveBeenCalledTimes(2);
   });
 
+  it("activates a pending account only through a valid invitation", async () => {
+    gateway.assertSessionUserIsAuthorized
+      .mockRejectedValueOnce(
+        new AccessInvitationAuthError(
+          invitationAuthErrorCodes.pendingSession,
+        ),
+      )
+      .mockResolvedValueOnce(undefined);
+    gateway.findSessionUserIdentity.mockResolvedValue({
+      email: "user@example.com",
+    });
+    gateway.findValidInvitationForEmail.mockResolvedValue(invitation);
+    const lifecycle = createInvitationAuthLifecycle(gateway);
+
+    await expect(
+      lifecycle.authorizeSessionUser("pending-user"),
+    ).resolves.toBeUndefined();
+    expect(gateway.consumeInvitationForUser).toHaveBeenCalledOnce();
+    expect(gateway.assertSessionUserIsAuthorized).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reactivate a suspended or revoked account through another invitation", async () => {
+    gateway.assertSessionUserIsAuthorized.mockRejectedValue(
+      new AccessInvitationAuthError(
+        invitationAuthErrorCodes.inactiveSession,
+      ),
+    );
+    const lifecycle = createInvitationAuthLifecycle(gateway);
+
+    await expect(
+      lifecycle.authorizeSessionUser("inactive-user"),
+    ).rejects.toMatchObject({
+      code: invitationAuthErrorCodes.inactiveSession,
+    });
+    expect(gateway.findSessionUserIdentity).not.toHaveBeenCalled();
+    expect(gateway.findValidInvitationForEmail).not.toHaveBeenCalled();
+    expect(gateway.consumeInvitationForUser).not.toHaveBeenCalled();
+  });
+
   it("does not consume another invitation for an already authorized session", async () => {
     gateway.assertSessionUserIsAuthorized.mockResolvedValue(undefined);
     const lifecycle = createInvitationAuthLifecycle(gateway);

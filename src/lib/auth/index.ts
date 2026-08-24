@@ -79,7 +79,9 @@ export const auth = betterAuth({
 
           return {
             data: {
+              accessStatus: "pending",
               email,
+              isActive: false,
               organizationId: authorization.invitation.organizationId,
             },
           };
