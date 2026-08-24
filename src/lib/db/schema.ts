@@ -236,6 +236,31 @@ export const userRoles = pgTable(
   }),
 );
 
+export const accessInvitations = pgTable(
+  "access_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    email: text("email").notNull(),
+    roleKeys: jsonb("role_keys").$type<string[]>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    usedByUserId: text("used_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    emailIdx: uniqueIndex("access_invitations_email_idx").on(table.email),
+    organizationIdx: index("access_invitations_organization_idx").on(table.organizationId),
+    expiresAtIdx: index("access_invitations_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

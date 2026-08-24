@@ -71,6 +71,13 @@
       "when": 1787086800000,
       "tag": "0009_rate_limit_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787580334507,
+      "tag": "0010_aberrant_jocasta",
+      "breakpoints": true
     }
   ]
 }
