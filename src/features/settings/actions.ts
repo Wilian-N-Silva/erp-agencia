@@ -1,8 +1,6 @@
 "use server";
 
-import { hashPassword } from "better-auth/crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -10,7 +8,6 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
-  accounts,
   appSettings,
   areas,
   employees,
@@ -27,12 +24,6 @@ import {
 import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
 
 import { normalizeRoleSelection, parseSettingValue } from "./rules";
-
-const createUserSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(180),
-  name: z.string().trim().min(1).max(180),
-  password: z.string().min(8).max(200),
-});
 
 const updateRolesSchema = z.object({
   userId: z.string().min(1).max(200),
@@ -56,61 +47,6 @@ const createOrgUnitSchema = z.object({
 const deleteOrgUnitSchema = z.object({
   id: z.string().uuid(),
 });
-
-async function createSettingsUserAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
-  await enforceAuthenticatedRateLimit("invitation", context);
-  const input = createUserSchema.parse(formDataToObject(formData));
-  const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
-
-  if (roleKeys.length === 0) {
-    throw new Error("At least one role is required.");
-  }
-
-  const [user] = await db
-    .insert(users)
-    .values({
-      id: `user-${randomUUID()}`,
-      organizationId,
-      name: input.name,
-      email: input.email,
-      emailVerified: true,
-      isActive: true,
-    })
-    .onConflictDoNothing({
-      target: users.email,
-    })
-    .returning();
-
-  if (!user) {
-    throw new Error("User email already exists.");
-  }
-
-  const passwordHash = await hashPassword(input.password);
-
-  await db.insert(accounts).values({
-    id: `credential:${user.id}`,
-    userId: user.id,
-    accountId: user.id,
-    providerId: "credential",
-    password: passwordHash,
-  });
-  await replaceUserRoles(user.id, roleKeys, context.userId);
-
-  await writeAuditLog(context, {
-    action: "create",
-    entityType: "user",
-    entityId: user.id,
-    after: {
-      email: user.email,
-      isActive: user.isActive,
-      name: user.name,
-      roleKeys,
-    },
-  });
-
-  revalidatePath("/app/configuracoes");
-}
 
 async function updateSettingsUserRolesAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
@@ -402,7 +338,6 @@ function formDataToObject(formData: FormData) {
 }
 
 export {
-  tenantCreateSettingsUserAction as createSettingsUserAction,
   tenantUpdateSettingsUserRolesAction as updateSettingsUserRolesAction,
   tenantUpdateSettingsUserStatusAction as updateSettingsUserStatusAction,
   tenantUpdateAppSettingAction as updateAppSettingAction,
@@ -412,9 +347,6 @@ export {
   tenantDeletePositionAction as deletePositionAction,
 };
 
-const tenantCreateSettingsUserAction = withRateLimitActionResult(
-  bindCurrentTenantContext(createSettingsUserAction),
-);
 const tenantUpdateSettingsUserRolesAction = withRateLimitActionResult(
   bindCurrentTenantContext(updateSettingsUserRolesAction),
 );
