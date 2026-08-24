@@ -1,10 +1,4 @@
-import {
-  and,
-  countDistinct,
-  eq,
-  inArray,
-  sql,
-} from "drizzle-orm";
+import { and, countDistinct, eq, inArray, sql } from "drizzle-orm";
 
 import { createAuditLogValues } from "@/lib/audit";
 import { withTenantDb } from "@/lib/db";
@@ -18,12 +12,9 @@ import {
   users,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import {
-  AccessDeniedError,
-  assertCan,
-  type RoleKey,
-} from "@/lib/rbac";
+import { AccessDeniedError, assertCan, type RoleKey } from "@/lib/rbac";
 
+import { revokeUserSessions } from "../access/session-revocation";
 import { assertRoleReplacementKeepsSettingsAdministrator } from "./rules";
 
 const settingsAdministratorLockPrefix = "acc-004:roles";
@@ -83,14 +74,8 @@ export async function replaceUserRoles(
     const [currentAdminGrant] = await transaction
       .select({ permissionId: permissions.id })
       .from(userRoles)
-      .innerJoin(
-        rolePermissions,
-        eq(rolePermissions.roleId, userRoles.roleId),
-      )
-      .innerJoin(
-        permissions,
-        eq(permissions.id, rolePermissions.permissionId),
-      )
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, userRoles.roleId))
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
       .where(
         and(
           eq(userRoles.userId, input.userId),
@@ -101,10 +86,7 @@ export async function replaceUserRoles(
     const [replacementAdminGrant] = await transaction
       .select({ permissionId: permissions.id })
       .from(rolePermissions)
-      .innerJoin(
-        permissions,
-        eq(permissions.id, rolePermissions.permissionId),
-      )
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
       .where(
         and(
           inArray(rolePermissions.roleId, selectedRoleIds),
@@ -207,8 +189,7 @@ export async function updateUserAccessStatus(
       transaction,
       input.userId,
     );
-    const targetIsActive =
-      before.accessStatus === "active" && before.isActive;
+    const targetIsActive = before.accessStatus === "active" && before.isActive;
     const removesActiveAdministrator =
       targetIsActive &&
       targetHasSettingsManage &&
@@ -244,6 +225,15 @@ export async function updateUserAccessStatus(
       throw new AccessDeniedError();
     }
 
+    const revokedSessionCount = ["suspended", "revoked"].includes(
+      input.accessStatus,
+    )
+      ? await revokeUserSessions(transaction, {
+          organizationId,
+          userId: input.userId,
+        })
+      : 0;
+
     await transaction.insert(auditLogs).values(
       createAuditLogValues(context, {
         action: "status_change",
@@ -253,6 +243,7 @@ export async function updateUserAccessStatus(
         entityType: "user",
         metadata: {
           accessStatus: input.accessStatus,
+          revokedSessionCount,
         },
       }),
     );
@@ -261,9 +252,7 @@ export async function updateUserAccessStatus(
   });
 }
 
-type SettingsTransaction = Parameters<
-  Parameters<typeof withTenantDb>[1]
->[0];
+type SettingsTransaction = Parameters<Parameters<typeof withTenantDb>[1]>[0];
 
 async function lockSettingsAdministratorMutations(
   transaction: SettingsTransaction,
@@ -286,19 +275,10 @@ async function userHasSettingsManage(
   const [grant] = await transaction
     .select({ permissionId: permissions.id })
     .from(userRoles)
-    .innerJoin(
-      rolePermissions,
-      eq(rolePermissions.roleId, userRoles.roleId),
-    )
-    .innerJoin(
-      permissions,
-      eq(permissions.id, rolePermissions.permissionId),
-    )
+    .innerJoin(rolePermissions, eq(rolePermissions.roleId, userRoles.roleId))
+    .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
     .where(
-      and(
-        eq(userRoles.userId, userId),
-        eq(permissions.key, "settings.manage"),
-      ),
+      and(eq(userRoles.userId, userId), eq(permissions.key, "settings.manage")),
     )
     .limit(1);
 
@@ -313,14 +293,8 @@ async function countActiveSettingsAdministrators(
     .select({ count: countDistinct(users.id) })
     .from(users)
     .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .innerJoin(
-      rolePermissions,
-      eq(rolePermissions.roleId, userRoles.roleId),
-    )
-    .innerJoin(
-      permissions,
-      eq(permissions.id, rolePermissions.permissionId),
-    )
+    .innerJoin(rolePermissions, eq(rolePermissions.roleId, userRoles.roleId))
+    .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
     .where(
       and(
         eq(users.organizationId, organizationId),
