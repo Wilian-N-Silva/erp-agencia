@@ -12,7 +12,7 @@ import {
   normalizePeopleFilters,
   toEmployeeListItem,
 } from "@/features/people/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 const employee = {
   id: "employee_1",

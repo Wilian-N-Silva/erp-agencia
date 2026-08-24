@@ -738,6 +738,20 @@ async function createFixtures() {
       on conflict (key) do nothing
     `);
     await transaction.execute(sql`
+      insert into permissions (key, description)
+      values ('settings.manage', 'Gerenciar configuracoes')
+      on conflict (key) do nothing
+    `);
+    await transaction.execute(sql`
+      insert into role_permissions (role_id, permission_id)
+      select roles.id, permissions.id
+      from roles
+      cross join permissions
+      where roles.key = 'technical_admin'
+        and permissions.key = 'settings.manage'
+      on conflict do nothing
+    `);
+    await transaction.execute(sql`
       insert into "user" (
         id, organization_id, name, email, email_verified
       ) values (

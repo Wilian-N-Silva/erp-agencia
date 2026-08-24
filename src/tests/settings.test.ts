@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertRoleReplacementKeepsSettingsAdministrator,
   canManageSettings,
   canReadSettings,
+  lastSettingsAdministratorError,
   normalizeRoleSelection,
   parseSettingValue,
   stringifySettingValue,
@@ -10,8 +12,9 @@ import {
 import {
   updateUserAccessStatusSchema,
   updateUserEmployeeLinkSchema,
+  updateUserRolesSchema,
 } from "@/features/settings/schemas";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("settings authorization", () => {
   it("allows read and manage according to permissions", () => {
@@ -81,6 +84,51 @@ describe("user access status input", () => {
         userId: "user_1",
       }),
     ).toThrow();
+  });
+});
+
+describe("role replacement", () => {
+  it("rejects unknown roles and server-owned fields", () => {
+    expect(() =>
+      updateUserRolesSchema.parse({
+        roleKeys: ["finance", "root"],
+        userId: "user_1",
+      }),
+    ).toThrow();
+    expect(() =>
+      updateUserRolesSchema.parse({
+        organizationId: "20000000-0000-4000-8000-000000000001",
+        roleKeys: ["finance"],
+        userId: "user_1",
+      }),
+    ).toThrow();
+  });
+
+  it("protects only the last active persisted settings administrator", () => {
+    expect(() =>
+      assertRoleReplacementKeepsSettingsAdministrator({
+        activeSettingsAdministratorCount: 1,
+        replacementHasSettingsManage: false,
+        targetHasSettingsManage: true,
+        targetIsActive: true,
+      }),
+    ).toThrow(lastSettingsAdministratorError);
+    expect(() =>
+      assertRoleReplacementKeepsSettingsAdministrator({
+        activeSettingsAdministratorCount: 2,
+        replacementHasSettingsManage: false,
+        targetHasSettingsManage: true,
+        targetIsActive: true,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertRoleReplacementKeepsSettingsAdministrator({
+        activeSettingsAdministratorCount: 1,
+        replacementHasSettingsManage: true,
+        targetHasSettingsManage: true,
+        targetIsActive: true,
+      }),
+    ).not.toThrow();
   });
 });
 

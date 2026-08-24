@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 import {
   RATE_LIMIT_ERROR_MESSAGE,
   RateLimitExceededError,

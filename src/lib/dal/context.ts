@@ -5,9 +5,21 @@ import {
   assertSessionUserIsAuthorized,
 } from "@/features/access-invitations/auth";
 import { db, withTenantDb } from "@/lib/db";
-import { employees, roles, userRoles, users } from "@/lib/db/schema";
+import {
+  employees,
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from "@/lib/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { getPermissionsForRoles, isRoleKey, type PermissionKey, type RoleKey } from "@/lib/rbac";
+import {
+  isPermissionKey,
+  isRoleKey,
+  type PermissionKey,
+  type RoleKey,
+} from "@/lib/rbac";
 
 export type AccessContext = {
   userId: string;
@@ -27,7 +39,7 @@ export function createAccessContext(input: {
   organizationId?: string | null;
   employeeId?: string | null;
   roles: readonly RoleKey[];
-  permissions?: readonly PermissionKey[];
+  permissions: readonly PermissionKey[];
 }): AccessContext {
   const roles = [...input.roles];
 
@@ -36,7 +48,7 @@ export function createAccessContext(input: {
     organizationId: input.organizationId ?? null,
     employeeId: input.employeeId ?? null,
     roles,
-    permissions: [...(input.permissions ?? getPermissionsForRoles(roles))],
+    permissions: [...input.permissions],
   };
 }
 
@@ -71,21 +83,38 @@ export async function getCurrentAccessContext() {
     )
     .limit(1);
 
-  const assignedRoles = await db
+  if (!user) {
+    return null;
+  }
+
+  const assignedAccess = await db
     .select({
-      key: roles.key,
+      permissionKey: permissions.key,
+      roleKey: roles.key,
     })
     .from(userRoles)
     .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+    .leftJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
     .where(eq(userRoles.userId, session.user.id));
 
-  const roleKeys = assignedRoles
-    .map((role) => role.key)
-    .filter(isRoleKey);
+  const roleKeys = [...new Set(
+    assignedAccess.map((row) => row.roleKey).filter(isRoleKey),
+  )].sort();
+  const permissionKeys = [...new Set(
+    assignedAccess.flatMap((row) =>
+      isRoleKey(row.roleKey) &&
+      row.permissionKey &&
+      isPermissionKey(row.permissionKey)
+        ? [row.permissionKey]
+        : [],
+    ),
+  )].sort();
 
   const bootstrapContext = createAccessContext({
     userId: session.user.id,
-    organizationId: user?.organizationId ?? null,
+    organizationId: user.organizationId,
+    permissions: permissionKeys,
     roles: roleKeys,
   });
   const employeeRows = bootstrapContext.organizationId
@@ -113,6 +142,7 @@ export async function getCurrentAccessContext() {
     userId: session.user.id,
     organizationId: bootstrapContext.organizationId,
     employeeId: employee?.id ?? null,
+    permissions: bootstrapContext.permissions,
     roles: bootstrapContext.roles,
   });
 }

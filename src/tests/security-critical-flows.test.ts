@@ -23,7 +23,7 @@ import {
 import { canReadCompensationForTarget, canWriteCompensation } from "@/features/people/rules";
 import { canReadTimeOff, canReadVacationBalance } from "@/features/timeoff/rules";
 import { canManageSettings } from "@/features/settings/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 import { assertCan } from "@/lib/rbac";
 import { getStorageConfig } from "@/lib/storage";
 
