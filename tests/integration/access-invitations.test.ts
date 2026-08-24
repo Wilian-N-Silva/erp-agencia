@@ -1,6 +1,34 @@
 import { sql } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const actionMocks = vi.hoisted(() => ({
+  enforceAuthenticatedRateLimit: vi.fn().mockResolvedValue(undefined),
+  getCurrentSession: vi.fn(),
+}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/session")>();
+
+  return {
+    ...actual,
+    getCurrentSession: actionMocks.getCurrentSession,
+  };
+});
+
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+
+  return {
+    ...actual,
+    enforceAuthenticatedRateLimit:
+      actionMocks.enforceAuthenticatedRateLimit,
+  };
+});
 
 import {
   AccessInvitationAuthError,
@@ -9,6 +37,7 @@ import {
   findValidInvitationForEmail,
   invitationAuthErrorCodes,
 } from "@/features/access-invitations/auth";
+import { updateSettingsUserStatusAction } from "@/features/settings/actions";
 import {
   createDatabase,
   createWithTenantDb,
@@ -35,11 +64,15 @@ const ids = {
   invitationConsume: "61000000-0000-4000-8000-000000000004",
   invitationOrgB: "61000000-0000-4000-8000-000000000005",
   roleFallback: "62000000-0000-4000-8000-000000000001",
+  roleSettingsManager: "62000000-0000-4000-8000-000000000002",
 } as const;
 const users = {
   inviterA: "acc-001-inviter-a",
   inviterB: "acc-001-inviter-b",
   invitee: "acc-001-invitee",
+  legacyWriter: "acc-002-legacy-writer",
+  rollbackTarget: "acc-002-rollback-target",
+  suspendable: "acc-002-suspendable",
   used: "acc-001-used-user",
   unauthorized: "acc-001-unauthorized",
 } as const;
@@ -48,7 +81,10 @@ const emails = {
   expired: "acc-001-expired@example.test",
   used: "acc-001-used@example.test",
   consume: "acc-001-consume@example.test",
+  legacyWriter: "acc-002-legacy-writer@example.test",
   orgB: "acc-001-org-b@example.test",
+  rollbackTarget: "acc-002-rollback-target@example.test",
+  suspendable: "acc-002-suspendable@example.test",
   unauthorized: "acc-001-unauthorized@example.test",
 } as const;
 const contextA: AccessContext = {
@@ -85,6 +121,35 @@ afterAll(async () => {
 });
 
 describe("access invitation authentication", () => {
+  beforeEach(() => {
+    actionMocks.getCurrentSession.mockResolvedValue({
+      user: { id: users.inviterA },
+    });
+  });
+
+  it("keeps expand defaults compatible with the previous invitation writer", async () => {
+    const userRows = await adminDb.execute(sql<{
+      accessStatus: string;
+      isActive: boolean;
+    }>`
+      select
+        access_status as "accessStatus",
+        is_active as "isActive"
+      from "user"
+      where id = ${users.legacyWriter}
+    `);
+
+    expect(userRows.rows).toEqual([
+      {
+        accessStatus: "active",
+        isActive: true,
+      },
+    ]);
+    await expect(
+      assertSessionUserIsAuthorized(users.legacyWriter),
+    ).resolves.toBeUndefined();
+  });
+
   it("finds only a matching, unused, unexpired invitation", async () => {
     await expect(
       findValidInvitationForEmail(`  ${emails.valid.toUpperCase()}  `),
@@ -186,6 +251,240 @@ describe("access invitation authentication", () => {
         organizationId: ids.orgA,
       },
     ]);
+  });
+
+  it("suspends through the settings Action, audits it, and denies the existing session", async () => {
+    await expect(
+      assertSessionUserIsAuthorized(users.suspendable),
+    ).resolves.toBeUndefined();
+
+    const formData = new FormData();
+    formData.set("userId", users.suspendable);
+    formData.set("accessStatus", "suspended");
+
+    await expect(updateSettingsUserStatusAction(formData)).resolves.toEqual({
+      data: undefined,
+      ok: true,
+    });
+
+    const suspendedRows = await adminDb.execute(sql<{
+      accessStatus: string;
+      isActive: boolean;
+    }>`
+      select
+        access_status as "accessStatus",
+        is_active as "isActive"
+      from "user"
+      where id = ${users.suspendable}
+    `);
+    expect(suspendedRows.rows).toEqual([
+      {
+        accessStatus: "suspended",
+        isActive: false,
+      },
+    ]);
+
+    const auditRows = await adminDb.execute(sql<{
+      action: string;
+      actorUserId: string | null;
+      afterAccessStatus: string | null;
+      afterIsActive: string | null;
+      beforeAccessStatus: string | null;
+      beforeIsActive: string | null;
+      metadataAccessStatus: string | null;
+      organizationId: string;
+    }>`
+      select
+        action,
+        actor_user_id as "actorUserId",
+        after->>'accessStatus' as "afterAccessStatus",
+        after->>'isActive' as "afterIsActive",
+        before->>'accessStatus' as "beforeAccessStatus",
+        before->>'isActive' as "beforeIsActive",
+        metadata->>'accessStatus' as "metadataAccessStatus",
+        organization_id as "organizationId"
+      from audit_logs
+      where entity_type = 'user'
+        and entity_id = ${users.suspendable}
+    `);
+    expect(auditRows.rows).toEqual([
+      {
+        action: "status_change",
+        actorUserId: users.inviterA,
+        afterAccessStatus: "suspended",
+        afterIsActive: "false",
+        beforeAccessStatus: "active",
+        beforeIsActive: "true",
+        metadataAccessStatus: "suspended",
+        organizationId: ids.orgA,
+      },
+    ]);
+
+    await expect(
+      assertSessionUserIsAuthorized(users.suspendable),
+    ).rejects.toMatchObject({
+      code: invitationAuthErrorCodes.inactiveSession,
+    });
+  });
+
+  it("rejects a status change without settings.manage and leaves no audit", async () => {
+    actionMocks.getCurrentSession.mockResolvedValue({
+      user: { id: users.legacyWriter },
+    });
+    const formData = new FormData();
+    formData.set("userId", users.inviterA);
+    formData.set("accessStatus", "suspended");
+
+    await expect(updateSettingsUserStatusAction(formData)).rejects.toMatchObject({
+      name: "AccessDeniedError",
+    });
+
+    await expectUserStatusAndAudit(users.inviterA, "active", true, 0);
+  });
+
+  it("rejects a cross-tenant target ID and leaves no mutation or audit", async () => {
+    const formData = new FormData();
+    formData.set("userId", users.inviterB);
+    formData.set("accessStatus", "suspended");
+
+    await expect(updateSettingsUserStatusAction(formData)).rejects.toMatchObject({
+      name: "AccessDeniedError",
+    });
+
+    await expectUserStatusAndAudit(users.inviterB, "active", true, 0);
+  });
+
+  it("rolls back the status write when its transactional audit insert fails", async () => {
+    await adminDb.execute(sql.raw(`
+      create or replace function acc_002_reject_status_audit()
+      returns trigger
+      language plpgsql
+      as $function$
+      begin
+        if new.entity_type = 'user'
+          and new.entity_id = '${users.rollbackTarget}' then
+          raise exception 'ACC-002 forced audit failure';
+        end if;
+        return new;
+      end
+      $function$
+    `));
+    await adminDb.execute(sql.raw(`
+      create trigger acc_002_reject_status_audit
+      before insert on audit_logs
+      for each row execute function acc_002_reject_status_audit()
+    `));
+
+    try {
+      const formData = new FormData();
+      formData.set("userId", users.rollbackTarget);
+      formData.set("accessStatus", "suspended");
+
+      await expect(updateSettingsUserStatusAction(formData)).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          message: expect.stringContaining("ACC-002 forced audit failure"),
+        }),
+      });
+
+      await expectUserStatusAndAudit(
+        users.rollbackTarget,
+        "active",
+        true,
+        0,
+      );
+    } finally {
+      await adminDb.execute(sql.raw(`
+        drop trigger if exists acc_002_reject_status_audit on audit_logs
+      `));
+      await adminDb.execute(sql.raw(`
+        drop function if exists acc_002_reject_status_audit()
+      `));
+    }
+  });
+});
+
+describe("ACC-002 migration upgrade", () => {
+  it("backfills legacy booleans and preserves the previous writer defaults", async () => {
+    const schemaName = "acc_002_upgrade";
+    await adminDb.execute(
+      sql.raw(`drop schema if exists ${schemaName} cascade`),
+    );
+
+    try {
+      await adminDb.execute(sql.raw(`create schema ${schemaName}`));
+      await adminDb.execute(sql.raw(`
+        create table ${schemaName}."user" (
+          id text primary key,
+          is_active boolean default true not null
+        )
+      `));
+      await adminDb.execute(sql.raw(`
+        insert into ${schemaName}."user" (id, is_active) values
+          ('legacy-active', true),
+          ('legacy-inactive', false)
+      `));
+
+      const migrationPath = new URL(
+        "../../drizzle/0012_windy_ikaris.sql",
+        import.meta.url,
+      );
+      const migration = (await readFile(migrationPath, "utf8")).replace(
+        'CREATE TYPE "public"."user_access_status"',
+        'CREATE TYPE "user_access_status"',
+      );
+
+      await adminDb.transaction(async (transaction) => {
+        await transaction.execute(
+          sql.raw(`set local search_path to ${schemaName}, public`),
+        );
+
+        for (const statement of migration
+          .split("--> statement-breakpoint")
+          .map((value) => value.trim())
+          .filter(Boolean)) {
+          await transaction.execute(sql.raw(statement));
+        }
+
+        await transaction.execute(sql.raw(`
+          insert into "user" (id) values ('previous-writer')
+        `));
+      });
+
+      const rows = await adminDb.execute(sql<{
+        accessStatus: string;
+        id: string;
+        isActive: boolean;
+      }>`
+        select
+          id,
+          access_status as "accessStatus",
+          is_active as "isActive"
+        from acc_002_upgrade."user"
+        order by id
+      `);
+
+      expect(rows.rows).toEqual([
+        {
+          accessStatus: "active",
+          id: "legacy-active",
+          isActive: true,
+        },
+        {
+          accessStatus: "suspended",
+          id: "legacy-inactive",
+          isActive: false,
+        },
+        {
+          accessStatus: "active",
+          id: "previous-writer",
+          isActive: true,
+        },
+      ]);
+    } finally {
+      await adminDb.execute(
+        sql.raw(`drop schema if exists ${schemaName} cascade`),
+      );
+    }
   });
 });
 
@@ -400,33 +699,62 @@ async function createFixtures() {
     `);
     await transaction.execute(sql`
       insert into "user" (
-        id, organization_id, name, email, email_verified
+        id, organization_id, name, email, email_verified,
+        access_status, is_active
       ) values
         (
           ${users.inviterA}, ${ids.orgA}, 'ACC-001 Inviter A',
-          'acc-001-inviter-a@example.test', true
+          'acc-001-inviter-a@example.test', true, 'active', true
         ),
         (
           ${users.inviterB}, ${ids.orgB}, 'ACC-001 Inviter B',
-          'acc-001-inviter-b@example.test', true
+          'acc-001-inviter-b@example.test', true, 'active', true
         ),
         (
           ${users.invitee}, ${ids.orgA}, 'ACC-001 Legacy Invitee',
-          ${emails.consume}, true
+          ${emails.consume}, true, 'active', true
+        ),
+        (
+          ${users.suspendable}, ${ids.orgA}, 'ACC-002 Suspendable',
+          ${emails.suspendable}, true, 'active', true
+        ),
+        (
+          ${users.rollbackTarget}, ${ids.orgA}, 'ACC-002 Rollback Target',
+          ${emails.rollbackTarget}, true, 'active', true
         ),
         (
           ${users.used}, ${ids.orgA}, 'ACC-001 Used',
-          ${emails.used}, true
+          ${emails.used}, true, 'active', true
         ),
         (
           ${users.unauthorized}, null, 'ACC-001 Unauthorized',
-          ${emails.unauthorized}, true
+          ${emails.unauthorized}, true, 'active', true
         )
     `);
     await transaction.execute(sql`
-      insert into roles (id, key, name)
-      values (${ids.roleFallback}, 'employee', 'Colaborador')
+      insert into roles (id, key, name) values
+        (${ids.roleFallback}, 'employee', 'Colaborador'),
+        (${ids.roleSettingsManager}, 'technical_admin', 'Admin Tecnico')
       on conflict (key) do nothing
+    `);
+    await transaction.execute(sql`
+      insert into "user" (
+        id, organization_id, name, email, email_verified
+      ) values (
+        ${users.legacyWriter}, ${ids.orgA}, 'ACC-002 Legacy Writer',
+        ${emails.legacyWriter}, true
+      )
+    `);
+    await transaction.execute(sql`
+      insert into user_roles (user_id, role_id, assigned_by_user_id)
+      select fixture.user_id, roles.id, ${users.inviterA}
+      from (
+        values
+          (${users.legacyWriter}, 'employee'),
+          (${users.suspendable}, 'employee'),
+          (${users.inviterA}, 'technical_admin')
+      ) as fixture(user_id, role_key)
+      inner join roles on roles.key = fixture.role_key
     `);
     await transaction.execute(sql`
       insert into access_invitations (
@@ -466,6 +794,16 @@ async function removeFixtures() {
   await adminDb.transaction(async (transaction) => {
     await transaction.execute(sql`
       delete from audit_logs
+      where entity_type = 'user'
+        and entity_id in (
+          ${users.inviterA},
+          ${users.inviterB},
+          ${users.rollbackTarget},
+          ${users.suspendable}
+        )
+    `);
+    await transaction.execute(sql`
+      delete from audit_logs
       where entity_type = 'access_invitation'
         and entity_id in (
           ${ids.invitationValid},
@@ -485,6 +823,9 @@ async function removeFixtures() {
         ${users.inviterA},
         ${users.inviterB},
         ${users.invitee},
+        ${users.legacyWriter},
+        ${users.rollbackTarget},
+        ${users.suspendable},
         ${users.used},
         ${users.unauthorized}
       )
@@ -495,6 +836,9 @@ async function removeFixtures() {
         ${users.inviterA},
         ${users.inviterB},
         ${users.invitee},
+        ${users.legacyWriter},
+        ${users.rollbackTarget},
+        ${users.suspendable},
         ${users.used},
         ${users.unauthorized}
       )
@@ -504,12 +848,38 @@ async function removeFixtures() {
     `);
     await transaction.execute(sql`
       delete from roles
-      where id = ${ids.roleFallback}
+      where id in (${ids.roleFallback}, ${ids.roleSettingsManager})
         and not exists (
-          select 1 from user_roles where role_id = ${ids.roleFallback}
+          select 1 from user_roles where role_id = roles.id
         )
     `);
   });
+}
+
+async function expectUserStatusAndAudit(
+  userId: string,
+  accessStatus: string,
+  isActive: boolean,
+  auditCount: number,
+) {
+  const rows = await adminDb.execute(sql<{
+    accessStatus: string;
+    auditCount: number;
+    isActive: boolean;
+  }>`
+    select
+      u.access_status as "accessStatus",
+      u.is_active as "isActive",
+      count(a.id)::int as "auditCount"
+    from "user" as u
+    left join audit_logs as a
+      on a.entity_type = 'user'
+      and a.entity_id = u.id
+    where u.id = ${userId}
+    group by u.id
+  `);
+
+  expect(rows.rows).toEqual([{ accessStatus, auditCount, isActive }]);
 }
 
 function restoreEnvironmentVariable(name: string, value: string | undefined) {

@@ -245,6 +245,7 @@ async function seedInitialAdmin(
       name,
       email,
       emailVerified: true,
+      accessStatus: "active",
       isActive: true,
     })
     .onConflictDoUpdate({
@@ -253,6 +254,7 @@ async function seedInitialAdmin(
         organizationId,
         name,
         emailVerified: true,
+        accessStatus: "active",
         isActive: true,
         updatedAt: new Date(),
       },
@@ -373,6 +375,7 @@ async function seedRoleTestUsers(
         name: fixture.name,
         email: fixture.email,
         emailVerified: true,
+        accessStatus: "active",
         isActive: true,
       })
       .onConflictDoUpdate({
@@ -381,6 +384,7 @@ async function seedRoleTestUsers(
           organizationId,
           name: fixture.name,
           emailVerified: true,
+          accessStatus: "active",
           isActive: true,
           updatedAt: new Date(),
         },

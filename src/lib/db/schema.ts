@@ -103,6 +103,16 @@ export const alertStatusEnum = pgEnum("alert_status", [
   "dismissed",
 ]);
 
+export const userAccessStatusEnum = pgEnum("user_access_status", [
+  "pending",
+  "active",
+  "suspended",
+  "revoked",
+]);
+
+export type UserAccessStatus =
+  (typeof userAccessStatusEnum.enumValues)[number];
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -120,6 +130,8 @@ export const users = pgTable(
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
+    // Expand-phase defaults preserve compatibility; the current auth writer sets pending/false explicitly.
+    accessStatus: userAccessStatusEnum("access_status").notNull().default("active"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

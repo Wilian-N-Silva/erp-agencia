@@ -104,6 +104,8 @@ export async function consumeInvitationForUser(input: {
     await transaction
       .update(users)
       .set({
+        accessStatus: "active",
+        isActive: true,
         organizationId: input.organizationId,
         updatedAt: now,
       })
@@ -143,13 +145,30 @@ export async function consumeInvitationForUser(input: {
 export async function assertSessionUserIsAuthorized(userId: string) {
   const [authorization] = await db
     .select({
+      accessStatus: users.accessStatus,
+      isActive: users.isActive,
       organizationId: users.organizationId,
       roleId: userRoles.roleId,
     })
     .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
+    .leftJoin(userRoles, eq(userRoles.userId, users.id))
     .where(eq(users.id, userId))
     .limit(1);
+
+  if (authorization?.accessStatus === "pending") {
+    throw new AccessInvitationAuthError(
+      invitationAuthErrorCodes.pendingSession,
+    );
+  }
+
+  if (
+    authorization &&
+    (authorization.accessStatus !== "active" || !authorization.isActive)
+  ) {
+    throw new AccessInvitationAuthError(
+      invitationAuthErrorCodes.inactiveSession,
+    );
+  }
 
   if (!authorization?.organizationId || !authorization.roleId) {
     throw new AccessInvitationAuthError(
