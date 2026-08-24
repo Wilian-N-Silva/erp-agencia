@@ -30,8 +30,9 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => {
 });
 
 import { updateSettingsUserEmployeeLinkAction } from "@/features/settings/actions";
+import { getSettingsDashboard } from "@/features/settings/dal";
 import { createDatabase, getDb, type Database } from "@/lib/db";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { createAccessContext, getCurrentAccessContext } from "@/lib/dal";
 
 const runtimeUrl = process.env.DATABASE_TEST_URL;
 const adminUrl = process.env.DATABASE_TEST_ADMIN_URL;
@@ -166,6 +167,22 @@ describe("ACC-003 user employee link", () => {
     await expectEmployeeLink(ids.employeeReplacementA, null);
   });
 
+  it("serializes concurrent admin writes so they cannot create two links", async () => {
+    const results = await Promise.allSettled([
+      link(users.targetA, ids.employeeA),
+      link(users.targetA, ids.employeeReplacementA),
+    ]);
+
+    expect(results.every((result) => result.status === "fulfilled")).toBe(true);
+    const linkedEmployees = await adminDb.execute(sql<{ id: string }>`
+      select id
+      from employees
+      where organization_id = ${ids.orgA}
+        and user_id = ${users.targetA}
+    `);
+    expect(linkedEmployees.rows).toHaveLength(1);
+  });
+
   it("rejects known cross-tenant user and employee ids without audit", async () => {
     await expect(link(users.targetA, ids.employeeB)).rejects.toMatchObject({
       name: "AccessDeniedError",
@@ -246,7 +263,68 @@ describe("ACC-003 user employee link", () => {
     }
   });
 
-  it("enforces one employee per user at the database boundary", async () => {
+  it("fails closed on a legacy conflict and lets the admin resolve it explicitly", async () => {
+    await createLegacyDuplicateLinks();
+
+    actionMocks.getCurrentSession.mockResolvedValue({
+      user: { id: users.targetA },
+    });
+    await expect(getCurrentAccessContext()).resolves.toMatchObject({
+      employeeId: null,
+      organizationId: ids.orgA,
+      userId: users.targetA,
+    });
+
+    const dashboard = await getSettingsDashboard(createAccessContext({
+      userId: users.adminA,
+      organizationId: ids.orgA,
+      roles: ["technical_admin"],
+    }));
+    const conflictedUsers = dashboard.users.filter(
+      (user) => user.id === users.targetA,
+    );
+    expect(conflictedUsers).toHaveLength(1);
+    expect(conflictedUsers[0]).toMatchObject({
+      employeeId: null,
+      employeeLinkConflict: true,
+    });
+    expect(
+      conflictedUsers[0]?.employeeLinks.map((employee) => employee.id).sort(),
+    ).toEqual([ids.employeeA, ids.employeeReplacementA].sort());
+
+    actionMocks.getCurrentSession.mockResolvedValue({
+      user: { id: users.adminA },
+    });
+    await expect(
+      link(users.targetA, ids.employeeReplacementA),
+    ).resolves.toEqual({ data: undefined, ok: true });
+    await expectEmployeeLink(ids.employeeA, null);
+    await expectEmployeeLink(ids.employeeReplacementA, users.targetA);
+
+    const auditRows = await adminDb.execute(sql<{ beforeEmployeeIds: string[] }>`
+      select before->'employeeIds' as "beforeEmployeeIds"
+      from audit_logs
+      where entity_type = 'user_employee_link'
+        and entity_id = ${users.targetA}
+    `);
+    const beforeEmployeeIds = auditRows.rows[0]?.beforeEmployeeIds as
+      | string[]
+      | undefined;
+    expect(beforeEmployeeIds?.sort()).toEqual(
+      [ids.employeeA, ids.employeeReplacementA].sort(),
+    );
+
+    actionMocks.getCurrentSession.mockResolvedValue({
+      user: { id: users.targetA },
+    });
+    await expect(getCurrentAccessContext()).resolves.toMatchObject({
+      employeeId: ids.employeeReplacementA,
+      organizationId: ids.orgA,
+      userId: users.targetA,
+    });
+  });
+
+  it("prevents new conflicts at the database boundary", async () => {
     await adminDb.execute(sql`
       update employees set user_id = ${users.targetA}
       where id = ${ids.employeeA}
@@ -265,46 +343,17 @@ describe("ACC-003 user employee link", () => {
 });
 
 describe("ACC-003 migration upgrade", () => {
-  it("preserves nullable links and enforces one-to-one on an existing table", async () => {
-    const schemaName = "acc_003_upgrade";
-    await adminDb.execute(sql.raw(`drop schema if exists ${schemaName} cascade`));
+  it("keeps the clean upgrade path and prevents a new conflict", async () => {
+    const schemaName = "acc_003_upgrade_clean";
+    await dropUpgradeSchema(schemaName);
 
     try {
-      await adminDb.execute(sql.raw(`create schema ${schemaName}`));
-      await adminDb.execute(sql.raw(`
-        create table ${schemaName}.employees (
-          id uuid primary key,
-          user_id text
-        )
-      `));
-      await adminDb.execute(sql.raw(`
-        create index employees_user_idx
-        on ${schemaName}.employees (user_id)
-      `));
-      await adminDb.execute(sql.raw(`
-        insert into ${schemaName}.employees (id, user_id) values
-          ('65000000-0000-4000-8000-000000000001', 'legacy-user'),
-          ('65000000-0000-4000-8000-000000000002', null),
-          ('65000000-0000-4000-8000-000000000003', null)
-      `));
-
-      const migrationPath = new URL(
-        "../../drizzle/0013_youthful_ma_gnuci.sql",
-        import.meta.url,
-      );
-      const migration = await readFile(migrationPath, "utf8");
-
-      await adminDb.transaction(async (transaction) => {
-        await transaction.execute(
-          sql.raw(`set local search_path to ${schemaName}, public`),
-        );
-        for (const statement of migration
-          .split("--> statement-breakpoint")
-          .map((value) => value.trim())
-          .filter(Boolean)) {
-          await transaction.execute(sql.raw(statement));
-        }
-      });
+      await createUpgradeSchema(schemaName, [
+        ["65000000-0000-4000-8000-000000000001", "legacy-user"],
+        ["65000000-0000-4000-8000-000000000002", null],
+        ["65000000-0000-4000-8000-000000000003", null],
+      ]);
+      await runAcc003Migration(schemaName);
 
       await expect(
         adminDb.execute(sql.raw(`
@@ -314,15 +363,192 @@ describe("ACC-003 migration upgrade", () => {
       ).rejects.toMatchObject({
         cause: expect.objectContaining({ code: "23505" }),
       });
-      const rows = await adminDb.execute(sql.raw(`
+      await expectUpgradeCounts(schemaName, { employees: 3, users: 1 });
+      const nullableRows = await adminDb.execute(sql.raw(`
         select id from ${schemaName}.employees where user_id is null
       `));
-      expect(rows.rows).toHaveLength(2);
+      expect(nullableRows.rows).toHaveLength(2);
     } finally {
-      await adminDb.execute(sql.raw(`drop schema if exists ${schemaName} cascade`));
+      await dropUpgradeSchema(schemaName);
+    }
+  });
+
+  it("migrates duplicate legacy links without data loss and keeps them remediable", async () => {
+    const schemaName = "acc_003_upgrade_duplicates";
+    const firstEmployeeId = "65000000-0000-4000-8000-000000000011";
+    const selectedEmployeeId = "65000000-0000-4000-8000-000000000012";
+    await dropUpgradeSchema(schemaName);
+
+    try {
+      await createUpgradeSchema(schemaName, [
+        [firstEmployeeId, "legacy-user"],
+        [selectedEmployeeId, "legacy-user"],
+        ["65000000-0000-4000-8000-000000000013", null],
+      ]);
+
+      await expect(runAcc003Migration(schemaName)).resolves.toBeUndefined();
+      await expectUpgradeCounts(schemaName, { employees: 3, users: 1 });
+
+      const conflicts = await getUpgradeConflicts(schemaName);
+      expect(conflicts.rows).toEqual([{
+        employeeCount: 2,
+        employeeIds: [firstEmployeeId, selectedEmployeeId],
+        userId: "legacy-user",
+      }]);
+
+      await expect(
+        adminDb.execute(sql.raw(`
+          insert into ${schemaName}.employees (id, user_id)
+          values ('65000000-0000-4000-8000-000000000014', 'legacy-user')
+        `)),
+      ).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: "23505" }),
+      });
+
+      await adminDb.transaction(async (transaction) => {
+        await transaction.execute(sql.raw(`
+          update ${schemaName}.employees
+          set user_id = null
+          where user_id = 'legacy-user'
+        `));
+        await transaction.execute(sql.raw(`
+          update ${schemaName}.employees
+          set user_id = 'legacy-user'
+          where id = '${selectedEmployeeId}'
+        `));
+      });
+
+      expect((await getUpgradeConflicts(schemaName)).rows).toEqual([]);
+      const selectedLink = await adminDb.execute(sql.raw(`
+        select id, user_id as "userId"
+        from ${schemaName}.employees
+        where user_id = 'legacy-user'
+      `));
+      expect(selectedLink.rows).toEqual([{
+        id: selectedEmployeeId,
+        userId: "legacy-user",
+      }]);
+      await expectUpgradeCounts(schemaName, { employees: 3, users: 1 });
+
+      await expect(
+        adminDb.execute(sql.raw(`
+          update ${schemaName}.employees
+          set user_id = 'legacy-user'
+          where id = '${firstEmployeeId}'
+        `)),
+      ).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: "23505" }),
+      });
+    } finally {
+      await dropUpgradeSchema(schemaName);
     }
   });
 });
+
+async function createUpgradeSchema(
+  schemaName: string,
+  employeeLinks: ReadonlyArray<readonly [id: string, userId: string | null]>,
+) {
+  await adminDb.execute(sql.raw(`create schema ${schemaName}`));
+  await adminDb.execute(sql.raw(`
+    create table ${schemaName}."user" (
+      id text primary key
+    )
+  `));
+  await adminDb.execute(sql.raw(`
+    create table ${schemaName}.employees (
+      id uuid primary key,
+      user_id text references ${schemaName}."user" (id)
+    )
+  `));
+  await adminDb.execute(sql.raw(`
+    create index employees_user_idx
+    on ${schemaName}.employees (user_id)
+  `));
+  await adminDb.execute(sql.raw(`
+    insert into ${schemaName}."user" (id) values ('legacy-user')
+  `));
+
+  for (const [id, userId] of employeeLinks) {
+    await adminDb.execute(sql.raw(`
+      insert into ${schemaName}.employees (id, user_id)
+      values ('${id}', ${userId ? `'${userId}'` : "null"})
+    `));
+  }
+}
+
+async function runAcc003Migration(schemaName: string) {
+  const migrationPath = new URL(
+    "../../drizzle/0013_youthful_ma_gnuci.sql",
+    import.meta.url,
+  );
+  const migration = await readFile(migrationPath, "utf8");
+
+  await adminDb.transaction(async (transaction) => {
+    await transaction.execute(
+      sql.raw(`set local search_path to ${schemaName}, public`),
+    );
+    for (const statement of migration
+      .split("--> statement-breakpoint")
+      .map((value) => value.trim())
+      .filter(Boolean)) {
+      await transaction.execute(sql.raw(statement));
+    }
+  });
+}
+
+async function getUpgradeConflicts(schemaName: string) {
+  return adminDb.execute(sql.raw(`
+    select
+      user_id as "userId",
+      count(*)::int as "employeeCount",
+      array_agg(id order by id) as "employeeIds"
+    from ${schemaName}.employees
+    where user_id is not null
+    group by user_id
+    having count(*) > 1
+  `)) as Promise<{ rows: Array<{
+    employeeCount: number;
+    employeeIds: string[];
+    userId: string;
+  }> }>;
+}
+
+async function expectUpgradeCounts(
+  schemaName: string,
+  expected: { employees: number; users: number },
+) {
+  const counts = await adminDb.execute(sql.raw(`
+    select
+      (select count(*)::int from ${schemaName}.employees) as employees,
+      (select count(*)::int from ${schemaName}."user") as users
+  `));
+  expect(counts.rows).toEqual([expected]);
+}
+
+async function dropUpgradeSchema(schemaName: string) {
+  await adminDb.execute(sql.raw(`drop schema if exists ${schemaName} cascade`));
+}
+
+async function createLegacyDuplicateLinks() {
+  await adminDb.execute(sql.raw(`
+    alter table employees
+    disable trigger acc_003_employee_user_conflict_guard
+  `));
+
+  try {
+    await adminDb.execute(sql`
+      update employees
+      set user_id = ${users.targetA}
+      where id in (${ids.employeeA}, ${ids.employeeReplacementA})
+    `);
+  } finally {
+    await adminDb.execute(sql.raw(`
+      alter table employees
+      enable trigger acc_003_employee_user_conflict_guard
+    `));
+  }
+}
 
 async function link(userId: string, employeeId: string) {
   const formData = new FormData();

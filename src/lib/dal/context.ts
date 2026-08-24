@@ -88,20 +88,25 @@ export async function getCurrentAccessContext() {
     organizationId: user?.organizationId ?? null,
     roles: roleKeys,
   });
-  const employee = bootstrapContext.organizationId
+  const employeeRows = bootstrapContext.organizationId
     ? await withTenantDb(bootstrapContext, async (tenantDb) => {
-        const [row] = await tenantDb
+        return tenantDb
           .select({
+            deletedAt: employees.deletedAt,
             id: employees.id,
           })
           .from(employees)
           .where(
-            eq(employees.userId, session.user.id),
+            and(
+              eq(employees.organizationId, bootstrapContext.organizationId!),
+              eq(employees.userId, session.user.id),
+            ),
           )
-          .limit(1);
-
-        return row;
+          .limit(2);
       })
+    : [];
+  const employee = employeeRows.length === 1 && !employeeRows[0]?.deletedAt
+    ? employeeRows[0]
     : undefined;
 
   return createAccessContext({

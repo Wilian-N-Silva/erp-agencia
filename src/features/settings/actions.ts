@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -122,6 +122,11 @@ async function updateSettingsUserEmployeeLinkAction(formData: FormData) {
   await enforceAuthenticatedRateLimit("invitation", context);
   const input = updateUserEmployeeLinkSchema.parse(formDataToObject(formData));
   const user = await getUserForSettings(input.userId, organizationId);
+  await db.execute(sql`
+    select pg_advisory_xact_lock(
+      hashtextextended(${`acc-003:user:${input.userId}`}, 0)
+    )
+  `);
   const currentLinks = await db
     .select({ id: employees.id })
     .from(employees)

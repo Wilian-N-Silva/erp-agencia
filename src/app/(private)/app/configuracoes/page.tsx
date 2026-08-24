@@ -306,9 +306,19 @@ function UserManagementRow({
           <StatusBadge status={user.accessStatus} />
         </div>
         <p className="break-words text-sm text-muted-foreground">{user.email}</p>
-        <p className="text-xs text-muted-foreground">
-          {user.employeeName ?? "Sem colaborador vinculado"} - atualizado {formatDate(user.updatedAt)}
-        </p>
+        {user.employeeLinkConflict ? (
+          <p className="text-xs text-amber-700">
+            Conflito legado: {user.employeeLinks.length} colaboradores vinculados
+            ({user.employeeLinks.map((employee) =>
+              `${employee.name}${employee.deletedAt ? " [excluído]" : ""}`
+            ).join(", ")}).
+            Selecione explicitamente o cadastro correto.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {user.employeeName ?? "Sem colaborador vinculado"} - atualizado {formatDate(user.updatedAt)}
+          </p>
+        )}
       </div>
 
       {canManage ? (
