@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { db, withTenantDb } from "@/lib/db";
 import { employees, lifecycleChecklistItems, lifecycleChecklists } from "@/lib/db/schema";
 import {
   bindCurrentTenantContext,
@@ -17,6 +17,7 @@ import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import { toDateKey } from "@/features/finance/rules";
 
+import { terminateEmployeeAndRevokeSessions } from "./offboarding-access";
 import {
   defaultLifecycleChecklistItems,
   getLifecycleChecklistProgress,
@@ -188,16 +189,16 @@ async function completeLifecycleChecklistAction(formData: FormData) {
     .where(eq(lifecycleChecklists.id, input.id))
     .returning();
 
-  if (before.type === "offboarding") {
-    await db
-      .update(employees)
-      .set({
-        endDate: before.dueDate ?? toDateKey(new Date()),
-        status: "terminated",
-        updatedAt: new Date(),
-      })
-      .where(eq(employees.id, before.employeeId));
-  }
+  const revokedSessionCount =
+    before.type === "offboarding"
+      ? await withTenantDb(context, (transaction) =>
+          terminateEmployeeAndRevokeSessions(transaction, {
+            employeeId: before.employeeId,
+            endDate: before.dueDate ?? toDateKey(new Date()),
+            organizationId: context.organizationId,
+          }),
+        )
+      : 0;
 
   await writeAuditLog(context, {
     action: "status_change",
@@ -206,6 +207,7 @@ async function completeLifecycleChecklistAction(formData: FormData) {
     before,
     after,
     metadata: {
+      revokedSessionCount,
       status: "completed",
       type: before.type,
     },
