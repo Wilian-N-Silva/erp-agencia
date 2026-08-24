@@ -179,9 +179,11 @@ describe("critical Action rate-limit entrypoints", () => {
     expectNoDataOrStorageAccess();
   });
 
-  it("blocks legacy document registration without a File before data writes", async () => {
-    await expect(registerDocumentAction(createLegacyDocumentForm())).resolves.toEqual(
-      blockedActionError,
+  it("rejects client-controlled storage metadata when no File is provided", async () => {
+    mocks.enforceAuthenticatedRateLimit.mockResolvedValueOnce(undefined);
+
+    await expect(registerDocumentAction(createStorageMetadataOnlyDocumentForm())).rejects.toThrow(
+      "A document file is required.",
     );
 
     expectRateLimit("upload");
@@ -241,7 +243,7 @@ function createDocumentUploadForm() {
   return formData;
 }
 
-function createLegacyDocumentForm() {
+function createStorageMetadataOnlyDocumentForm() {
   const formData = new FormData();
   formData.set("ownerType", "employee");
   formData.set("ownerId", context.employeeId);
