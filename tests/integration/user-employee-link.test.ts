@@ -377,6 +377,7 @@ async function createFixtures() {
       from (
         values
           (${users.adminA}, 'technical_admin'),
+          (${users.targetA}, 'employee'),
           (${users.employeeOnlyA}, 'employee')
       ) as fixture(user_id, role_key)
       inner join roles on roles.key = fixture.role_key
