@@ -1,6 +1,9 @@
+import { z } from "zod";
+
 import type { AccessContext } from "@/lib/dal";
 import { auditActions, type AuditAction } from "@/lib/audit";
 import { can, canAny } from "@/lib/rbac";
+import { isoDateSchema } from "@/lib/validation";
 
 export const auditActionLabels: Record<AuditAction, string> = {
   "auth.login": "Login",
@@ -50,6 +53,17 @@ export type AuditFilters = {
   entityType?: string;
   query?: string;
 };
+
+const auditExportFiltersSchema = z.strictObject({
+  action: z.enum(["all", ...auditActions]).optional(),
+  actorUserId: z.string().trim().max(200).optional(),
+  dateFrom: isoDateSchema.optional(),
+  dateTo: isoDateSchema.optional(),
+  entityId: z.string().trim().max(200).optional(),
+  entityType: z.string().trim().max(120).regex(/^[\w.-]*$/).optional(),
+  q: z.string().trim().max(200).optional(),
+  query: z.string().trim().max(200).optional(),
+});
 
 const financeAuditEntities = [
   "client",
@@ -172,6 +186,14 @@ export function normalizeAuditFilters(input: {
     entityType: normalizeEntityType(firstValue(input.entityType)),
     query: normalizeSearchValue(firstValue(input.q) ?? firstValue(input.query)),
   };
+}
+
+export function parseAuditExportFilters(searchParams: URLSearchParams) {
+  return normalizeAuditFilters(
+    auditExportFiltersSchema.parse(
+      Object.fromEntries(searchParams.entries()),
+    ),
+  );
 }
 
 export function applyAuditTextFilter<

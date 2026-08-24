@@ -30,6 +30,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validation";
 import {
   createStorageKey,
   getSha256Hex,
@@ -64,13 +65,13 @@ import {
   type ReimbursementStatus,
 } from "./rules";
 
-const competenceSchema = z.string().trim().regex(/^\d{4}-\d{2}$/);
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
-const idSchema = z.object({
+const competenceSchema = isoMonthSchema;
+const dateSchema = isoDateSchema;
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-const createInvoiceRequestSchema = z.object({
+const createInvoiceRequestSchema = z.strictObject({
   employeeId: z.string().uuid(),
   competence: competenceSchema,
   dueDate: dateSchema,
@@ -83,12 +84,12 @@ const createInvoiceRequestSchema = z.object({
   suggestedDescription: optionalTextSchema(700),
 });
 
-const submitInvoiceSchema = z.object({
+const submitInvoiceSchema = z.strictObject({
   id: z.string().uuid(),
   issuedAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
 });
 
-const rejectInvoiceSchema = z.object({
+const rejectInvoiceSchema = z.strictObject({
   id: z.string().uuid(),
   adjustment: z
     .string()
@@ -96,7 +97,7 @@ const rejectInvoiceSchema = z.object({
     .transform((value) => value === "on"),
 });
 
-const createReimbursementSchema = z.object({
+const createReimbursementSchema = z.strictObject({
   title: z.string().trim().min(1).max(180),
   category: z
     .string()
@@ -214,7 +215,7 @@ async function createInvoiceRequestAction(formData: FormData) {
 
 async function submitInvoiceRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
-  const input = submitInvoiceSchema.parse(formDataToObject(formData));
+  const input = submitInvoiceSchema.parse(formDataToObject(formData, ["file"]));
   const before = await getInvoiceForWrite(input.id, context.organizationId);
 
   if (
@@ -416,7 +417,9 @@ async function createReimbursementAction(formData: FormData) {
   }
 
   assertCan("reimbursements.read_own", context);
-  const input = createReimbursementSchema.parse(formDataToObject(formData));
+  const input = createReimbursementSchema.parse(
+    formDataToObject(formData, ["file"]),
+  );
   const uploadedFile = getUploadedFile(formData);
   const reimbursementId = randomUUID();
   const storedDocument = uploadedFile
@@ -547,12 +550,12 @@ async function rejectReimbursementByFinanceAction(formData: FormData) {
   });
 }
 
-const includeReimbursementSchema = z.object({
+const includeReimbursementSchema = z.strictObject({
   reimbursementId: z.string().uuid(),
   invoiceRequestId: z.string().uuid(),
 });
 
-const excludeReimbursementSchema = z.object({
+const excludeReimbursementSchema = z.strictObject({
   reimbursementId: z.string().uuid(),
 });
 
@@ -1058,10 +1061,6 @@ function revalidateInvoicePaths() {
 function revalidateReimbursementPaths() {
   revalidatePath("/portal");
   revalidatePath("/app/reembolsos");
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 function getRequiredUploadedFile(formData: FormData, message: string) {

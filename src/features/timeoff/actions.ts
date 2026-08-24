@@ -18,6 +18,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isoDateSchema } from "@/lib/validation";
 
 import {
   calculateBusinessDays,
@@ -33,14 +34,14 @@ import {
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const timeOffTypeSchema = z.enum(
   Object.keys(timeOffTypeLabels) as [
     keyof typeof timeOffTypeLabels,
     ...(keyof typeof timeOffTypeLabels)[],
   ],
 );
-const createTimeOffSchema = z.object({
+const createTimeOffSchema = z.strictObject({
   type: timeOffTypeSchema,
   startDate: dateSchema,
   endDate: dateSchema,
@@ -52,7 +53,7 @@ const createTimeOffSchema = z.object({
     .optional()
     .transform((value) => value || null),
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -206,11 +207,7 @@ function revalidateTimeOffPaths() {
   revalidatePath("/app");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
-const createVacationBalanceSchema = z.object({
+const createVacationBalanceSchema = z.strictObject({
   employeeId: z.string().uuid(),
   tenureYear: z.coerce.number().int().min(1).max(50),
   daysAcquired: z.coerce.number().int().min(0).max(60).optional(),
@@ -223,7 +220,7 @@ const createVacationBalanceSchema = z.object({
     .transform((value) => value || null),
 });
 
-const updateVacationBalanceSchema = z.object({
+const updateVacationBalanceSchema = z.strictObject({
   id: z.string().uuid(),
   daysAcquired: z.coerce.number().int().min(0).max(60),
   daysSold: z.coerce.number().int().min(0).max(60),

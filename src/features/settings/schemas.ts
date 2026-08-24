@@ -4,21 +4,19 @@ import { userAccessStatusEnum } from "@/lib/db/schema";
 import { roleKeys } from "@/lib/rbac";
 
 export const updateUserRolesSchema = z
-  .object({
+  .strictObject({
     roleKeys: z.array(z.enum(roleKeys)).min(1).max(roleKeys.length),
     userId: z.string().trim().min(1).max(200),
-  })
-  .strict();
+  });
 
 export const updateUserAccessStatusSchema = z
-  .object({
+  .strictObject({
     accessStatus: z.enum(userAccessStatusEnum.enumValues),
     userId: z.string().trim().min(1).max(200),
-  })
-  .strict();
+  });
 
 export const updateUserEmployeeLinkSchema = z
-  .object({
+  .strictObject({
     employeeId: z
       .string()
       .trim()
@@ -28,5 +26,4 @@ export const updateUserEmployeeLinkSchema = z
         { message: "Invalid employee id." },
       ),
     userId: z.string().trim().min(1).max(200),
-  })
-  .strict();
+  });

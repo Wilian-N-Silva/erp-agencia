@@ -14,6 +14,7 @@ import {
   type AccessContext,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput } from "@/features/finance/rules";
 
@@ -25,14 +26,14 @@ import {
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const saasStatusSchema = z.enum(
   Object.keys(saasSubscriptionStatusLabels) as [
     keyof typeof saasSubscriptionStatusLabels,
     ...(keyof typeof saasSubscriptionStatusLabels)[],
   ],
 );
-const saasBaseSchema = z.object({
+const saasBaseSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(120),
   provider: optionalTextSchema(120),
@@ -45,15 +46,15 @@ const createSaasSubscriptionSchema = saasBaseSchema;
 const updateSaasSubscriptionSchema = saasBaseSchema.extend({
   id: z.string().uuid(),
 });
-const linkSaasUserSchema = z.object({
+const linkSaasUserSchema = z.strictObject({
   employeeId: z.string().uuid(),
   subscriptionId: z.string().uuid(),
 });
-const renewSaasSubscriptionSchema = z.object({
+const renewSaasSubscriptionSchema = z.strictObject({
   id: z.string().uuid(),
   renewalDate: dateSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -313,10 +314,6 @@ function revalidateSaasPaths() {
   revalidatePath("/portal");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -332,7 +329,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }

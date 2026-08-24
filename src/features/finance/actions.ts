@@ -19,11 +19,12 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput, toDateKey } from "./rules";
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
-const competenceSchema = z.string().trim().regex(/^\d{4}-\d{2}$/);
+const dateSchema = isoDateSchema;
+const competenceSchema = isoMonthSchema;
 const optionalTextSchema = (maxLength: number) =>
   z
     .string()
@@ -41,7 +42,7 @@ const optionalIdSchema = () =>
       message: "Invalid id.",
     });
 
-const createEntrySchema = z.object({
+const createEntrySchema = z.strictObject({
   clientId: optionalIdSchema(),
   description: z.string().trim().min(1).max(180),
   amount: z.string().trim().min(1).transform(normalizeMoneyInput),
@@ -59,7 +60,7 @@ const updateEntrySchema = createEntrySchema.extend({
   id: z.string().uuid(),
 });
 
-const createExpenseSchema = z.object({
+const createExpenseSchema = z.strictObject({
   supplier: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(80),
   subcategory: optionalTextSchema(80),
@@ -79,7 +80,7 @@ const updateExpenseSchema = createExpenseSchema.extend({
   id: z.string().uuid(),
 });
 
-const createProvisionSchema = z.object({
+const createProvisionSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(80),
   estimatedMonthlyAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
@@ -98,7 +99,7 @@ const createProvisionSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -555,10 +556,6 @@ async function getProvisionForWrite(id: string, organizationId: string) {
   }
 
   return provision;
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 export {

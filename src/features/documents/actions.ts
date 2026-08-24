@@ -14,6 +14,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 import {
   createStorageKey,
   getSha256Hex,
@@ -56,7 +57,7 @@ const sensitivitySchema = z.enum(
   ],
 );
 
-const documentMetadataSchema = z.object({
+const documentMetadataSchema = z.strictObject({
   ownerType: ownerTypeSchema,
   ownerId: z.string().trim().min(1).max(160),
   ownerEmployeeId: optionalIdSchema(),
@@ -78,17 +79,20 @@ const legacyRegisterDocumentSchema = documentMetadataSchema.extend({
     .transform((value) => value || null),
 });
 
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
 async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
   await enforceAuthenticatedRateLimit("upload", context);
-  const metadata = documentMetadataSchema.parse(formDataToObject(formData));
   const uploadedFile = getUploadedFile(formData);
   const input = uploadedFile
-    ? await buildUploadedDocumentInput(uploadedFile, metadata, organizationId)
+    ? await buildUploadedDocumentInput(
+        uploadedFile,
+        documentMetadataSchema.parse(formDataToObject(formData, ["file"])),
+        organizationId,
+      )
     : buildLegacyDocumentInput(formData);
   const ownerEmployeeId = await resolveOwnerEmployeeId(input, organizationId);
   const upload = validateUploadMetadata({
@@ -296,10 +300,6 @@ async function getDocumentForWrite(id: string, organizationId: string) {
 function revalidateDocumentPaths() {
   revalidatePath("/app/documentos");
   revalidatePath("/portal");
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 function optionalIdSchema() {

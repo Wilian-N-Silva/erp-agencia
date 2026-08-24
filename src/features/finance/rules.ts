@@ -1,3 +1,7 @@
+import { z } from "zod";
+
+import { isoMonthSchema } from "@/lib/validation";
+
 export const financialEntryStatusLabels = {
   planned: "Previsto",
   received: "Recebido",
@@ -62,6 +66,18 @@ export type FinanceFilters = {
   query?: string;
 };
 
+const financeExportFiltersSchema = z.strictObject({
+  competence: isoMonthSchema.optional(),
+  entryStatus: z
+    .enum(["all", "planned", "received", "overdue", "cancelled"])
+    .optional(),
+  expenseStatus: z
+    .enum(["all", "planned", "paid", "overdue", "cancelled"])
+    .optional(),
+  q: z.string().trim().max(180).optional(),
+  query: z.string().trim().max(180).optional(),
+});
+
 export type FinanceEntryFilterTarget = FinanceEntryRecord & {
   clientName?: string | null;
   description: string;
@@ -80,6 +96,7 @@ export type ProvisionFilterTarget = ProvisionRecord & {
 
 const moneyPattern = /^-?\d+(?:\.\d{1,2})?$/;
 const positiveMoneyPattern = /^\d+(?:\.\d{1,2})?$/;
+const maxMoneyCents = 999_999_999_999;
 
 export function toDateKey(value: string | Date) {
   if (typeof value === "string") {
@@ -118,8 +135,17 @@ export function moneyToCents(value: string | null | undefined) {
   const sign = normalized.startsWith("-") ? -1 : 1;
   const unsigned = sign === -1 ? normalized.slice(1) : normalized;
   const [units, cents = ""] = unsigned.split(".");
+  const valueInCents =
+    Number(units) * 100 + Number(cents.padEnd(2, "0"));
 
-  return sign * (Number(units) * 100 + Number(cents.padEnd(2, "0")));
+  if (
+    !Number.isSafeInteger(valueInCents) ||
+    valueInCents > maxMoneyCents
+  ) {
+    throw new Error("Money value exceeds the supported range.");
+  }
+
+  return sign * valueInCents;
 }
 
 export function normalizeMoneyInput(value: string) {
@@ -209,6 +235,14 @@ export function normalizeFinanceFilters(input: {
     expenseStatus: isExpenseStatusFilter(expenseStatus) ? expenseStatus : "all",
     query: normalizeSearchQuery(query),
   };
+}
+
+export function parseFinanceExportFilters(searchParams: URLSearchParams) {
+  return normalizeFinanceFilters(
+    financeExportFiltersSchema.parse(
+      Object.fromEntries(searchParams.entries()),
+    ),
+  );
 }
 
 export function applyFinanceEntryFilters<T extends FinanceEntryFilterTarget>(
