@@ -103,6 +103,23 @@ The helper establishes database tenant identity; it does not replace server-side
 RBAC, DAL organization predicates, Zod validation of external payloads, or audit.
 Do not copy IDs from request payloads into the database context.
 
+For multi-write business operations, open the tenant transaction once and await every
+write inside its callback. Propagate failures so PostgreSQL can roll back the complete
+operation:
+
+```ts
+await withTenantDb(context, async (transaction) => {
+  await firstTenantWrite(transaction, input);
+  await secondTenantWrite(transaction, input);
+});
+```
+
+Tenant features must not open `db.transaction` directly. Compose tenant-aware DAL
+operations under `withTenantDb`; nested calls with the same organization and user reuse
+the active transaction. Prefer the supplied transaction handle for new multi-write
+operations. Do not start unawaited work inside the callback, because it can outlive the
+transaction boundary.
+
 ## Verify before deployment
 
 Connect using `DATABASE_URL` and run:

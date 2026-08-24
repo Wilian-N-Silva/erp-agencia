@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { db, type Database } from "@/lib/db";
 import { createWithTenantDb, type TenantTransaction } from "@/lib/db/tenant";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext, type AccessContext } from "@/lib/dal";
 import { AccessDeniedError } from "@/lib/rbac";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
@@ -27,9 +27,9 @@ describe("withTenantDb", () => {
     ];
 
     for (const context of invalidContexts) {
-      await expect(withTenantDb(context, callback)).rejects.toBeInstanceOf(
-        AccessDeniedError,
-      );
+      await expect(
+        withTenantDb(context as AccessContext, callback),
+      ).rejects.toBeInstanceOf(AccessDeniedError);
     }
 
     expect(transaction).not.toHaveBeenCalled();
@@ -62,6 +62,37 @@ describe("withTenantDb", () => {
     expect(result).toBe("result");
     expect(execute).toHaveBeenCalledOnce();
     expect(events).toEqual(["context", "callback"]);
+  });
+
+  it("requires an AccessContext in the public contract", () => {
+    type ConfiguredTenantDb = ReturnType<typeof createWithTenantDb>;
+
+    expectTypeOf<
+      Parameters<ConfiguredTenantDb>[0]
+    >().toEqualTypeOf<AccessContext>();
+  });
+
+  it("propagates operation failures to the transaction boundary", async () => {
+    const operationError = new Error("force rollback");
+    const transaction = vi.fn(
+      async (operation: (transaction: TenantTransaction) => Promise<unknown>) =>
+        operation({ execute: vi.fn() } as unknown as TenantTransaction),
+    );
+    const withTenantDb = createWithTenantDb({
+      transaction: transaction as unknown as Database["transaction"],
+    });
+    const context = createAccessContext({
+      userId: "user-1",
+      organizationId,
+      roles: [],
+    });
+
+    await expect(
+      withTenantDb(context, async () => {
+        throw operationError;
+      }),
+    ).rejects.toBe(operationError);
+    expect(transaction).toHaveBeenCalledOnce();
   });
 
   it("routes unrestricted db imports to the active tenant transaction", async () => {

@@ -248,7 +248,7 @@ async function readBuckets() {
   const result = await adminDb.execute(sql<{
     action: string;
     count: number;
-    expiresAt: Date;
+    expiresAt: string;
     keyHash: string;
   }>`
     select
@@ -260,12 +260,25 @@ async function readBuckets() {
     order by window_start, key_hash
   `);
 
-  return result.rows as Array<{
+  const rows = result.rows as Array<{
     action: string;
     count: number;
-    expiresAt: Date;
+    expiresAt: string;
     keyHash: string;
   }>;
+
+  return rows.map((row) => {
+    // Raw execute does not apply the Drizzle schema timestamp mapping.
+    const expiresAt = new Date(row.expiresAt);
+
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw new Error(
+        "Rate-limit fixture returned an invalid expiration timestamp.",
+      );
+    }
+
+    return { ...row, expiresAt };
+  });
 }
 
 function restoreEnvironmentVariable(name: string, value: string | undefined) {
