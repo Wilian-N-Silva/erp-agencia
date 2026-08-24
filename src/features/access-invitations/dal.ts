@@ -3,14 +3,14 @@ import { desc, eq } from "drizzle-orm";
 import { bindTenantContext, db } from "@/lib/db";
 import { accessInvitations } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { AccessDeniedError, assertCanAny, type RoleKey } from "@/lib/rbac";
 
 import { invitationRoleKeysSchema } from "./rules";
 
 export type AccessInvitationListItem = {
   id: string;
   email: string;
-  roleKeys: string[];
+  roleKeys: RoleKey[];
   expiresAt: Date;
   usedAt: Date | null;
   usedByUserId: string | null;

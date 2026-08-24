@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { createAuditLogValues } from "@/lib/audit";
-import { db, type TenantTransaction } from "@/lib/db";
+import { db, withTenantDb, type TenantTransaction } from "@/lib/db";
 import {
   accessInvitations,
   auditLogs,
@@ -12,22 +12,15 @@ import {
 import type { AccessContext } from "@/lib/dal";
 
 import {
-  invitationRoleKeysSchema,
-  normalizeInvitationEmail,
-} from "./rules";
+  AccessInvitationAuthError,
+  invitationAuthErrorCodes,
+} from "./lifecycle";
+import { invitationRoleKeysSchema, normalizeInvitationEmail } from "./rules";
 
-export const invitationAuthErrorCodes = {
-  invalidRoles: "ACCESS_INVITATION_ROLES_INVALID",
-  required: "ACCESS_INVITATION_REQUIRED",
-  unauthorizedSession: "ACCESS_NOT_AUTHORIZED",
-} as const;
-
-export class AccessInvitationAuthError extends Error {
-  constructor(readonly code: (typeof invitationAuthErrorCodes)[keyof typeof invitationAuthErrorCodes]) {
-    super(code);
-    this.name = "AccessInvitationAuthError";
-  }
-}
+export {
+  AccessInvitationAuthError,
+  invitationAuthErrorCodes,
+} from "./lifecycle";
 
 export async function findValidInvitationForEmail(
   email: string,
@@ -61,8 +54,15 @@ export async function consumeInvitationForUser(input: {
   userId: string;
 }, now = new Date()) {
   const normalizedEmail = normalizeInvitationEmail(input.email);
+  const invitationContext: AccessContext = {
+    employeeId: null,
+    organizationId: input.organizationId,
+    permissions: [],
+    roles: [],
+    userId: input.userId,
+  };
 
-  return withInvitationEmailDb(normalizedEmail, async (transaction) => {
+  return withTenantDb(invitationContext, async (transaction) => {
     const [invitation] = await transaction
       .update(accessInvitations)
       .set({
@@ -101,6 +101,14 @@ export async function consumeInvitationForUser(input: {
       throw new AccessInvitationAuthError(invitationAuthErrorCodes.invalidRoles);
     }
 
+    await transaction
+      .update(users)
+      .set({
+        organizationId: input.organizationId,
+        updatedAt: now,
+      })
+      .where(eq(users.id, input.userId));
+
     await transaction.insert(userRoles).values(
       selectedRoles.map((role) => ({
         assignedByUserId: invitation.invitedByUserId,
@@ -109,20 +117,8 @@ export async function consumeInvitationForUser(input: {
       })),
     );
 
-    await transaction.execute(sql`
-      select set_config('app.organization_id', ${input.organizationId}, true)
-    `);
-
-    const auditContext: AccessContext = {
-      employeeId: null,
-      organizationId: input.organizationId,
-      permissions: [],
-      roles: [],
-      userId: input.userId,
-    };
-
     await transaction.insert(auditLogs).values(
-      createAuditLogValues(auditContext, {
+      createAuditLogValues(invitationContext, {
         action: "status_change",
         entityId: invitation.id,
         entityType: "access_invitation",
@@ -160,6 +156,16 @@ export async function assertSessionUserIsAuthorized(userId: string) {
       invitationAuthErrorCodes.unauthorizedSession,
     );
   }
+}
+
+export async function findSessionUserIdentity(userId: string) {
+  const [user] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user ?? null;
 }
 
 async function withInvitationEmailDb<Result>(

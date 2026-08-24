@@ -57,9 +57,16 @@ describe("RLS baseline migration", () => {
         ({ rls_enabled, rls_forced }) => rls_enabled && rls_forced,
       ),
     ).toBe(true);
-    expect(policies).toHaveLength(tenantPolicyTables.length);
+    expect(policies).toHaveLength(tenantPolicyTables.length + 1);
 
-    for (const policy of policies) {
+    const tenantPolicies = policies.filter(
+      ({ policy_name }) =>
+        typeof policy_name === "string" &&
+        policy_name.endsWith("_tenant_isolation"),
+    );
+    expect(tenantPolicies).toHaveLength(tenantPolicyTables.length);
+
+    for (const policy of tenantPolicies) {
       expect(policy.policy_name).toBe(policy.table_name + "_tenant_isolation");
       expect(policy.command).toBe("ALL");
       expect(policy.roles).toEqual(["public"]);
@@ -68,10 +75,47 @@ describe("RLS baseline migration", () => {
     }
   });
 
+  it("limits invitation pre-auth RLS to valid invitation lookup", async () => {
+    const policies = await getPublicPolicies();
+    const tenantPolicy = policies.find(
+      ({ policy_name }) =>
+        policy_name === "access_invitations_tenant_isolation",
+    );
+    const lookupPolicy = policies.find(
+      ({ policy_name }) =>
+        policy_name === "access_invitations_pre_auth_lookup",
+    );
+
+    expect(tenantPolicy).toMatchObject({
+      command: "ALL",
+      roles: ["public"],
+    });
+    expect(tenantPolicy?.using_expression).not.toContain(
+      "app.invitation_email",
+    );
+    expect(tenantPolicy?.check_expression).not.toContain(
+      "app.invitation_email",
+    );
+    expect(lookupPolicy).toMatchObject({
+      check_expression: null,
+      command: "SELECT",
+      roles: ["public"],
+    });
+    expect(lookupPolicy?.using_expression).toContain("app.invitation_email");
+    expect(lookupPolicy?.using_expression).toContain("used_at IS NULL");
+    expect(lookupPolicy?.using_expression).toContain("expires_at > now()");
+  });
+
   it("uses direct predicates for tenant columns and parent predicates for child tables", async () => {
     const policies = await getPublicPolicies();
     const byTable = new Map(
-      policies.map((policy) => [policy.table_name, policy]),
+      policies
+        .filter(
+          ({ policy_name }) =>
+            typeof policy_name === "string" &&
+            policy_name.endsWith("_tenant_isolation"),
+        )
+        .map((policy) => [policy.table_name, policy]),
     );
 
     for (const table of directTenantPolicyTables) {

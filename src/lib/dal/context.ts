@@ -1,5 +1,9 @@
 import { eq } from "drizzle-orm";
 
+import {
+  AccessInvitationAuthError,
+  assertSessionUserIsAuthorized,
+} from "@/features/access-invitations/auth";
 import { db, withTenantDb } from "@/lib/db";
 import { employees, roles, userRoles, users } from "@/lib/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -43,6 +47,16 @@ export async function getCurrentAccessContext() {
     return null;
   }
 
+  try {
+    await assertSessionUserIsAuthorized(session.user.id);
+  } catch (error) {
+    if (error instanceof AccessInvitationAuthError) {
+      return null;
+    }
+
+    throw error;
+  }
+
   const [user] = await db
     .select({
       organizationId: users.organizationId,
@@ -66,7 +80,7 @@ export async function getCurrentAccessContext() {
   const bootstrapContext = createAccessContext({
     userId: session.user.id,
     organizationId: user?.organizationId ?? null,
-    roles: roleKeys.length > 0 ? roleKeys : ["employee"],
+    roles: roleKeys,
   });
   const employee = bootstrapContext.organizationId
     ? await withTenantDb(bootstrapContext, async (tenantDb) => {

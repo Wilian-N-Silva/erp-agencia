@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { normalizeEmailDomain } from "@/lib/auth/config";
+import {
+  isEmailAllowedForDomain,
+  normalizeEmailDomain,
+} from "@/lib/auth/config";
 import { roleKeys, type RoleKey } from "@/lib/rbac";
 
 const roleKeySchema = z.enum(roleKeys);
@@ -34,6 +37,19 @@ export function getAllowedInvitationDomain(value: unknown) {
   const result = allowedDomainSettingSchema.safeParse(value);
 
   return result.success ? normalizeEmailDomain(result.data.domain ?? undefined) : undefined;
+}
+
+export function isInvitationEmailAllowed(
+  email: string,
+  organizationSetting: unknown,
+  applicationDomain?: string,
+) {
+  const organizationDomain = getAllowedInvitationDomain(organizationSetting);
+
+  return (
+    isEmailAllowedForDomain(email, organizationDomain) &&
+    isEmailAllowedForDomain(email, applicationDomain)
+  );
 }
 
 export function getAccessInvitationState(

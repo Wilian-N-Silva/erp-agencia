@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 
-import { getCurrentSession } from "@/lib/auth/session";
+import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const session = await getCurrentSession();
+  const context = await getCurrentAccessContext();
 
-  if (session) {
+  if (context) {
     redirect("/app");
   }
 

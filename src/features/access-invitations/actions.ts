@@ -8,7 +8,6 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import {
   getAllowedEmailDomain,
-  isEmailAllowedForDomain,
 } from "@/lib/auth/config";
 import { db } from "@/lib/db";
 import {
@@ -28,8 +27,8 @@ import {
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 
 import {
-  getAllowedInvitationDomain,
   invitationExpiryOptions,
+  isInvitationEmailAllowed,
   normalizeInvitationEmail,
   normalizeInvitationRoles,
 } from "./rules";
@@ -153,12 +152,12 @@ async function assertInvitationDomainIsAllowed(
       ),
     )
     .limit(1);
-  const organizationDomain = getAllowedInvitationDomain(setting?.value);
-  const applicationDomain = getAllowedEmailDomain();
-
   if (
-    !isEmailAllowedForDomain(email, organizationDomain) ||
-    !isEmailAllowedForDomain(email, applicationDomain)
+    !isInvitationEmailAllowed(
+      email,
+      setting?.value,
+      getAllowedEmailDomain(),
+    )
   ) {
     throw new Error("Email domain is not allowed for this organization.");
   }

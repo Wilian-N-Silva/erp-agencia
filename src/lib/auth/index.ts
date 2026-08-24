@@ -1,8 +1,15 @@
 import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
-import { asc } from "drizzle-orm";
 
+import {
+  AccessInvitationAuthError,
+  assertSessionUserIsAuthorized,
+  consumeInvitationForUser,
+  findSessionUserIdentity,
+  findValidInvitationForEmail,
+} from "@/features/access-invitations/auth";
+import { createInvitationAuthLifecycle } from "@/features/access-invitations/lifecycle";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 
@@ -25,6 +32,12 @@ const authSchema = {
   user: schema.users,
   verification: schema.verifications,
 };
+const invitationAuthLifecycle = createInvitationAuthLifecycle({
+  assertSessionUserIsAuthorized,
+  consumeInvitationForUser,
+  findSessionUserIdentity,
+  findValidInvitationForEmail,
+});
 
 export const auth = betterAuth({
   appName: "Sistema Interno FG",
@@ -60,18 +73,25 @@ export const auth = betterAuth({
             });
           }
 
-          const [defaultOrganization] = await db
-            .select({ id: schema.organizations.id })
-            .from(schema.organizations)
-            .orderBy(asc(schema.organizations.name))
-            .limit(1);
+          const authorization = await withInvitationApiError(() =>
+            invitationAuthLifecycle.requireInvitationForNewUser(email),
+          );
 
           return {
             data: {
               email,
-              organizationId: defaultOrganization?.id ?? null,
+              organizationId: authorization.invitation.organizationId,
             },
           };
+        },
+      },
+    },
+    session: {
+      create: {
+        before: async (session) => {
+          await withInvitationApiError(() =>
+            invitationAuthLifecycle.authorizeSessionUser(session.userId),
+          );
         },
       },
     },
@@ -80,3 +100,20 @@ export const auth = betterAuth({
 });
 
 export type Auth = typeof auth;
+
+async function withInvitationApiError<Result>(
+  operation: () => Promise<Result>,
+) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof AccessInvitationAuthError) {
+      throw new APIError("FORBIDDEN", {
+        code: error.code,
+        message: "A valid access invitation is required.",
+      });
+    }
+
+    throw error;
+  }
+}

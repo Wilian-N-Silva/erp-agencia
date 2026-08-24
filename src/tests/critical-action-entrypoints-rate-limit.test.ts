@@ -43,6 +43,15 @@ vi.mock("@/lib/rbac", () => ({
   can: vi.fn().mockReturnValue(true),
   canAny: vi.fn().mockReturnValue(true),
   isRoleKey: vi.fn().mockReturnValue(true),
+  roleKeys: [
+    "technical_admin",
+    "director",
+    "finance",
+    "hr_admin",
+    "it_governance",
+    "leadership",
+    "employee",
+  ],
 }));
 vi.mock("@/lib/storage", () => ({
   createStorageKey: vi.fn(),
@@ -54,6 +63,7 @@ import {
   approveAccessRecordAction,
   markAccessRemovedAction,
 } from "@/features/accesses/actions";
+import { createAccessInvitationAction } from "@/features/access-invitations/actions";
 import { registerDocumentAction } from "@/features/documents/actions";
 import {
   cancelFinancialEntryAction,
@@ -115,6 +125,15 @@ describe("critical Action rate-limit entrypoints", () => {
   });
 
   it("blocks invitations before validating or writing user data", async () => {
+    await expect(createAccessInvitationAction(new FormData())).resolves.toEqual(
+      blockedActionError,
+    );
+
+    expectRateLimit("invitation");
+    expectNoDataOrStorageAccess();
+  });
+
+  it("keeps legacy direct user creation rate-limited", async () => {
     await expect(createSettingsUserAction(new FormData())).resolves.toEqual(
       blockedActionError,
     );
