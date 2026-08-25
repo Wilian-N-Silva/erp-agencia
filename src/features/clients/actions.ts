@@ -25,6 +25,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isIsoMonth } from "@/lib/validation";
 
 import {
   getCompetenceKey,
@@ -43,7 +44,7 @@ import {
 
 const clientStatusSchema = z.enum(["active", "paused", "cancelled"]);
 
-const createClientSchema = z.object({
+const createClientSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   monthlyFee: z.string().trim().min(1).transform(normalizeMoneyInput),
   billingDay: z.coerce.number().int().min(1).max(31),
@@ -57,12 +58,12 @@ const updateClientSchema = createClientSchema.extend({
   id: z.string().uuid(),
 });
 
-const updateClientStatusSchema = z.object({
+const updateClientStatusSchema = z.strictObject({
   id: z.string().uuid(),
   status: clientStatusSchema,
 });
 
-const updateClientBillingProfileSchema = z.object({
+const updateClientBillingProfileSchema = z.strictObject({
   clientId: z.string().uuid(),
   monthlyFee: z.string().trim().min(1).transform(normalizeMoneyInput),
   billingDay: z.coerce.number().int().min(1).max(31),
@@ -92,24 +93,24 @@ const updateClientBillingProfileSchema = z.object({
   notes: optionalTextSchema(1200),
 });
 
-const generateExpectedEntrySchema = z.object({
+const generateExpectedEntrySchema = z.strictObject({
   clientId: z.string().uuid(),
   competence: z
     .string()
     .trim()
     .optional()
     .transform((value) => value || getCompetenceKey(new Date()))
-    .refine((value) => /^\d{4}-\d{2}$/.test(value), {
+    .refine(isIsoMonth, {
       message: "Invalid competence.",
     }),
 });
 
-const markClientPaymentReceivedSchema = z.object({
+const markClientPaymentReceivedSchema = z.strictObject({
   id: z.string().uuid(),
   paymentMethod: optionalTextSchema(80),
 });
 
-const updateClientInternalNotesSchema = z.object({
+const updateClientInternalNotesSchema = z.strictObject({
   id: z.string().uuid(),
   notes: optionalTextSchema(2000),
 });
@@ -755,10 +756,6 @@ async function resolveEmployeeId(employeeId: string | null, organizationId: stri
   return employee.id;
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -774,7 +771,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }

@@ -14,6 +14,7 @@ import {
   type AccessContext,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isIsoDate } from "@/lib/validation";
 
 import { toDateKey } from "@/features/finance/rules";
 
@@ -42,18 +43,18 @@ const lifecycleItemStatusSchema = z.enum(
     ...(keyof typeof lifecycleChecklistItemStatusLabels)[],
   ],
 );
-const createChecklistSchema = z.object({
+const createChecklistSchema = z.strictObject({
   employeeId: z.string().uuid(),
   type: lifecycleTypeSchema,
   dueDate: optionalDateSchema(),
   notes: optionalTextSchema(1200),
 });
-const updateItemStatusSchema = z.object({
+const updateItemStatusSchema = z.strictObject({
   id: z.string().uuid(),
   notes: optionalTextSchema(1000),
   status: lifecycleItemStatusSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -365,10 +366,6 @@ function revalidateLifecyclePaths(type: LifecycleType) {
   }
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -384,7 +381,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }

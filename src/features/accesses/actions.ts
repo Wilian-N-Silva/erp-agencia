@@ -18,19 +18,20 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { accessRecordStatusLabels, type AccessRecordStatus } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const accessRecordStatusSchema = z.enum(
   Object.keys(accessRecordStatusLabels) as [
     keyof typeof accessRecordStatusLabels,
     ...(keyof typeof accessRecordStatusLabels)[],
   ],
 );
-const accessRecordBaseSchema = z.object({
+const accessRecordBaseSchema = z.strictObject({
   employeeId: z.string().uuid(),
   platform: z.string().trim().min(1).max(160),
   accountIdentifier: optionalTextSchema(160),
@@ -44,11 +45,11 @@ const createAccessRecordSchema = accessRecordBaseSchema;
 const updateAccessRecordSchema = accessRecordBaseSchema.extend({
   id: z.string().uuid(),
 });
-const reviewAccessRecordSchema = z.object({
+const reviewAccessRecordSchema = z.strictObject({
   id: z.string().uuid(),
   reviewDueDate: dateSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -253,10 +254,6 @@ function revalidateAccessPaths() {
   revalidatePath("/portal");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function checkboxSchema() {
   return z
     .string()
@@ -279,7 +276,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }

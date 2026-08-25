@@ -20,6 +20,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 
 import { replaceUserRoles, updateUserAccessStatus } from "./access";
 import { parseSettingValue } from "./rules";
@@ -29,17 +30,17 @@ import {
   updateUserRolesSchema,
 } from "./schemas";
 
-const updateSettingSchema = z.object({
+const updateSettingSchema = z.strictObject({
   description: z.string().trim().max(500).optional(),
   key: z.string().trim().min(1).max(120).regex(/^[a-z0-9_.-]+$/),
   value: z.string().max(5000),
 });
 
-const createOrgUnitSchema = z.object({
+const createOrgUnitSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),
 });
 
-const deleteOrgUnitSchema = z.object({
+const deleteOrgUnitSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -362,10 +363,6 @@ async function requireSettingsManagerContext() {
     context,
     organizationId: context.organizationId,
   };
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 export {

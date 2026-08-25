@@ -25,7 +25,11 @@ import {
   enforceAuthenticatedRateLimit,
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
-import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import {
+  AccessDeniedError,
+  assertCan,
+  roleKeys as allowedRoleKeys,
+} from "@/lib/rbac";
 
 import {
   canInviteExistingAccount,
@@ -36,7 +40,7 @@ import {
 } from "./rules";
 
 const createInvitationSchema = z
-  .object({
+  .strictObject({
     email: z.string().trim().toLowerCase().email().max(180),
     expiresInDays: z.coerce
       .number()
@@ -48,8 +52,11 @@ const createInvitationSchema = z
           ),
         "Invalid invitation expiry.",
       ),
-  })
-  .strict();
+    roleKeys: z
+      .array(z.enum(allowedRoleKeys))
+      .min(1)
+      .max(allowedRoleKeys.length),
+  });
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
@@ -60,11 +67,10 @@ async function createAccessInvitationAction(formData: FormData) {
   const input = createInvitationSchema.parse({
     email: formData.get("email"),
     expiresInDays: formData.get("expiresInDays"),
+    roleKeys: formData.getAll("roleKeys"),
   });
   const email = normalizeInvitationEmail(input.email);
-  const roleKeys = normalizeInvitationRoles(
-    formData.getAll("roleKeys").map(String),
-  );
+  const roleKeys = normalizeInvitationRoles(input.roleKeys);
 
   if (roleKeys.length === 0) {
     throw new Error("At least one valid role is required.");

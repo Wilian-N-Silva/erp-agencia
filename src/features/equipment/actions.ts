@@ -14,6 +14,7 @@ import {
   type AccessContext,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 
 import {
   canAssignEquipmentStatus,
@@ -32,7 +33,7 @@ const equipmentStatusSchema = z.enum(
     ...(keyof typeof equipmentStatusLabels)[],
   ],
 );
-const equipmentBaseSchema = z.object({
+const equipmentBaseSchema = z.strictObject({
   type: z.string().trim().min(1).max(80),
   brand: optionalTextSchema(80),
   model: optionalTextSchema(120),
@@ -45,15 +46,15 @@ const createEquipmentSchema = equipmentBaseSchema;
 const updateEquipmentSchema = equipmentBaseSchema.extend({
   id: z.string().uuid(),
 });
-const assignEquipmentSchema = z.object({
+const assignEquipmentSchema = z.strictObject({
   id: z.string().uuid(),
   employeeId: z.string().uuid(),
 });
-const equipmentNoteSchema = z.object({
+const equipmentNoteSchema = z.strictObject({
   id: z.string().uuid(),
   notes: optionalTextSchema(1000),
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -351,10 +352,6 @@ function revalidateEquipmentPaths() {
   revalidatePath("/app");
   revalidatePath("/app/equipamentos");
   revalidatePath("/portal");
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 function optionalTextSchema(maxLength: number) {

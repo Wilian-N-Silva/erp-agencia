@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ZodError } from "zod";
 
 import { buildAuditCsv } from "@/features/audit/export";
 import { listAuditLogs } from "@/features/audit/dal";
-import { canExportAuditReport, normalizeAuditFilters } from "@/features/audit/rules";
+import { canExportAuditReport, parseAuditExportFilters } from "@/features/audit/rules";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
 import {
@@ -33,9 +34,15 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 
-  const filters = normalizeAuditFilters(
-    Object.fromEntries(request.nextUrl.searchParams.entries()),
-  );
+  let filters;
+  try {
+    filters = parseAuditExportFilters(request.nextUrl.searchParams);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return invalidFiltersResponse();
+    }
+    throw error;
+  }
   const logs = await listAuditLogs(context, filters, { limit: 1000 });
   const csv = buildAuditCsv(logs, filters);
   const auditMetadata = getRequestAuditMetadata(request.headers);
@@ -56,4 +63,16 @@ export async function GET(request: NextRequest) {
       "content-type": "text/csv; charset=utf-8",
     },
   });
+}
+
+function invalidFiltersResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        code: "INVALID_EXPORT_FILTERS",
+        message: "Filtros de exportacao invalidos.",
+      },
+    },
+    { status: 400 },
+  );
 }

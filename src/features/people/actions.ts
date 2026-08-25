@@ -23,6 +23,7 @@ import {
   runWithCurrentTenantDb,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput, toDateKey } from "@/features/finance/rules";
 import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
@@ -34,7 +35,7 @@ import {
   getNextRegistrationNumber,
 } from "./rules";
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const employeeStatusSchema = z.enum(
   Object.keys(employeeStatusLabels) as [
     keyof typeof employeeStatusLabels,
@@ -48,7 +49,7 @@ const employmentTypeSchema = z.enum(
   ],
 );
 
-const employeeBaseSchema = z.object({
+const employeeBaseSchema = z.strictObject({
   fullName: z.string().trim().min(1).max(180),
   socialName: optionalTextSchema(120),
   corporateEmail: optionalEmailSchema(),
@@ -82,7 +83,7 @@ const updateEmployeeSchema = employeeBaseSchema.extend({
   id: z.string().uuid(),
 });
 
-const updateCompensationSchema = z.object({
+const updateCompensationSchema = z.strictObject({
   employeeId: z.string().uuid(),
   newAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
   recurringCostAllowance: optionalMoneySchema(),
@@ -91,7 +92,7 @@ const updateCompensationSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-const createBenefitSchema = z.object({
+const createBenefitSchema = z.strictObject({
   employeeId: z.string().uuid(),
   benefitType: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(160),
@@ -105,7 +106,7 @@ const createBenefitSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
-const endBenefitSchema = z.object({
+const endBenefitSchema = z.strictObject({
   id: z.string().uuid(),
   employeeId: z.string().uuid(),
 });
@@ -122,7 +123,9 @@ async function createEmployee(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterWithCompensationContext();
   const shouldCreateOnboardingChecklist = formData.get("createOnboardingChecklist") === "on";
   const redirectTo = normalizeRedirectPath(formData.get("redirectTo"));
-  const input = createEmployeeSchema.parse(formDataToObject(formData));
+  const input = createEmployeeSchema.parse(
+    formDataToObject(formData, ["createOnboardingChecklist", "redirectTo"]),
+  );
   await assertAreaPositionAndManager(input, organizationId);
   const registrationNumber = await getNextRegistrationForOrganization(organizationId);
 
@@ -518,10 +521,6 @@ async function getBenefitForWrite(id: string, employeeId: string, organizationId
   return benefit;
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -537,7 +536,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }

@@ -14,6 +14,7 @@ import {
   withRateLimitActionResult,
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 import {
   createStorageKey,
   getSha256Hex,
@@ -56,7 +57,7 @@ const sensitivitySchema = z.enum(
   ],
 );
 
-const documentMetadataSchema = z.object({
+const documentMetadataSchema = z.strictObject({
   ownerType: ownerTypeSchema,
   ownerId: z.string().trim().min(1).max(160),
   ownerEmployeeId: optionalIdSchema(),
@@ -65,31 +66,19 @@ const documentMetadataSchema = z.object({
   visibility: visibilitySchema,
 });
 
-const legacyRegisterDocumentSchema = documentMetadataSchema.extend({
-  originalName: z.string().trim().min(1).max(240),
-  mimeType: z.string().trim().min(1).max(160),
-  byteSize: z.coerce.number().int().positive(),
-  storageKey: z.string().trim().min(1).max(500),
-  checksum: z
-    .string()
-    .trim()
-    .max(160)
-    .optional()
-    .transform((value) => value || null),
-});
-
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
 async function registerDocumentAction(formData: FormData) {
   const { context, organizationId } = await requireDocumentWriterContext();
   await enforceAuthenticatedRateLimit("upload", context);
-  const metadata = documentMetadataSchema.parse(formDataToObject(formData));
-  const uploadedFile = getUploadedFile(formData);
-  const input = uploadedFile
-    ? await buildUploadedDocumentInput(uploadedFile, metadata, organizationId)
-    : buildLegacyDocumentInput(formData);
+  const uploadedFile = getRequiredUploadedFile(formData);
+  const input = await buildUploadedDocumentInput(
+    uploadedFile,
+    documentMetadataSchema.parse(formDataToObject(formData, ["file"])),
+    organizationId,
+  );
   const ownerEmployeeId = await resolveOwnerEmployeeId(input, organizationId);
   const upload = validateUploadMetadata({
     byteSize: input.byteSize,
@@ -192,20 +181,20 @@ async function buildUploadedDocumentInput(
   };
 }
 
-function buildLegacyDocumentInput(formData: FormData) {
-  const input = legacyRegisterDocumentSchema.parse(formDataToObject(formData));
-
-  return {
-    ...input,
-    bucket: process.env.STORAGE_BUCKET || null,
-    storageProvider: process.env.STORAGE_PROVIDER || "metadata",
-  };
-}
-
 function getUploadedFile(formData: FormData) {
   const file = formData.get("file");
 
   return typeof File !== "undefined" && file instanceof File && file.size > 0 ? file : null;
+}
+
+function getRequiredUploadedFile(formData: FormData) {
+  const file = getUploadedFile(formData);
+
+  if (!file) {
+    throw new Error("A document file is required.");
+  }
+
+  return file;
 }
 
 async function deleteDocumentAction(formData: FormData) {
@@ -296,10 +285,6 @@ async function getDocumentForWrite(id: string, organizationId: string) {
 function revalidateDocumentPaths() {
   revalidatePath("/app/documentos");
   revalidatePath("/portal");
-}
-
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
 }
 
 function optionalIdSchema() {

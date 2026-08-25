@@ -14,13 +14,14 @@ import {
   type AccessContext,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 
 import { generateAlertCandidatesForOrganization } from "./dal";
 import { getAlertKey, type AlertStatus } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
@@ -81,7 +82,7 @@ async function dismissAlertAction(formData: FormData) {
 
 async function updateAlertStatus(formData: FormData, status: Exclude<AlertStatus, "open">) {
   const context = await requireAlertsWriterContext();
-  const input = idSchema.parse(Object.fromEntries(formData.entries()));
+  const input = idSchema.parse(formDataToObject(formData));
   const before = await getAlertForWrite(input.id, context.organizationId);
   const [after] = await db
     .update(alerts)
