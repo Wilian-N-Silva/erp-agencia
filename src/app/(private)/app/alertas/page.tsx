@@ -25,6 +25,15 @@ import {
   type AlertStatus,
 } from "@/features/alerts/rules";
 import { formatDate } from "@/features/finance/rules";
+import { resolveWorkItemAction } from "@/features/work-items/actions";
+import {
+  listActionableWorkItems,
+  type ActionableWorkItemListItem,
+} from "@/features/work-items/dal";
+import type {
+  WorkItemPriority,
+  WorkItemStatus,
+} from "@/features/work-items/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
 
@@ -47,9 +56,10 @@ export default async function AlertsPage({ searchParams }: PageProps) {
 
   const filters = normalizeAlertFilters((await searchParams) ?? {});
   const canWrite = canWriteAlerts(context);
-  const [candidates, storedAlerts] = await Promise.all([
+  const [candidates, storedAlerts, actionableWorkItems] = await Promise.all([
     listAlertCandidates(context, filters),
     listStoredAlerts(context, filters),
+    listActionableWorkItems(context),
   ]);
   const criticalCandidates = candidates.filter((alert) => alert.severity === "critical").length;
   const openStored = storedAlerts.filter((alert) => alert.status === "open").length;
@@ -75,11 +85,48 @@ export default async function AlertsPage({ searchParams }: PageProps) {
 
       <AlertFilterForm filters={filters} />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Candidatos atuais" value={String(candidates.length)} />
         <SummaryCard label="Criticos atuais" value={String(criticalCandidates)} />
         <SummaryCard label="Alertas abertos" value={String(openStored)} />
+        <SummaryCard label="Pendencias v2" value={String(actionableWorkItems.length)} />
       </div>
+
+      <section className="rounded-lg border bg-card">
+        <div className="border-b px-4 py-3">
+          <h2 className="text-base font-semibold">Pendencias acionaveis</h2>
+          <p className="text-sm text-muted-foreground">
+            Itens persistidos que exigem acompanhamento e uma resolucao registrada.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1080px] text-left text-sm">
+            <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">Pendencia</th>
+                <th className="px-4 py-3 font-medium">Prioridade</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Prazo</th>
+                <th className="px-4 py-3 font-medium">Responsavel</th>
+                <th className="px-4 py-3 font-medium">Resolucao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actionableWorkItems.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                    Nenhuma pendencia acionavel em aberto.
+                  </td>
+                </tr>
+              ) : (
+                actionableWorkItems.map((item) => (
+                  <ActionableWorkItemRow canWrite={canWrite} item={item} key={item.id} />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
@@ -144,6 +191,59 @@ export default async function AlertsPage({ searchParams }: PageProps) {
         </div>
       </section>
     </section>
+  );
+}
+
+function ActionableWorkItemRow({
+  canWrite,
+  item,
+}: {
+  canWrite: boolean;
+  item: ActionableWorkItemListItem;
+}) {
+  return (
+    <tr className="border-b last:border-b-0">
+      <td className="px-4 py-3">
+        <p className="font-medium">{item.title}</p>
+        <p className="text-xs text-muted-foreground">{item.description}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {item.sourceType}:{item.sourceId.slice(0, 8)}
+        </p>
+      </td>
+      <td className="px-4 py-3">
+        <WorkItemPriorityBadge priority={item.priority} />
+      </td>
+      <td className="px-4 py-3">
+        <WorkItemStatusBadge status={item.status} />
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">{formatDate(item.dueAt)}</td>
+      <td className="px-4 py-3 text-muted-foreground">{item.ownerName ?? "Nao atribuido"}</td>
+      <td className="px-4 py-3">
+        {canWrite ? (
+          <RateLimitedActionForm action={resolveWorkItemAction} className="flex min-w-[20rem] gap-2">
+            <input name="id" type="hidden" value={item.id} />
+            <label className="sr-only" htmlFor={`resolution-${item.id}`}>
+              Motivo da resolucao de {item.title}
+            </label>
+            <input
+              className={inputClassName}
+              id={`resolution-${item.id}`}
+              maxLength={2000}
+              minLength={3}
+              name="resolution"
+              placeholder="Informe como a pendencia foi resolvida"
+              required
+            />
+            <button className={`${primaryButtonClassName} w-auto shrink-0`} type="submit">
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+              Resolver
+            </button>
+          </RateLimitedActionForm>
+        ) : (
+          <span className="text-muted-foreground">Somente leitura</span>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -284,6 +384,26 @@ function StatusBadge({ status }: { status: AlertStatus }) {
   return <Badge className={className} label={alertStatusLabels[status]} />;
 }
 
+function WorkItemPriorityBadge({ priority }: { priority: WorkItemPriority }) {
+  const className =
+    priority === "critical" || priority === "high"
+      ? "border-destructive/30 bg-destructive/10 text-destructive"
+      : priority === "medium"
+        ? "border-secondary/30 bg-secondary/10 text-secondary-foreground"
+        : "border-muted bg-muted text-muted-foreground";
+
+  return <Badge className={className} label={workItemPriorityLabels[priority]} />;
+}
+
+function WorkItemStatusBadge({ status }: { status: WorkItemStatus }) {
+  const className =
+    status === "open"
+      ? "border-secondary/30 bg-secondary/10 text-secondary-foreground"
+      : "border-primary/30 bg-primary/10 text-primary";
+
+  return <Badge className={className} label={workItemStatusLabels[status]} />;
+}
+
 function Badge({ className, label }: { className: string; label: string }) {
   return (
     <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${className}`}>
@@ -328,3 +448,17 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "inline-flex h-10 w-full min-w-0 items-center justify-center rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+
+const workItemPriorityLabels: Record<WorkItemPriority, string> = {
+  low: "Baixa",
+  medium: "Media",
+  high: "Alta",
+  critical: "Critica",
+};
+
+const workItemStatusLabels: Record<WorkItemStatus, string> = {
+  open: "Aberta",
+  in_progress: "Em andamento",
+  resolved: "Resolvida",
+  dismissed: "Dispensada",
+};

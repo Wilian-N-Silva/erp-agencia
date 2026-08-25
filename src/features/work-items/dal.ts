@@ -1,10 +1,10 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { writeAuditLog } from "@/lib/audit";
 import { bindTenantContext, db } from "@/lib/db";
 import { employees, users, workItems } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import {
   canResolveWorkItem,
@@ -16,6 +16,84 @@ import {
 } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
+
+export type ActionableWorkItemListItem = {
+  id: string;
+  title: string;
+  description: string;
+  kind: string;
+  sourceType: string;
+  sourceId: string;
+  assignedUserId: string | null;
+  assignedEmployeeId: string | null;
+  ownerName: string | null;
+  dueAt: Date | null;
+  priority: (typeof workItems.$inferSelect)["priority"];
+  status: Extract<(typeof workItems.$inferSelect)["status"], "open" | "in_progress">;
+  createdAt: Date;
+};
+
+async function listActionableWorkItemsOperation(
+  context: AccessContext,
+): Promise<ActionableWorkItemListItem[]> {
+  assertCanAny(["alerts.read", "alerts.write"], context);
+  const organizationId = requireOrganizationId(context);
+  const rows = await db
+    .select({
+      id: workItems.id,
+      title: workItems.title,
+      description: workItems.description,
+      kind: workItems.kind,
+      sourceType: workItems.sourceType,
+      sourceId: workItems.sourceId,
+      assignedUserId: workItems.assignedUserId,
+      assignedEmployeeId: workItems.assignedEmployeeId,
+      assignedUserName: users.name,
+      assignedEmployeeName: employees.fullName,
+      dueAt: workItems.dueAt,
+      priority: workItems.priority,
+      status: workItems.status,
+      createdAt: workItems.createdAt,
+    })
+    .from(workItems)
+    .leftJoin(
+      users,
+      and(
+        eq(workItems.assignedUserId, users.id),
+        eq(users.organizationId, organizationId),
+      ),
+    )
+    .leftJoin(
+      employees,
+      and(
+        eq(workItems.assignedEmployeeId, employees.id),
+        eq(employees.organizationId, organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(workItems.organizationId, organizationId),
+        inArray(workItems.status, ["open", "in_progress"]),
+      ),
+    )
+    .orderBy(desc(workItems.priority), asc(workItems.dueAt), desc(workItems.createdAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    kind: row.kind,
+    sourceType: row.sourceType,
+    sourceId: row.sourceId,
+    assignedUserId: row.assignedUserId,
+    assignedEmployeeId: row.assignedEmployeeId,
+    ownerName: row.assignedUserName ?? row.assignedEmployeeName,
+    dueAt: row.dueAt,
+    priority: row.priority,
+    status: row.status as ActionableWorkItemListItem["status"],
+    createdAt: row.createdAt,
+  }));
+}
 
 async function generateWorkItemOperation(
   context: AccessContext,
@@ -224,5 +302,16 @@ function requireWorkItemWriter(
   return { ...context, organizationId: context.organizationId };
 }
 
+function requireOrganizationId(context: AccessContext) {
+  if (!context.organizationId) {
+    throw new AccessDeniedError();
+  }
+
+  return context.organizationId;
+}
+
 export const generateWorkItem = bindTenantContext(generateWorkItemOperation);
 export const resolveWorkItem = bindTenantContext(resolveWorkItemOperation);
+export const listActionableWorkItems = bindTenantContext(
+  listActionableWorkItemsOperation,
+);

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { generateAccessReviewWorkItems } from "@/features/work-items/access-review-pilot";
 import {
   generateWorkItem,
+  listActionableWorkItems,
   resolveWorkItem,
 } from "@/features/work-items/dal";
 import {
@@ -116,6 +117,30 @@ describe("CORE-004 work item persistence", () => {
       .from(workItems)
       .where(eq(workItems.id, tenantBItem.item.id));
     expect(unchanged?.status).toBe("open");
+  });
+
+  it("lists only actionable work items from the current organization", async () => {
+    const tenantAItem = await generateWorkItem(
+      contextA,
+      buildInput("actionable-a", "actionable-a-source"),
+    );
+    const tenantBItem = await generateWorkItem(
+      contextB,
+      buildInput("actionable-b", "actionable-b-source"),
+    );
+
+    const beforeResolution = await listActionableWorkItems(contextA);
+
+    expect(beforeResolution.map((item) => item.id)).toContain(tenantAItem.item.id);
+    expect(beforeResolution.map((item) => item.id)).not.toContain(tenantBItem.item.id);
+
+    await resolveWorkItem(contextA, {
+      id: tenantAItem.item.id,
+      resolution: "Pendencia concluida pela operacao.",
+    });
+
+    const afterResolution = await listActionableWorkItems(contextA);
+    expect(afterResolution.map((item) => item.id)).not.toContain(tenantAItem.item.id);
   });
 
   it("migrates access review as the single pilot generator", async () => {
