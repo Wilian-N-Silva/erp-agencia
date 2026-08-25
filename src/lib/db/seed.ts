@@ -1360,12 +1360,18 @@ async function ensureAccessRecord(
   values: typeof accessRecords.$inferInsert,
 ) {
   const [existing] = await db
-    .select({ id: accessRecords.id })
+    .select({
+      id: accessRecords.id,
+      status: accessRecords.status,
+      statusChangedAt: accessRecords.statusChangedAt,
+    })
     .from(accessRecords)
     .where(and(eq(accessRecords.employeeId, employeeId), eq(accessRecords.platform, platform)))
     .limit(1);
 
   if (existing) {
+    const nextStatus = values.status ?? "active";
+    const now = new Date();
     await db
       .update(accessRecords)
       .set({
@@ -1376,8 +1382,10 @@ async function ensureAccessRecord(
         removedAt: values.removedAt,
         responsibleUserId: values.responsibleUserId,
         reviewDueDate: values.reviewDueDate,
-        status: values.status ?? "active",
-        updatedAt: new Date(),
+        status: nextStatus,
+        statusChangedAt:
+          nextStatus === existing.status ? existing.statusChangedAt : now,
+        updatedAt: now,
       })
       .where(eq(accessRecords.id, existing.id));
     return;
