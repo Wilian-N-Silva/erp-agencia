@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -99,6 +101,20 @@ export const fileSensitivityEnum = pgEnum("file_sensitivity", [
 
 export const alertStatusEnum = pgEnum("alert_status", [
   "open",
+  "resolved",
+  "dismissed",
+]);
+
+export const workItemPriorityEnum = pgEnum("work_item_priority", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+export const workItemStatusEnum = pgEnum("work_item_status", [
+  "open",
+  "in_progress",
   "resolved",
   "dismissed",
 ]);
@@ -1062,6 +1078,75 @@ export const alerts = pgTable(
   }),
 );
 
+export const workItems = pgTable(
+  "work_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    kind: text("kind").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    occurrenceKey: text("occurrence_key").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    assignedUserId: text("assigned_user_id").references(() => users.id),
+    assignedEmployeeId: uuid("assigned_employee_id").references(() => employees.id),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    priority: workItemPriorityEnum("priority").notNull().default("medium"),
+    status: workItemStatusEnum("status").notNull().default("open"),
+    resolution: text("resolution"),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    occurrenceIdx: uniqueIndex("work_items_occurrence_idx").on(
+      table.organizationId,
+      table.kind,
+      table.sourceType,
+      table.sourceId,
+      table.occurrenceKey,
+    ),
+    statusIdx: index("work_items_status_idx").on(
+      table.organizationId,
+      table.status,
+      table.priority,
+      table.dueAt,
+    ),
+    assignedUserIdx: index("work_items_assigned_user_idx").on(
+      table.organizationId,
+      table.assignedUserId,
+      table.status,
+    ),
+    assignedEmployeeIdx: index("work_items_assigned_employee_idx").on(
+      table.organizationId,
+      table.assignedEmployeeId,
+      table.status,
+    ),
+    singleOwner: check(
+      "work_items_single_owner_check",
+      sql`${table.assignedUserId} is null or ${table.assignedEmployeeId} is null`,
+    ),
+    resolutionState: check(
+      "work_items_resolution_state_check",
+      sql`(
+        ${table.status} in ('open', 'in_progress')
+        and ${table.resolution} is null
+        and ${table.resolvedByUserId} is null
+        and ${table.resolvedAt} is null
+      ) or (
+        ${table.status} in ('resolved', 'dismissed')
+        and ${table.resolution} is not null
+        and ${table.resolvedByUserId} is not null
+        and ${table.resolvedAt} is not null
+      )`,
+    ),
+  }),
+);
+
 export const appSettings = pgTable(
   "app_settings",
   {
@@ -1086,4 +1171,5 @@ export type User = typeof users.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type WorkItem = typeof workItems.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;

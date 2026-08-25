@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   putStorageObject: vi.fn(),
   select: vi.fn(),
   update: vi.fn(),
+  resolveWorkItem: vi.fn(),
   writeAuditLog: vi.fn(),
 }));
 
@@ -59,6 +60,9 @@ vi.mock("@/lib/storage", () => ({
   getSha256Hex: vi.fn(),
   putStorageObject: mocks.putStorageObject,
 }));
+vi.mock("@/features/work-items/dal", () => ({
+  resolveWorkItem: mocks.resolveWorkItem,
+}));
 
 import {
   approveAccessRecordAction,
@@ -88,6 +92,7 @@ import {
   approveTimeOffRequestAction,
   rejectTimeOffRequestAction,
 } from "@/features/timeoff/actions";
+import { resolveWorkItemAction } from "@/features/work-items/actions";
 import {
   RATE_LIMIT_ERROR_MESSAGE,
   RateLimitExceededError,
@@ -228,6 +233,16 @@ describe("critical Action rate-limit entrypoints", () => {
     await expect(action(new FormData())).resolves.toEqual(blockedActionError);
 
     expectRateLimit("common_mutation");
+    expectNoDataOrStorageAccess();
+  });
+
+  it("blocks work-item resolution before validation or data access", async () => {
+    await expect(resolveWorkItemAction(new FormData())).resolves.toEqual(
+      blockedActionError,
+    );
+
+    expectRateLimit("common_mutation");
+    expect(mocks.resolveWorkItem).not.toHaveBeenCalled();
     expectNoDataOrStorageAccess();
   });
 });

@@ -1,6 +1,8 @@
 import { Ban, CheckCircle2, RefreshCw } from "lucide-react";
 import { redirect } from "next/navigation";
 
+import { RateLimitedActionForm } from "@/components/fg";
+
 import {
   dismissAlertAction,
   generateAlertsAction,
@@ -62,12 +64,12 @@ export default async function AlertsPage({ searchParams }: PageProps) {
           </p>
         </div>
         {canWrite ? (
-          <form action={generateAlertsAction}>
+          <RateLimitedActionForm action={generateAlertsAction}>
             <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
               <RefreshCw className="size-4" aria-hidden="true" />
               Gerar alertas
             </button>
-          </form>
+          </RateLimitedActionForm>
         ) : null}
       </div>
 

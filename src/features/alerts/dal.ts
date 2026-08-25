@@ -2,7 +2,6 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
 import {
-  accessRecords,
   alerts,
   clientBillingProfiles,
   clients,
@@ -30,11 +29,6 @@ import {
 } from "@/features/finance/rules";
 import { getLifecycleChecklistState } from "@/features/lifecycle/rules";
 import { hasInvoiceDivergence, type InvoiceRequestStatus, type ReimbursementStatus } from "@/features/portal/rules";
-import {
-  getAccessReviewState,
-  isTerminatedEmployeeAccessAlert,
-  type AccessRecordStatus,
-} from "@/features/accesses/rules";
 import { isEquipmentReturnAlert, type EquipmentStatus } from "@/features/equipment/rules";
 import { getSaasRenewalState, type SaasSubscriptionStatus } from "@/features/saas/rules";
 import {
@@ -140,7 +134,6 @@ async function generateAlertCandidatesForOrganization(
     vacationBalanceCandidates,
     lifecycleCandidates,
     equipmentCandidates,
-    accessCandidates,
     saasCandidates,
     birthdayCandidates,
   ] = await Promise.all([
@@ -152,7 +145,6 @@ async function generateAlertCandidatesForOrganization(
     buildVacationBalanceAlertCandidates(organizationId, asOfKey),
     buildLifecycleAlertCandidates(organizationId, asOfKey),
     buildEquipmentAlertCandidates(organizationId),
-    buildAccessAlertCandidates(organizationId, asOfKey),
     buildSaasAlertCandidates(organizationId, asOfKey),
     buildBirthdayAlertCandidates(organizationId, asOfKey),
   ]);
@@ -167,7 +159,6 @@ async function generateAlertCandidatesForOrganization(
       ...vacationBalanceCandidates,
       ...lifecycleCandidates,
       ...equipmentCandidates,
-      ...accessCandidates,
       ...saasCandidates,
       ...birthdayCandidates,
     ]),
@@ -665,66 +656,6 @@ async function buildEquipmentAlertCandidates(organizationId: string): Promise<Al
       };
     })
     .filter(isAlertCandidate);
-}
-
-async function buildAccessAlertCandidates(
-  organizationId: string,
-  asOf: string,
-): Promise<AlertCandidate[]> {
-  const rows = await db
-    .select({
-      id: accessRecords.id,
-      employeeId: accessRecords.employeeId,
-      employeeName: employees.fullName,
-      employeeStatus: employees.status,
-      platform: accessRecords.platform,
-      critical: accessRecords.critical,
-      reviewDueDate: accessRecords.reviewDueDate,
-      status: accessRecords.status,
-    })
-    .from(accessRecords)
-    .innerJoin(employees, eq(accessRecords.employeeId, employees.id))
-    .where(eq(accessRecords.organizationId, organizationId));
-
-  return rows
-    .flatMap((row): AlertCandidate[] => {
-      const target = {
-        critical: row.critical,
-        employeeId: row.employeeId,
-        employeeStatus: row.employeeStatus,
-        reviewDueDate: row.reviewDueDate,
-        status: row.status as AccessRecordStatus,
-      };
-      const candidates: AlertCandidate[] = [];
-
-      if (isTerminatedEmployeeAccessAlert(target)) {
-        candidates.push({
-          kind: "access_review",
-          title: `${row.employeeName}: acesso ativo apos desligamento`,
-          description: `${row.platform} continua ativo para colaborador desligado.`,
-          severity: "critical",
-          entityType: "access_record",
-          entityId: row.id,
-          dueDate: row.reviewDueDate,
-        });
-      }
-
-      const reviewState = getAccessReviewState(target, asOf);
-
-      if (reviewState === "missing" || reviewState === "overdue" || reviewState === "due_soon") {
-        candidates.push({
-          kind: "access_review",
-          title: `${row.platform}: revisao de acesso critico`,
-          description: reviewState === "missing" ? "Acesso critico sem data de revisao." : "Acesso critico requer revisao.",
-          severity: reviewState === "overdue" || reviewState === "missing" ? "high" : "medium",
-          entityType: "access_record",
-          entityId: row.id,
-          dueDate: row.reviewDueDate,
-        });
-      }
-
-      return candidates;
-    });
 }
 
 async function buildSaasAlertCandidates(

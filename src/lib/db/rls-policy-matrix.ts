@@ -24,6 +24,7 @@ export const directTenantPolicyTables = [
   "saas_subscriptions",
   "time_off_requests",
   "vacation_balances",
+  "work_items",
 ] as const;
 
 export const inheritedTenantPolicyTables = {

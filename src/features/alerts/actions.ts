@@ -14,7 +14,13 @@ import {
   type AccessContext,
 } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { formDataToObject } from "@/lib/validation";
+
+import { generateAccessReviewWorkItems } from "@/features/work-items/access-review-pilot";
 
 import { generateAlertCandidatesForOrganization } from "./dal";
 import { getAlertKey, type AlertStatus } from "./rules";
@@ -27,6 +33,8 @@ const idSchema = z.strictObject({
 
 async function generateAlertsAction() {
   const context = await requireAlertsWriterContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
+  const workItemResults = await generateAccessReviewWorkItems(context);
   const candidates = await generateAlertCandidatesForOrganization(context);
   const existingRows = await db
     .select({
@@ -66,6 +74,8 @@ async function generateAlertsAction() {
     metadata: {
       candidateCount: candidates.length,
       insertedCount: newCandidates.length,
+      pilotWorkItemCount: workItemResults.length,
+      pilotWorkItemInsertedCount: workItemResults.filter((result) => result.created).length,
     },
   });
 
@@ -153,6 +163,8 @@ export {
   tenantDismissAlertAction as dismissAlertAction,
 };
 
-const tenantGenerateAlertsAction = bindCurrentTenantContext(generateAlertsAction);
+const tenantGenerateAlertsAction = withRateLimitActionResult(
+  bindCurrentTenantContext(generateAlertsAction),
+);
 const tenantResolveAlertAction = bindCurrentTenantContext(resolveAlertAction);
 const tenantDismissAlertAction = bindCurrentTenantContext(dismissAlertAction);
