@@ -106,6 +106,20 @@ describe("Server Action input validation audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentAccessContext.mockResolvedValue(context);
+    mocks.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: "time-off-1" }]),
+      }),
+    });
+  });
+
+  it("ignores reserved Next.js Action metadata before strict validation", async () => {
+    const formData = createTimeOffForm();
+    formData.set("$ACTION_ID_create-time-off", "");
+
+    await expect(createTimeOffRequestAction(formData)).resolves.toBeUndefined();
+    expect(mocks.insert).toHaveBeenCalledOnce();
+    expect(mocks.writeAuditLog).toHaveBeenCalledOnce();
   });
 
   it("rejects a server-owned organization id before any write", async () => {

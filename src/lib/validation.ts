@@ -37,7 +37,11 @@ export function formDataToObject(
   formData: FormData,
   excludedKeys: readonly string[] = [],
 ) {
-  const input = Object.fromEntries(formData.entries());
+  const input = Object.fromEntries(
+    Array.from(formData.entries()).filter(
+      ([key]) => !key.startsWith("$ACTION_"),
+    ),
+  );
 
   for (const key of excludedKeys) {
     delete input[key];
