@@ -9,12 +9,12 @@ import {
 } from "@/features/work-items/rules";
 
 const source = {
-  accessUpdatedAt: new Date("2026-08-20T10:00:00.000Z"),
+  accessCreatedAt: new Date("2026-08-20T10:00:00.000Z"),
   critical: true,
+  employeeEndDate: "2026-08-19",
   employeeId: "70000000-0000-4000-8000-000000000001",
   employeeName: "Pessoa Piloto",
   employeeStatus: "terminated",
-  employeeUpdatedAt: new Date("2026-08-19T10:00:00.000Z"),
   id: "70000000-0000-4000-8000-000000000002",
   platform: "Email",
   responsibleUserId: "work-item-owner",
@@ -94,14 +94,23 @@ describe("work item contract", () => {
       [source],
       "2026-08-25",
     );
-    const nextCycle = buildAccessReviewWorkItemCandidates(
+    const unrelatedEdit = buildAccessReviewWorkItemCandidates(
       [
         {
           ...source,
-          accessUpdatedAt: new Date("2026-09-01T10:00:00.000Z"),
+          employeeName: "Pessoa Piloto Atualizada",
+          platform: "Email Corporativo",
         },
       ],
       "2026-09-01",
+    );
+    const nextTerminationCycle = buildAccessReviewWorkItemCandidates(
+      [{ ...source, employeeEndDate: "2026-09-01" }],
+      "2026-09-01",
+    );
+    const nextReviewCycle = buildAccessReviewWorkItemCandidates(
+      [{ ...source, reviewDueDate: "2026-09-30" }],
+      "2026-09-20",
     );
 
     expect(first).toHaveLength(2);
@@ -114,8 +123,20 @@ describe("work item contract", () => {
     expect(repeated.map((item) => item.occurrenceKey)).toEqual(
       first.map((item) => item.occurrenceKey),
     );
-    expect(nextCycle.map((item) => item.occurrenceKey)).not.toEqual(
+    expect(unrelatedEdit.map((item) => item.occurrenceKey)).toEqual(
       first.map((item) => item.occurrenceKey),
+    );
+    expect(
+      nextTerminationCycle.find((item) => item.kind === "access_revocation")
+        ?.occurrenceKey,
+    ).not.toBe(
+      first.find((item) => item.kind === "access_revocation")?.occurrenceKey,
+    );
+    expect(
+      nextReviewCycle.find((item) => item.kind === "access_review")
+        ?.occurrenceKey,
+    ).not.toBe(
+      first.find((item) => item.kind === "access_review")?.occurrenceKey,
     );
   });
 });

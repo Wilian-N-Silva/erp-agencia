@@ -15,12 +15,12 @@ import { generateWorkItem } from "./dal";
 import type { GenerateWorkItemInput } from "./rules";
 
 export type AccessReviewWorkItemSource = {
-  accessUpdatedAt: Date;
+  accessCreatedAt: Date;
   critical: boolean;
+  employeeEndDate: string | null;
   employeeId: string;
   employeeName: string;
   employeeStatus: string;
-  employeeUpdatedAt: Date;
   id: string;
   platform: string;
   responsibleUserId: string | null;
@@ -49,11 +49,7 @@ export function buildAccessReviewWorkItemCandidates(
         kind: "access_revocation",
         sourceType: "access_record",
         sourceId: row.id,
-        occurrenceKey: [
-          "terminated_active",
-          row.employeeUpdatedAt.toISOString(),
-          row.accessUpdatedAt.toISOString(),
-        ].join(":"),
+        occurrenceKey: `terminated_active:${row.employeeEndDate ?? "end_date_missing"}`,
         title: `${row.employeeName}: acesso ativo apos desligamento`,
         description: `${row.platform} continua ativo para colaborador desligado.`,
         assignedUserId: row.responsibleUserId,
@@ -75,7 +71,7 @@ export function buildAccessReviewWorkItemCandidates(
         sourceId: row.id,
         occurrenceKey: row.reviewDueDate
           ? `review_due:${row.reviewDueDate}`
-          : `review_missing:${row.accessUpdatedAt.toISOString()}`,
+          : `review_missing:${row.accessCreatedAt.toISOString()}`,
         title: `${row.platform}: revisao de acesso critico`,
         description:
           reviewState === "missing"
@@ -106,12 +102,12 @@ async function generateAccessReviewWorkItemsOperation(
 
   const rows = await db
     .select({
-      accessUpdatedAt: accessRecords.updatedAt,
+      accessCreatedAt: accessRecords.createdAt,
       critical: accessRecords.critical,
+      employeeEndDate: employees.endDate,
       employeeId: accessRecords.employeeId,
       employeeName: employees.fullName,
       employeeStatus: employees.status,
-      employeeUpdatedAt: employees.updatedAt,
       id: accessRecords.id,
       platform: accessRecords.platform,
       responsibleUserAccessStatus: users.accessStatus,

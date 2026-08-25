@@ -12,7 +12,7 @@ import {
   createWithTenantDb,
   type Database,
 } from "@/lib/db";
-import { workItems } from "@/lib/db/schema";
+import { accessRecords, employees, workItems } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError } from "@/lib/rbac";
 
@@ -163,6 +163,34 @@ describe("CORE-004 work item persistence", () => {
       true,
     );
     expect(repeated.every((result) => !result.created)).toBe(true);
+    expect(repeated.map((result) => result.item.id)).toEqual(
+      first.map((result) => result.item.id),
+    );
+
+    await adminDb
+      .update(employees)
+      .set({
+        fullName: "Pessoa Piloto A Atualizada",
+        updatedAt: new Date("2026-08-26T10:00:00.000Z"),
+      })
+      .where(eq(employees.id, ids.employeeA));
+    await adminDb
+      .update(accessRecords)
+      .set({
+        notes: "Edicao alheia ao ciclo da pendencia.",
+        updatedAt: new Date("2026-08-26T11:00:00.000Z"),
+      })
+      .where(eq(accessRecords.id, ids.accessA));
+
+    const afterUnrelatedUpdates = await generateAccessReviewWorkItems(
+      contextA,
+      "2026-08-26",
+    );
+
+    expect(afterUnrelatedUpdates.every((result) => !result.created)).toBe(true);
+    expect(afterUnrelatedUpdates.map((result) => result.item.id)).toEqual(
+      first.map((result) => result.item.id),
+    );
   });
 });
 
