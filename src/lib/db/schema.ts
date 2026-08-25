@@ -935,6 +935,9 @@ export const accessRecords = pgTable(
     accessLevel: text("access_level").notNull(),
     critical: boolean("critical").notNull().default(false),
     status: text("status").notNull().default("active"),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     reviewDueDate: date("review_due_date"),
     removedAt: timestamp("removed_at", { withTimezone: true }),
     responsibleUserId: text("responsible_user_id").references(() => users.id),

@@ -42,6 +42,10 @@ const userA = "core-004-user-a";
 const userB = "core-004-user-b";
 const contextA = createContext(userA, ids.orgA);
 const contextB = createContext(userB, ids.orgB);
+const financeContextA = createContext(userA, ids.orgA, [
+  "finance.write",
+  "alerts.read",
+]);
 
 let runtimeDb: Database;
 let adminDb: Database;
@@ -59,6 +63,24 @@ afterAll(async () => {
 });
 
 describe("CORE-004 work item persistence", () => {
+  it("allows an authorized domain to use the tenant-aware primitive without alerts.write", async () => {
+    expect(financeContextA.permissions).toContain("finance.write");
+    expect(financeContextA.permissions).not.toContain("alerts.write");
+
+    const generated = await generateWorkItem(
+      financeContextA,
+      buildInput("finance-domain", "finance-domain-source"),
+    );
+    const resolved = await resolveWorkItem(financeContextA, {
+      id: generated.item.id,
+      resolution: "Dominio financeiro concluiu sua propria operacao autorizada.",
+    });
+
+    expect(generated.created).toBe(true);
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolvedByUserId).toBe(userA);
+  });
+
   it("deduplicates one occurrence but permits a future occurrence after resolution", async () => {
     const input = buildInput("cycle:2026-08");
     const first = await generateWorkItem(contextA, input);
@@ -191,6 +213,80 @@ describe("CORE-004 work item persistence", () => {
     expect(afterUnrelatedUpdates.map((result) => result.item.id)).toEqual(
       first.map((result) => result.item.id),
     );
+
+    const firstRevocation = first.find(
+      (result) => result.item.kind === "access_revocation",
+    );
+    expect(firstRevocation).toBeDefined();
+    await resolveWorkItem(contextA, {
+      id: firstRevocation!.item.id,
+      resolution: "Acesso removido no primeiro ciclo.",
+    });
+
+    await adminDb
+      .update(accessRecords)
+      .set({
+        removedAt: new Date("2026-08-27T09:00:00.000Z"),
+        status: "removed",
+        statusChangedAt: new Date("2026-08-27T09:00:00.000Z"),
+        updatedAt: new Date("2026-08-27T09:00:00.000Z"),
+      })
+      .where(eq(accessRecords.id, ids.accessA));
+
+    const clearedCondition = await generateAccessReviewWorkItems(
+      contextA,
+      "2026-08-27",
+    );
+    expect(
+      clearedCondition.some((result) => result.item.kind === "access_revocation"),
+    ).toBe(false);
+
+    await adminDb
+      .update(accessRecords)
+      .set({
+        removedAt: null,
+        status: "active",
+        statusChangedAt: new Date("2026-09-01T14:00:00.000Z"),
+        updatedAt: new Date("2026-09-01T14:00:00.000Z"),
+      })
+      .where(eq(accessRecords.id, ids.accessA));
+
+    const nextCycle = await generateAccessReviewWorkItems(
+      contextA,
+      "2026-09-01",
+    );
+    const repeatedNextCycle = await generateAccessReviewWorkItems(
+      contextA,
+      "2026-09-02",
+    );
+    const nextRevocation = nextCycle.find(
+      (result) => result.item.kind === "access_revocation",
+    );
+    const repeatedNextRevocation = repeatedNextCycle.find(
+      (result) => result.item.kind === "access_revocation",
+    );
+
+    expect(nextRevocation).toMatchObject({ created: true });
+    expect(nextRevocation!.item.id).not.toBe(firstRevocation!.item.id);
+    expect(repeatedNextRevocation).toMatchObject({ created: false });
+    expect(repeatedNextRevocation!.item.id).toBe(nextRevocation!.item.id);
+
+    const historicalRows = await adminDb
+      .select({ id: workItems.id, status: workItems.status })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.organizationId, ids.orgA),
+          eq(workItems.kind, "access_revocation"),
+          eq(workItems.sourceId, ids.accessA),
+        ),
+      );
+    expect(historicalRows).toEqual(
+      expect.arrayContaining([
+        { id: firstRevocation!.item.id, status: "resolved" },
+        { id: nextRevocation!.item.id, status: "open" },
+      ]),
+    );
   });
 });
 
@@ -265,11 +361,15 @@ describe("CORE-004 work item RLS", () => {
   });
 });
 
-function createContext(userId: string, organizationId: string): AccessContext {
+function createContext(
+  userId: string,
+  organizationId: string,
+  permissions: AccessContext["permissions"] = ["alerts.write"],
+): AccessContext {
   return {
     employeeId: null,
     organizationId,
-    permissions: ["alerts.write"],
+    permissions,
     roles: [],
     userId,
   };
@@ -330,10 +430,10 @@ async function createFixtures() {
   await adminDb.execute(sql`
     insert into access_records (
       id, organization_id, employee_id, platform, access_level, critical,
-      status, responsible_user_id, updated_at
+      status, status_changed_at, responsible_user_id, updated_at
     ) values (
       ${ids.accessA}, ${ids.orgA}, ${ids.employeeA}, 'Email', 'admin', true,
-      'active', ${userA}, '2026-08-21T10:00:00.000Z'
+      'active', '2026-08-21T10:00:00.000Z', ${userA}, '2026-08-21T10:00:00.000Z'
     )
   `);
 }

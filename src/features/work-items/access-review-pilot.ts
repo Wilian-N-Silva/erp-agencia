@@ -16,6 +16,7 @@ import type { GenerateWorkItemInput } from "./rules";
 
 export type AccessReviewWorkItemSource = {
   accessCreatedAt: Date;
+  accessStatusChangedAt: Date;
   critical: boolean;
   employeeEndDate: string | null;
   employeeId: string;
@@ -49,7 +50,11 @@ export function buildAccessReviewWorkItemCandidates(
         kind: "access_revocation",
         sourceType: "access_record",
         sourceId: row.id,
-        occurrenceKey: `terminated_active:${row.employeeEndDate ?? "end_date_missing"}`,
+        occurrenceKey: [
+          "terminated_active",
+          row.employeeEndDate ?? "end_date_missing",
+          `active_cycle:${row.accessStatusChangedAt.toISOString()}`,
+        ].join(":"),
         title: `${row.employeeName}: acesso ativo apos desligamento`,
         description: `${row.platform} continua ativo para colaborador desligado.`,
         assignedUserId: row.responsibleUserId,
@@ -103,6 +108,7 @@ async function generateAccessReviewWorkItemsOperation(
   const rows = await db
     .select({
       accessCreatedAt: accessRecords.createdAt,
+      accessStatusChangedAt: accessRecords.statusChangedAt,
       critical: accessRecords.critical,
       employeeEndDate: employees.endDate,
       employeeId: accessRecords.employeeId,

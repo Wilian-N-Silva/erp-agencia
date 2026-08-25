@@ -4,7 +4,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { bindTenantContext, db } from "@/lib/db";
 import { employees, users, workItems } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
+import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
   canResolveWorkItem,
@@ -15,7 +15,7 @@ import {
   type WorkItemStatus,
 } from "./rules";
 
-type AuthorizedContext = AccessContext & { organizationId: string };
+type TenantAccessContext = AccessContext & { organizationId: string };
 
 export type ActionableWorkItemListItem = {
   id: string;
@@ -99,15 +99,15 @@ async function generateWorkItemOperation(
   context: AccessContext,
   input: GenerateWorkItemInput,
 ) {
-  const authorizedContext = requireWorkItemWriter(context);
+  const tenantContext = requireWorkItemDomainContext(context);
   const parsedInput = generateWorkItemInputSchema.parse(input);
 
-  await validateOwner(authorizedContext, parsedInput);
+  await validateOwner(tenantContext, parsedInput);
 
   const [created] = await db
     .insert(workItems)
     .values({
-      organizationId: authorizedContext.organizationId,
+      organizationId: tenantContext.organizationId,
       ...parsedInput,
     })
     .onConflictDoNothing({
@@ -123,14 +123,14 @@ async function generateWorkItemOperation(
 
   const item =
     created ??
-    (await getWorkItemByOccurrence(authorizedContext, parsedInput));
+    (await getWorkItemByOccurrence(tenantContext, parsedInput));
 
   if (!item) {
     throw new Error("Work item could not be generated.");
   }
 
   if (created) {
-    await writeAuditLog(authorizedContext, {
+    await writeAuditLog(tenantContext, {
       action: "create",
       entityType: "work_item",
       entityId: created.id,
@@ -151,10 +151,10 @@ async function resolveWorkItemOperation(
   context: AccessContext,
   input: ResolveWorkItemInput,
 ) {
-  const authorizedContext = requireWorkItemWriter(context);
+  const tenantContext = requireWorkItemDomainContext(context);
   const parsedInput = resolveWorkItemInputSchema.parse(input);
   const before = await getWorkItemForWrite(
-    authorizedContext,
+    tenantContext,
     parsedInput.id,
   );
 
@@ -168,14 +168,14 @@ async function resolveWorkItemOperation(
     .set({
       resolution: parsedInput.resolution,
       resolvedAt: now,
-      resolvedByUserId: authorizedContext.userId,
+      resolvedByUserId: tenantContext.userId,
       status: "resolved",
       updatedAt: now,
     })
     .where(
       and(
         eq(workItems.id, parsedInput.id),
-        eq(workItems.organizationId, authorizedContext.organizationId),
+        eq(workItems.organizationId, tenantContext.organizationId),
         inArray(workItems.status, ["open", "in_progress"]),
       ),
     )
@@ -185,7 +185,7 @@ async function resolveWorkItemOperation(
     throw new Error("Work item state changed before it could be resolved.");
   }
 
-  await writeAuditLog(authorizedContext, {
+  await writeAuditLog(tenantContext, {
     action: "status_change",
     entityType: "work_item",
     entityId: after.id,
@@ -198,7 +198,7 @@ async function resolveWorkItemOperation(
 }
 
 async function validateOwner(
-  context: AuthorizedContext,
+  context: TenantAccessContext,
   input: {
     assignedEmployeeId: string | null;
     assignedUserId: string | null;
@@ -243,7 +243,7 @@ async function validateOwner(
 }
 
 async function getWorkItemByOccurrence(
-  context: AuthorizedContext,
+  context: TenantAccessContext,
   input: {
     kind: string;
     occurrenceKey: string;
@@ -269,7 +269,7 @@ async function getWorkItemByOccurrence(
 }
 
 async function getWorkItemForWrite(
-  context: AuthorizedContext,
+  context: TenantAccessContext,
   id: string,
 ) {
   const [item] = await db
@@ -290,11 +290,15 @@ async function getWorkItemForWrite(
   return item;
 }
 
-function requireWorkItemWriter(
+/**
+ * Domain primitive boundary. The calling domain must authorize its mutation
+ * before invoking this DAL; public Actions must not expose it directly.
+ * Tenant identity remains mandatory here and is also enforced by RLS through
+ * bindTenantContext.
+ */
+function requireWorkItemDomainContext(
   context: AccessContext,
-): AuthorizedContext {
-  assertCan("alerts.write", context);
-
+): TenantAccessContext {
   if (!context.organizationId) {
     throw new AccessDeniedError();
   }

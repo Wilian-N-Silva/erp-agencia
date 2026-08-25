@@ -94,6 +94,7 @@ async function updateAccessRecordAction(formData: FormData) {
   assertCriticalReviewDate(input);
   await getEmployeeForWrite(input.employeeId, context.organizationId);
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
@@ -104,10 +105,12 @@ async function updateAccessRecordAction(formData: FormData) {
       critical: input.critical,
       reviewDueDate: input.reviewDueDate,
       status: input.status,
-      removedAt: input.status === "removed" ? (before.removedAt ?? new Date()) : null,
+      statusChangedAt:
+        input.status === before.status ? before.statusChangedAt : now,
+      removedAt: input.status === "removed" ? (before.removedAt ?? now) : null,
       responsibleUserId: context.userId,
       notes: input.notes,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();
@@ -135,13 +138,16 @@ async function reviewAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = reviewAccessRecordSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
       responsibleUserId: context.userId,
       reviewDueDate: input.reviewDueDate,
       status: "active",
-      updatedAt: new Date(),
+      statusChangedAt:
+        before.status === "active" ? before.statusChangedAt : now,
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();
@@ -170,13 +176,15 @@ async function updateAccessStatus(
   await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
-      removedAt: status === "removed" ? new Date() : before.removedAt,
+      removedAt: status === "removed" ? now : before.removedAt,
       responsibleUserId: context.userId,
       status,
-      updatedAt: new Date(),
+      statusChangedAt: status === before.status ? before.statusChangedAt : now,
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();

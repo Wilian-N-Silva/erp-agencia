@@ -10,6 +10,7 @@ import {
 
 const source = {
   accessCreatedAt: new Date("2026-08-20T10:00:00.000Z"),
+  accessStatusChangedAt: new Date("2026-08-21T10:00:00.000Z"),
   critical: true,
   employeeEndDate: "2026-08-19",
   employeeId: "70000000-0000-4000-8000-000000000001",
@@ -105,7 +106,12 @@ describe("work item contract", () => {
       "2026-09-01",
     );
     const nextTerminationCycle = buildAccessReviewWorkItemCandidates(
-      [{ ...source, employeeEndDate: "2026-09-01" }],
+      [
+        {
+          ...source,
+          accessStatusChangedAt: new Date("2026-09-01T14:00:00.000Z"),
+        },
+      ],
       "2026-09-01",
     );
     const nextReviewCycle = buildAccessReviewWorkItemCandidates(
