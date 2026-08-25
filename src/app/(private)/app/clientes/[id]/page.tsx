@@ -167,10 +167,14 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
               status={CLIENT_STATUS_TONE[client.status]}
               label={clientStatusLabels[client.status]}
             />
-            {!summary.valueHidden ? (
+            {profile.isConfigured && !summary.valueHidden ? (
               <StatusBadge tone="muted" label={`Fee ${formatMoney(profile.monthlyFee)}`} withDot={false} />
             ) : null}
-            <StatusBadge tone="muted" label={`Cobrança dia ${profile.billingDay}`} withDot={false} />
+            {profile.isConfigured ? (
+              <StatusBadge tone="muted" label={`Cobrança dia ${profile.billingDay}`} withDot={false} />
+            ) : (
+              <StatusBadge tone="muted" label="Sem cobrança recorrente" withDot={false} />
+            )}
           </div>
         </div>
         <div className="fg-detail-head-actions">
@@ -315,13 +319,27 @@ function SummaryTab({
         <KpiCard
           label="Status do mês"
           value={clientFinancialStatusLabels[summary.financialStatus]}
-          secondary={`próx. vencimento ${formatDate(summary.nextDueDate)}`}
+          secondary={
+            summary.nextDueDate
+              ? `próx. vencimento ${formatDate(summary.nextDueDate)}`
+              : "sem cobrança recorrente"
+          }
           accent={summary.financialStatus === "overdue"}
         />
         <KpiCard
           label="Fee mensal"
-          value={summary.valueHidden ? "Restrito" : formatMoney(profile.monthlyFee)}
-          secondary={`dia ${profile.billingDay} · ${profile.paymentMethod ?? "—"}`}
+          value={
+            !profile.isConfigured
+              ? "Sem perfil"
+              : summary.valueHidden
+                ? "Restrito"
+                : formatMoney(profile.monthlyFee)
+          }
+          secondary={
+            profile.isConfigured
+              ? `dia ${profile.billingDay} · ${profile.paymentMethod ?? "—"}`
+              : "configure quando necessário"
+          }
         />
         <KpiCard
           label="Último pagamento"
@@ -537,6 +555,16 @@ function BillingTab({
   profile: ClientBillingProfileDetail;
 }) {
   if (!canEditBilling) {
+    if (!profile.isConfigured) {
+      return (
+        <Card title="Dados de cobrança">
+          <p className="fg-empty-desc">
+            Este cliente não possui cobrança recorrente configurada.
+          </p>
+        </Card>
+      );
+    }
+
     return (
       <Card title="Dados de cobrança">
         <dl className="fg-deflist">
@@ -588,7 +616,7 @@ function BillingTab({
             <div className="fg-input-wrap">
               <input
                 className="fg-input fg-tabular"
-                defaultValue={profile.billingDay}
+                defaultValue={profile.billingDay ?? ""}
                 max={31}
                 min={1}
                 name="billingDay"

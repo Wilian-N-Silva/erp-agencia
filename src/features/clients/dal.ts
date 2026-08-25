@@ -51,8 +51,9 @@ export type ClientDetail = ClientListItem & {
 
 export type ClientBillingProfileDetail = {
   id: string | null;
+  isConfigured: boolean;
   monthlyFee: string | null;
-  billingDay: number;
+  billingDay: number | null;
   paymentMethod: string | null;
   paymentTermsDays: number;
   recurrence: string;
@@ -85,7 +86,7 @@ export type ClientPaymentListItem = {
 
 export type ClientBillingSummary = {
   financialStatus: ClientFinancialStatus;
-  nextDueDate: string;
+  nextDueDate: string | null;
   defaultPaymentMethod: string | null;
   lastPaymentDate: string | null;
   totalOverdue: string | null;
@@ -256,9 +257,13 @@ async function getClientBillingProfile(
     )
     .limit(1);
   const valueHidden = !canReadClientFinancialValues(context);
+  const isConfigured = Boolean(
+    profile || (client.monthlyFee !== null && client.billingDay !== null),
+  );
 
   return {
     id: profile?.id ?? null,
+    isConfigured,
     monthlyFee: valueHidden ? null : (profile?.monthlyFee ?? client.monthlyFee),
     billingDay: profile?.billingDay ?? client.billingDay,
     paymentMethod: profile?.paymentMethod ?? client.billingMethod,
@@ -340,13 +345,16 @@ async function getClientBillingSummary(
   }
 
   const valueHidden = !canReadClientFinancialValues(context);
-  const nextDueDate = getNextClientBillingDueDate(
-    {
-      billingDay: profile.billingDay,
-      paymentTermsDays: profile.paymentTermsDays,
-    },
-    options.asOf ?? new Date(),
-  );
+  const nextDueDate =
+    profile.isConfigured && profile.billingDay !== null
+      ? getNextClientBillingDueDate(
+          {
+            billingDay: profile.billingDay,
+            paymentTermsDays: profile.paymentTermsDays,
+          },
+          options.asOf ?? new Date(),
+        )
+      : null;
 
   if (valueHidden) {
     return {

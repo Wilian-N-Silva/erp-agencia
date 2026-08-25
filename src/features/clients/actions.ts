@@ -44,19 +44,24 @@ import {
 
 const clientStatusSchema = z.enum(["active", "paused", "cancelled"]);
 
-const createClientSchema = z.strictObject({
+const clientInputShape = {
   name: z.string().trim().min(1).max(160),
-  monthlyFee: z.string().trim().min(1).transform(normalizeMoneyInput),
-  billingDay: z.coerce.number().int().min(1).max(31),
+  monthlyFee: optionalMoneySchema(),
+  billingDay: optionalIntegerInputSchema({ min: 1, max: 31 }),
   internalOwnerEmployeeId: optionalIdSchema(),
   billingMethod: optionalTextSchema(80),
   notes: optionalTextSchema(1000),
   startDate: optionalDateSchema(),
-});
+} as const;
 
-const updateClientSchema = createClientSchema.extend({
+const createClientSchema = z
+  .strictObject(clientInputShape)
+  .superRefine(validateOptionalBillingPair);
+
+const updateClientSchema = z.strictObject({
+  ...clientInputShape,
   id: z.string().uuid(),
-});
+}).superRefine(validateOptionalBillingPair);
 
 const updateClientStatusSchema = z.strictObject({
   id: z.string().uuid(),
@@ -124,8 +129,14 @@ export async function createClientAction(formData: FormData) {
 }
 
 async function createClient(formData: FormData) {
-  const { context, organizationId } = await requireClientFinancialWriterContext();
+  const { context, organizationId } = await requireClientWriterContext();
   const input = createClientSchema.parse(formDataToObject(formData));
+  const hasBillingProfile = input.monthlyFee !== null && input.billingDay !== null;
+
+  if (hasBillingProfile) {
+    assertCan("finance.write", context);
+  }
+
   const internalOwnerEmployeeId = await resolveEmployeeId(
     input.internalOwnerEmployeeId,
     organizationId,
@@ -144,20 +155,22 @@ async function createClient(formData: FormData) {
       monthlyFee: input.monthlyFee,
       billingDay: input.billingDay,
       internalOwnerEmployeeId,
-      billingMethod: input.billingMethod,
+      billingMethod: hasBillingProfile ? input.billingMethod : null,
       notes: input.notes,
       startDate: input.startDate,
     })
     .returning();
 
-  await db.insert(clientBillingProfiles).values({
-    organizationId,
-    clientId: client.id,
-    monthlyFee: input.monthlyFee,
-    billingDay: input.billingDay,
-    paymentMethod: input.billingMethod,
-    billingOwnerEmployeeId: internalOwnerEmployeeId,
-  });
+  if (input.monthlyFee !== null && input.billingDay !== null) {
+    await db.insert(clientBillingProfiles).values({
+      organizationId,
+      clientId: client.id,
+      monthlyFee: input.monthlyFee,
+      billingDay: input.billingDay,
+      paymentMethod: input.billingMethod,
+      billingOwnerEmployeeId: internalOwnerEmployeeId,
+    });
+  }
 
   await writeAuditLog(context, {
     action: "create",
@@ -171,10 +184,16 @@ async function createClient(formData: FormData) {
 }
 
 async function updateClientAction(formData: FormData) {
-  const { context, organizationId } = await requireClientFinancialWriterContext();
+  const { context, organizationId } = await requireClientWriterContext();
   const input = updateClientSchema.parse(formDataToObject(formData));
   const before = await getClientForWrite(input.id, organizationId);
   const beforeBilling = await getClientBillingProfileForWrite(input.id, organizationId);
+  const hasBillingProfile = input.monthlyFee !== null && input.billingDay !== null;
+
+  if (hasBillingProfile || beforeBilling.isConfigured) {
+    assertCan("finance.write", context);
+  }
+
   const internalOwnerEmployeeId = await resolveEmployeeId(
     input.internalOwnerEmployeeId,
     organizationId,
@@ -187,7 +206,7 @@ async function updateClientAction(formData: FormData) {
       monthlyFee: input.monthlyFee,
       billingDay: input.billingDay,
       internalOwnerEmployeeId,
-      billingMethod: input.billingMethod,
+      billingMethod: hasBillingProfile ? input.billingMethod : null,
       notes: input.notes,
       startDate: input.startDate,
       updatedAt: new Date(),
@@ -201,23 +220,35 @@ async function updateClientAction(formData: FormData) {
     )
     .returning();
 
-  await upsertClientBillingProfile({
-    organizationId,
-    clientId: input.id,
-    monthlyFee: input.monthlyFee,
-    billingDay: input.billingDay,
-    paymentMethod: input.billingMethod,
-    billingOwnerEmployeeId: internalOwnerEmployeeId,
-    paymentTermsDays: beforeBilling.effective.paymentTermsDays,
-    recurrence: beforeBilling.profile?.recurrence ?? "monthly",
-    autoGenerateEntries: beforeBilling.profile?.autoGenerateEntries ?? false,
-    financialContactName: beforeBilling.profile?.financialContactName ?? null,
-    financialEmail: beforeBilling.profile?.financialEmail ?? null,
-    financialPhone: beforeBilling.profile?.financialPhone ?? null,
-    reminderBeforeDays: beforeBilling.profile?.reminderBeforeDays ?? 3,
-    reminderAfterDays: beforeBilling.profile?.reminderAfterDays ?? 1,
-    notes: beforeBilling.profile?.notes ?? null,
-  });
+  if (input.monthlyFee !== null && input.billingDay !== null) {
+    await upsertClientBillingProfile({
+      organizationId,
+      clientId: input.id,
+      monthlyFee: input.monthlyFee,
+      billingDay: input.billingDay,
+      paymentMethod: input.billingMethod,
+      billingOwnerEmployeeId: internalOwnerEmployeeId,
+      paymentTermsDays: beforeBilling.effective.paymentTermsDays,
+      recurrence: beforeBilling.profile?.recurrence ?? "monthly",
+      autoGenerateEntries: beforeBilling.profile?.autoGenerateEntries ?? false,
+      financialContactName: beforeBilling.profile?.financialContactName ?? null,
+      financialEmail: beforeBilling.profile?.financialEmail ?? null,
+      financialPhone: beforeBilling.profile?.financialPhone ?? null,
+      reminderBeforeDays: beforeBilling.profile?.reminderBeforeDays ?? 3,
+      reminderAfterDays: beforeBilling.profile?.reminderAfterDays ?? 1,
+      notes: beforeBilling.profile?.notes ?? null,
+    });
+  } else if (beforeBilling.profile) {
+    await db
+      .update(clientBillingProfiles)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(clientBillingProfiles.id, beforeBilling.profile.id),
+          eq(clientBillingProfiles.organizationId, organizationId),
+        ),
+      );
+  }
 
   await writeAuditLog(context, {
     action: "update",
@@ -308,6 +339,13 @@ async function generateClientExpectedEntryAction(formData: FormData) {
     throw new Error("Client is not eligible for expected entry generation.");
   }
 
+  const monthlyFee = billing.effective.monthlyFee;
+  const billingDay = billing.effective.billingDay;
+
+  if (monthlyFee === null || billingDay === null) {
+    throw new Error("Client billing profile is not configured.");
+  }
+
   const description = buildClientExpectedEntryDescription(
     billing.client.name,
     input.competence,
@@ -336,10 +374,10 @@ async function generateClientExpectedEntryAction(formData: FormData) {
       organizationId,
       clientId: input.clientId,
       description,
-      amount: billing.effective.monthlyFee,
+      amount: monthlyFee,
       dueDate: buildClientBillingDueDate(
         input.competence,
-        billing.effective.billingDay,
+        billingDay,
         billing.effective.paymentTermsDays,
       ),
       paymentMethod: billing.effective.paymentMethod,
@@ -563,6 +601,9 @@ async function getClientBillingProfileForWrite(clientId: string, organizationId:
   return {
     client,
     profile: profile ?? null,
+    isConfigured: Boolean(
+      profile || (client.monthlyFee !== null && client.billingDay !== null),
+    ),
     effective: {
       monthlyFee: profile?.monthlyFee ?? client.monthlyFee,
       billingDay: profile?.billingDay ?? client.billingDay,
@@ -774,6 +815,49 @@ function optionalDateSchema() {
     .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
+}
+
+function optionalMoneySchema() {
+  return z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? normalizeMoneyInput(value) : null));
+}
+
+function optionalIntegerInputSchema({
+  max,
+  min,
+}: {
+  max: number;
+  min: number;
+}) {
+  return z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? Number(value) : null))
+    .refine(
+      (value) =>
+        value === null ||
+        (Number.isInteger(value) && value >= min && value <= max),
+      { message: "Invalid integer." },
+    );
+}
+
+function validateOptionalBillingPair(
+  input: { billingDay: number | null; monthlyFee: string | null },
+  context: z.RefinementCtx,
+) {
+  if ((input.monthlyFee === null) === (input.billingDay === null)) {
+    return;
+  }
+
+  context.addIssue({
+    code: "custom",
+    message: "Monthly fee and billing day must be provided together.",
+    path: [input.monthlyFee === null ? "monthlyFee" : "billingDay"],
+  });
 }
 
 function integerInputSchema({
