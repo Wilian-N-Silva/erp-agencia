@@ -45,8 +45,8 @@ export type ClientRecord = {
   name: string;
   code: string;
   status: ClientStatus;
-  monthlyFee: string;
-  billingDay: number;
+  monthlyFee: string | null;
+  billingDay: number | null;
   internalOwnerEmployeeId: string | null;
   internalOwnerName: string | null;
   billingMethod: string | null;
@@ -69,7 +69,8 @@ export type ClientBillingSchedule = {
   paymentTermsDays?: number | null;
 };
 
-export type ClientExpectedEntryTarget = ClientBillingSchedule & {
+export type ClientExpectedEntryTarget = Omit<ClientBillingSchedule, "billingDay"> & {
+  billingDay: number | null | undefined;
   clientStatus: ClientStatus;
   monthlyFee: string | null | undefined;
 };
@@ -155,6 +156,7 @@ export function getNextClientBillingDueDate(
 export function canGenerateClientExpectedEntry(target: ClientExpectedEntryTarget) {
   return (
     target.clientStatus === "active" &&
+    typeof target.billingDay === "number" &&
     target.billingDay >= 1 &&
     target.billingDay <= 31 &&
     moneyToCents(target.monthlyFee) > 0

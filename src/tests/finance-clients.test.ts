@@ -393,6 +393,13 @@ describe("client access rules", () => {
         monthlyFee: "1200.00",
       }),
     ).toBe(false);
+    expect(
+      canGenerateClientExpectedEntry({
+        billingDay: null,
+        clientStatus: "active",
+        monthlyFee: null,
+      }),
+    ).toBe(false);
     expect(buildClientExpectedEntryDescription("Acme", "2026-05")).toBe(
       "Fee 05/2026 - Acme",
     );
