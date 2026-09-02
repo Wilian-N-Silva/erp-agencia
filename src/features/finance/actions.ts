@@ -24,7 +24,11 @@ import {
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validation";
 
-import { normalizeMoneyInput, toDateKey } from "./rules";
+import {
+  buildFinancialExpenseUpdateValues,
+  normalizeMoneyInput,
+  toDateKey,
+} from "./rules";
 
 const dateSchema = isoDateSchema;
 const competenceSchema = isoMonthSchema;
@@ -302,22 +306,7 @@ async function updateFinancialExpenseAction(formData: FormData) {
 
   const [after] = await db
     .update(financialExpenses)
-    .set({
-      supplierId: masterData.supplierId,
-      supplier: masterData.supplierName,
-      categoryId: masterData.categoryId,
-      category: masterData.categoryName,
-      costCenterId: masterData.costCenterId,
-      subcategory: input.subcategory,
-      description: input.description,
-      amount: input.amount,
-      dueDate: input.dueDate,
-      competence: input.competence,
-      costCenter: masterData.costCenterName,
-      recurring: input.recurring,
-      notes: input.notes,
-      updatedAt: new Date(),
-    })
+    .set(buildFinancialExpenseUpdateValues(input, masterData))
     .where(
       and(
         eq(financialExpenses.id, input.id),
@@ -554,6 +543,23 @@ async function getExpenseForWrite(id: string, organizationId: string) {
 async function resolveExpenseMasterData(
   input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
   organizationId: string,
+): Promise<{
+  supplier: { id: string; name: string };
+  category: { id: string; name: string };
+  costCenter: { id: string; name: string } | null;
+}>;
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+  legacy: typeof financialExpenses.$inferSelect,
+): Promise<{
+  supplierId: string | null;
+  categoryId: string | null;
+  costCenterId: string | null;
+}>;
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
   legacy?: typeof financialExpenses.$inferSelect,
 ) {
   const [supplier, category, costCenter] = await Promise.all([
@@ -579,15 +585,8 @@ async function resolveExpenseMasterData(
 
   return {
     supplierId: supplier?.id ?? legacy.supplierId,
-    supplierName: supplier?.name ?? legacy.supplier,
     categoryId: category?.id ?? legacy.categoryId,
-    categoryName: category?.name ?? legacy.category,
     costCenterId: input.costCenterId ? costCenter?.id ?? null : null,
-    costCenterName: input.costCenterId
-      ? costCenter?.name ?? null
-      : legacy.costCenterId
-        ? null
-        : legacy.costCenter,
   };
 }
 
