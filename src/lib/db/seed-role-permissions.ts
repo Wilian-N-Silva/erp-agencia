@@ -33,6 +33,7 @@ export const defaultRolePermissions: Record<
     "finance.read",
     "finance.write",
     "finance.export",
+    "finance.configure",
     "clients.read",
     "clients.write",
     "people.read",

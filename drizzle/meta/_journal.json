@@ -120,6 +120,13 @@
       "when": 1787626627636,
       "tag": "0016_clear_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788377627143,
+      "tag": "0017_glorious_ultimatum",
+      "breakpoints": true
     }
   ]
 }

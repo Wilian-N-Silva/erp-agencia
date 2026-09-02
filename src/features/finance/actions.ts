@@ -9,9 +9,12 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
   clients,
+  costCenters,
+  financialCategories,
   financialEntries,
   financialExpenses,
   provisions,
+  suppliers,
 } from "@/lib/db/schema";
 import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
 import {
@@ -61,14 +64,14 @@ const updateEntrySchema = createEntrySchema.extend({
 });
 
 const createExpenseSchema = z.strictObject({
-  supplier: z.string().trim().min(1).max(160),
-  category: z.string().trim().min(1).max(80),
+  supplierId: z.string().uuid(),
+  categoryId: z.string().uuid(),
+  costCenterId: optionalIdSchema(),
   subcategory: optionalTextSchema(80),
   description: z.string().trim().min(1).max(180),
   amount: z.string().trim().min(1).transform(normalizeMoneyInput),
   dueDate: dateSchema,
   competence: competenceSchema,
-  costCenter: optionalTextSchema(100),
   recurring: z
     .string()
     .optional()
@@ -78,6 +81,8 @@ const createExpenseSchema = z.strictObject({
 
 const updateExpenseSchema = createExpenseSchema.extend({
   id: z.string().uuid(),
+  supplierId: optionalIdSchema(),
+  categoryId: optionalIdSchema(),
 });
 
 const createProvisionSchema = z.strictObject({
@@ -256,19 +261,23 @@ async function cancelFinancialEntryAction(formData: FormData) {
 async function createFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createExpenseSchema.parse(formDataToObject(formData));
+  const masterData = await resolveExpenseMasterData(input, organizationId);
 
   const [expense] = await db
     .insert(financialExpenses)
     .values({
       organizationId,
-      supplier: input.supplier,
-      category: input.category,
+      supplierId: masterData.supplier!.id,
+      supplier: masterData.supplier!.name,
+      categoryId: masterData.category!.id,
+      category: masterData.category!.name,
+      costCenterId: masterData.costCenter?.id ?? null,
       subcategory: input.subcategory,
       description: input.description,
       amount: input.amount,
       dueDate: input.dueDate,
       competence: input.competence,
-      costCenter: input.costCenter,
+      costCenter: masterData.costCenter?.name ?? null,
       recurring: input.recurring,
       notes: input.notes,
       responsibleUserId: context.userId,
@@ -289,18 +298,22 @@ async function updateFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = updateExpenseSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
+  const masterData = await resolveExpenseMasterData(input, organizationId, before);
 
   const [after] = await db
     .update(financialExpenses)
     .set({
-      supplier: input.supplier,
-      category: input.category,
+      supplierId: masterData.supplierId,
+      supplier: masterData.supplierName,
+      categoryId: masterData.categoryId,
+      category: masterData.categoryName,
+      costCenterId: masterData.costCenterId,
       subcategory: input.subcategory,
       description: input.description,
       amount: input.amount,
       dueDate: input.dueDate,
       competence: input.competence,
-      costCenter: input.costCenter,
+      costCenter: masterData.costCenterName,
       recurring: input.recurring,
       notes: input.notes,
       updatedAt: new Date(),
@@ -536,6 +549,68 @@ async function getExpenseForWrite(id: string, organizationId: string) {
   }
 
   return expense;
+}
+
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+  legacy?: typeof financialExpenses.$inferSelect,
+) {
+  const [supplier, category, costCenter] = await Promise.all([
+    input.supplierId
+      ? getMasterDataRow(suppliers, input.supplierId, organizationId, legacy?.supplierId)
+      : null,
+    input.categoryId
+      ? getMasterDataRow(financialCategories, input.categoryId, organizationId, legacy?.categoryId)
+      : null,
+    input.costCenterId
+      ? getMasterDataRow(costCenters, input.costCenterId, organizationId, legacy?.costCenterId)
+      : null,
+  ]);
+
+  if (!legacy) {
+    if (!supplier || !category) throw new AccessDeniedError();
+    return { supplier, category, costCenter };
+  }
+
+  if ((!supplier && !legacy.supplier) || (!category && !legacy.category)) {
+    throw new AccessDeniedError();
+  }
+
+  return {
+    supplierId: supplier?.id ?? legacy.supplierId,
+    supplierName: supplier?.name ?? legacy.supplier,
+    categoryId: category?.id ?? legacy.categoryId,
+    categoryName: category?.name ?? legacy.category,
+    costCenterId: input.costCenterId ? costCenter?.id ?? null : null,
+    costCenterName: input.costCenterId
+      ? costCenter?.name ?? null
+      : legacy.costCenterId
+        ? null
+        : legacy.costCenter,
+  };
+}
+
+async function getMasterDataRow(
+  table: typeof suppliers | typeof financialCategories | typeof costCenters,
+  id: string,
+  organizationId: string,
+  currentlyLinkedId?: string | null,
+) {
+  const [row] = await db
+    .select({ id: table.id, name: table.name })
+    .from(table)
+    .where(
+      and(
+        eq(table.id, id),
+        eq(table.organizationId, organizationId),
+        currentlyLinkedId === id ? undefined : eq(table.isActive, true),
+      ),
+    )
+    .limit(1);
+
+  if (!row) throw new AccessDeniedError();
+  return row;
 }
 
 async function getProvisionForWrite(id: string, organizationId: string) {

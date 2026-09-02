@@ -45,6 +45,9 @@ export type FinanceEntryListItem = {
 
 export type FinanceExpenseListItem = {
   id: string;
+  supplierId: string | null;
+  categoryId: string | null;
+  costCenterId: string | null;
   supplier: string;
   category: string;
   subcategory: string | null;
@@ -118,6 +121,9 @@ async function getFinanceDashboard(
     db
       .select({
         id: financialExpenses.id,
+        supplierId: financialExpenses.supplierId,
+        categoryId: financialExpenses.categoryId,
+        costCenterId: financialExpenses.costCenterId,
         supplier: financialExpenses.supplier,
         category: financialExpenses.category,
         subcategory: financialExpenses.subcategory,
@@ -187,6 +193,9 @@ async function getFinanceDashboard(
     })),
     expenses: filteredExpenseRows.map((expense) => ({
       id: expense.id,
+      supplierId: expense.supplierId,
+      categoryId: expense.categoryId,
+      costCenterId: expense.costCenterId,
       supplier: expense.supplier,
       category: expense.category,
       subcategory: expense.subcategory,
