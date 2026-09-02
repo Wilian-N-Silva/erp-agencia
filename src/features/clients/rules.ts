@@ -5,9 +5,11 @@ import {
   addDaysToDateKey,
   centsToMoney,
   formatCompetence,
+  getFinancialEntryEffectiveStatus,
   moneyToCents,
   toDateKey,
   type FinancialEntryStatus,
+  type LegacyFinancialEntryStatus,
 } from "@/features/finance/rules";
 
 export const clientStatusLabels = {
@@ -80,7 +82,7 @@ export type ClientPaymentStatusTarget = {
   receivedAmount?: string | null;
   dueDate: string | Date;
   receivedDate?: string | Date | null;
-  status: FinancialEntryStatus;
+  status: LegacyFinancialEntryStatus | FinancialEntryStatus;
 };
 
 export type ClientReminderTarget = ClientPaymentStatusTarget & {
@@ -174,24 +176,15 @@ export function getClientPaymentStatus(
   payment: ClientPaymentStatusTarget,
   asOf: string | Date = new Date(),
 ): ClientFinancialStatus {
-  if (payment.status === "cancelled") {
-    return "cancelled";
-  }
+  const obligationStatus = getFinancialEntryEffectiveStatus(payment, asOf);
 
-  if (payment.receivedDate || payment.status === "received") {
-    return "received";
-  }
-
-  if (isPartialPayment(payment)) {
-    return "partial";
-  }
+  if (obligationStatus === "cancelled") return "cancelled";
+  if (obligationStatus === "settled") return "received";
+  if (obligationStatus === "partial") return "partial";
+  if (obligationStatus === "overdue") return "overdue";
 
   const dueDate = toDateKey(payment.dueDate);
   const asOfKey = toDateKey(asOf);
-
-  if (dueDate < asOfKey) {
-    return "overdue";
-  }
 
   if (dueDate === asOfKey) {
     return "due_today";
@@ -395,12 +388,6 @@ function normalizeSearchQuery(value: string | undefined) {
 
 function isClientStatusFilter(value: string | undefined): value is ClientStatus | "all" {
   return Boolean(value && (value === "all" || Object.keys(clientStatusLabels).includes(value)));
-}
-
-function isPartialPayment(payment: ClientPaymentStatusTarget) {
-  const receivedCents = moneyToCents(payment.receivedAmount);
-
-  return receivedCents > 0 && receivedCents < moneyToCents(payment.amount);
 }
 
 function buildClampedDateKey(monthKey: string, targetDay: number) {

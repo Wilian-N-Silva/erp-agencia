@@ -35,7 +35,7 @@ import {
 import {
   centsToMoney,
   moneyToCents,
-  type FinancialEntryStatus,
+  type LegacyFinancialEntryStatus,
 } from "@/features/finance/rules";
 
 export type ClientOwnerOption = {
@@ -77,7 +77,7 @@ export type ClientPaymentListItem = {
   receivedAmount: string | null;
   paymentMethod: string | null;
   status: ClientFinancialStatus;
-  entryStatus: FinancialEntryStatus;
+  entryStatus: LegacyFinancialEntryStatus;
   receivedDate: string | null;
   recurring: boolean;
   notes: string | null;

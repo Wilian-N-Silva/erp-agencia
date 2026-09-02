@@ -59,11 +59,11 @@ export async function renderFinancePage({
 
   const newEntryAction = canWrite ? (
     <ActionSheet
-      title="Nova entrada"
-      description="Cadastre um novo lançamento de receita."
+      title="Nova conta a receber"
+      description="Cadastre uma nova obrigação de recebimento."
       trigger={
         <Button variant="primary" size="sm" icon={<Plus size={14} />}>
-          Nova entrada
+          Nova conta a receber
         </Button>
       }
     >
@@ -71,25 +71,25 @@ export async function renderFinancePage({
         action={createFinancialEntryAction}
         clientOptions={clientOptions}
         mode="create"
-        submitLabel="Criar entrada"
+        submitLabel="Criar conta a receber"
       />
     </ActionSheet>
   ) : null;
 
   const newExpenseAction = canWrite ? (
     <ActionSheet
-      title="Nova saída"
-      description="Cadastre um novo lançamento de despesa."
+      title="Nova conta a pagar"
+      description="Cadastre uma nova obrigação de pagamento."
       trigger={
         <Button variant="primary" size="sm" icon={<Plus size={14} />}>
-          Nova saída
+          Nova conta a pagar
         </Button>
       }
     >
       <ExpenseForm
         action={createFinancialExpenseAction}
         mode="create"
-        submitLabel="Criar saída"
+        submitLabel="Criar conta a pagar"
       />
     </ActionSheet>
   ) : null;
@@ -701,12 +701,12 @@ function EntryRowActions({
   return (
     <div style={{ display: "inline-flex", gap: 4, justifyContent: "flex-end" }}>
       <ActionSheet
-        title="Editar entrada"
-        description="Atualize os dados do lançamento."
+        title="Editar conta a receber"
+        description="Atualize os dados da obrigação."
         trigger={
           <span
             className="fg-icon-btn sm"
-            aria-label="Editar entrada"
+            aria-label="Editar conta a receber"
             title="Editar"
           >
             <Pencil size={14} />
@@ -718,10 +718,10 @@ function EntryRowActions({
           clientOptions={clientOptions}
           entry={entry}
           mode="edit"
-          submitLabel="Salvar entrada"
+          submitLabel="Salvar conta a receber"
         />
       </ActionSheet>
-      {entry.status !== "received" && entry.status !== "cancelled" ? (
+      {entry.status !== "settled" && entry.status !== "cancelled" ? (
         <RateLimitedActionForm
           action={markFinancialEntryReceivedAction}
           style={{ display: "inline" }}
@@ -730,8 +730,8 @@ function EntryRowActions({
           <button
             type="submit"
             className="fg-icon-btn sm"
-            aria-label="Marcar como recebido"
-            title="Receber"
+            aria-label="Registrar liquidação da conta a receber"
+            title="Registrar liquidação"
           >
             <CheckCircle2 size={14} />
           </button>
@@ -762,12 +762,12 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
   return (
     <div style={{ display: "inline-flex", gap: 4, justifyContent: "flex-end" }}>
       <ActionSheet
-        title="Editar saída"
-        description="Atualize os dados da despesa."
+        title="Editar conta a pagar"
+        description="Atualize os dados da obrigação."
         trigger={
           <span
             className="fg-icon-btn sm"
-            aria-label="Editar saída"
+            aria-label="Editar conta a pagar"
             title="Editar"
           >
             <Pencil size={14} />
@@ -778,10 +778,10 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
           action={updateFinancialExpenseAction}
           expense={expense}
           mode="edit"
-          submitLabel="Salvar saída"
+          submitLabel="Salvar conta a pagar"
         />
       </ActionSheet>
-      {expense.status !== "paid" && expense.status !== "cancelled" ? (
+      {expense.status !== "settled" && expense.status !== "cancelled" ? (
         <RateLimitedActionForm
           action={markFinancialExpensePaidAction}
           style={{ display: "inline" }}
@@ -790,8 +790,8 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
           <button
             type="submit"
             className="fg-icon-btn sm"
-            aria-label="Marcar como pago"
-            title="Pagar"
+            aria-label="Registrar liquidação da conta a pagar"
+            title="Registrar liquidação"
           >
             <CheckCircle2 size={14} />
           </button>
