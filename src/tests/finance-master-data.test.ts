@@ -101,6 +101,61 @@ describe("FIN-002 master data validation", () => {
     });
   });
 
+  it("updates AP snapshots when linked master data is explicitly changed", () => {
+    const updatedAt = new Date("2026-09-02T12:00:00.000Z");
+    const update = buildFinancialExpenseUpdateValues(
+      {
+        amount: "100.00",
+        competence: "2026-09",
+        description: "Despesa migrada",
+        dueDate: "2026-09-20",
+        notes: null,
+        recurring: false,
+        subcategory: null,
+      },
+      {
+        supplierId: "72000000-0000-4000-8000-000000000012",
+        supplier: "Fornecedor novo",
+        categoryId: "72000000-0000-4000-8000-000000000022",
+        category: "Categoria nova",
+        costCenterId: "72000000-0000-4000-8000-000000000032",
+        costCenter: "Centro novo",
+      },
+      updatedAt,
+    );
+
+    expect(update).toMatchObject({
+      supplierId: "72000000-0000-4000-8000-000000000012",
+      supplier: "Fornecedor novo",
+      categoryId: "72000000-0000-4000-8000-000000000022",
+      category: "Categoria nova",
+      costCenterId: "72000000-0000-4000-8000-000000000032",
+      costCenter: "Centro novo",
+    });
+  });
+
+  it("clears the AP cost-center snapshot when its link is explicitly removed", () => {
+    const update = buildFinancialExpenseUpdateValues(
+      {
+        amount: "100.00",
+        competence: "2026-09",
+        description: "Despesa sem centro",
+        dueDate: "2026-09-20",
+        notes: null,
+        recurring: false,
+        subcategory: null,
+      },
+      {
+        supplierId: null,
+        categoryId: null,
+        costCenterId: null,
+        costCenter: null,
+      },
+    );
+
+    expect(update).toMatchObject({ costCenterId: null, costCenter: null });
+  });
+
   it("keeps legacy free text unresolved instead of promoting it to canonical master data", async () => {
     const migration = await readFile(
       resolve(process.cwd(), "drizzle/0017_glorious_ultimatum.sql"),

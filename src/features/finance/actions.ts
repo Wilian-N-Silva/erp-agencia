@@ -28,6 +28,7 @@ import {
   buildFinancialExpenseUpdateValues,
   normalizeMoneyInput,
   toDateKey,
+  type FinancialExpenseMasterDataUpdate,
 } from "./rules";
 
 const dateSchema = isoDateSchema;
@@ -540,28 +541,26 @@ async function getExpenseForWrite(id: string, organizationId: string) {
   return expense;
 }
 
-async function resolveExpenseMasterData(
-  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
-  organizationId: string,
-): Promise<{
+type ResolvedExpenseMasterData = {
   supplier: { id: string; name: string };
   category: { id: string; name: string };
   costCenter: { id: string; name: string } | null;
-}>;
+};
+
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+): Promise<ResolvedExpenseMasterData>;
 async function resolveExpenseMasterData(
   input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
   organizationId: string,
   legacy: typeof financialExpenses.$inferSelect,
-): Promise<{
-  supplierId: string | null;
-  categoryId: string | null;
-  costCenterId: string | null;
-}>;
+): Promise<FinancialExpenseMasterDataUpdate>;
 async function resolveExpenseMasterData(
   input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
   organizationId: string,
   legacy?: typeof financialExpenses.$inferSelect,
-) {
+): Promise<ResolvedExpenseMasterData | FinancialExpenseMasterDataUpdate> {
   const [supplier, category, costCenter] = await Promise.all([
     input.supplierId
       ? getMasterDataRow(suppliers, input.supplierId, organizationId, legacy?.supplierId)
@@ -585,8 +584,15 @@ async function resolveExpenseMasterData(
 
   return {
     supplierId: supplier?.id ?? legacy.supplierId,
+    ...(supplier && supplier.id !== legacy.supplierId ? { supplier: supplier.name } : {}),
     categoryId: category?.id ?? legacy.categoryId,
+    ...(category && category.id !== legacy.categoryId ? { category: category.name } : {}),
     costCenterId: input.costCenterId ? costCenter?.id ?? null : null,
+    ...(costCenter && costCenter.id !== legacy.costCenterId
+      ? { costCenter: costCenter.name }
+      : legacy.costCenterId && !input.costCenterId
+        ? { costCenter: null }
+        : {}),
   };
 }
 
