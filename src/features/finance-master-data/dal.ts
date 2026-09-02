@@ -3,10 +3,12 @@ import { asc, eq } from "drizzle-orm";
 import { bindTenantContext, db } from "@/lib/db";
 import { costCenters, financialAccounts, financialCategories, suppliers } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+
+import { financeMasterDataReadPermissions } from "./rules";
 
 async function listFinanceMasterData(context: AccessContext) {
-  assertCan("finance.read", context);
+  assertCanAny(financeMasterDataReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const [accounts, categories, centers, supplierRows] = await Promise.all([
     db.select().from(financialAccounts).where(eq(financialAccounts.organizationId, organizationId)).orderBy(asc(financialAccounts.name)),

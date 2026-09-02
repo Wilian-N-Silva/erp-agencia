@@ -1,12 +1,17 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
   financialAccountInputSchema,
   financialCategoryInputSchema,
+  financeMasterDataReadPermissions,
   supplierInputSchema,
 } from "@/features/finance-master-data/rules";
 import { buildFinancialExpenseUpdateValues } from "@/features/finance/rules";
 import { getSeedPermissionsForRoles } from "@/lib/db/seed-role-permissions";
+import { canAny } from "@/lib/rbac";
 
 describe("FIN-002 master data validation", () => {
   it("normalizes account balances and rejects mass-assignment fields", () => {
@@ -47,6 +52,20 @@ describe("FIN-002 master data validation", () => {
     expect(getSeedPermissionsForRoles(["employee"])).not.toContain("finance.configure");
   });
 
+  it("allows either finance.read or finance.configure to read the configurable CRUD", () => {
+    const context = (permissions: ("finance.read" | "finance.configure")[]) => ({
+      employeeId: null,
+      organizationId: "72000000-0000-4000-8000-000000000001",
+      permissions,
+      roles: [],
+      userId: "fin-002-user",
+    });
+
+    expect(canAny(financeMasterDataReadPermissions, context(["finance.read"]))).toBe(true);
+    expect(canAny(financeMasterDataReadPermissions, context(["finance.configure"]))).toBe(true);
+    expect(canAny(financeMasterDataReadPermissions, context([]))).toBe(false);
+  });
+
   it("preserves legacy snapshots when linked master data is renamed before an AP edit", () => {
     const legacyExpense = {
       supplier: "Fornecedor original",
@@ -80,5 +99,16 @@ describe("FIN-002 master data validation", () => {
       costCenter: "Centro original",
       dueDate: "2026-09-20",
     });
+  });
+
+  it("keeps legacy free text unresolved instead of promoting it to canonical master data", async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), "drizzle/0017_glorious_ultimatum.sql"),
+      "utf8",
+    );
+
+    expect(migration).not.toMatch(/INSERT INTO "(?:suppliers|financial_categories|cost_centers)"/);
+    expect(migration).not.toMatch(/SET "(?:supplier_id|category_id|cost_center_id)"/);
+    expect(migration).toContain("'strategy', 'manual_review_required'");
   });
 });

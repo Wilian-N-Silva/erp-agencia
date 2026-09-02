@@ -17,15 +17,15 @@ import {
   updateSupplierAction,
 } from "@/features/finance-master-data/actions";
 import { getFinanceMasterData } from "@/features/finance-master-data/dal";
-import { financialAccountTypeLabels, financialCategoryNatureLabels } from "@/features/finance-master-data/rules";
+import { financeMasterDataReadPermissions, financialAccountTypeLabels, financialCategoryNatureLabels } from "@/features/finance-master-data/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
-import { can } from "@/lib/rbac";
+import { can, canAny } from "@/lib/rbac";
 import type { FormServerAction } from "@/lib/server-action-result";
 
 export default async function FinanceMasterDataPage() {
   const context = await getCurrentAccessContext();
   if (!context) redirect("/login");
-  if (!can("finance.read", context)) redirect("/acesso-negado");
+  if (!canAny(financeMasterDataReadPermissions, context)) redirect("/acesso-negado");
 
   const data = await getFinanceMasterData(context);
   const canConfigure = can("finance.configure", context);

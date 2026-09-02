@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { centsToMoney, moneyToCents } from "@/features/finance/rules";
 
+export const financeMasterDataReadPermissions = [
+  "finance.read",
+  "finance.configure",
+] as const;
+
 const optionalText = (max: number) =>
   z.string().trim().max(max).transform((value) => value || null);
 

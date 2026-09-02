@@ -72,38 +72,11 @@ CREATE INDEX "financial_expenses_supplier_idx" ON "financial_expenses" USING btr
 CREATE INDEX "financial_expenses_category_idx" ON "financial_expenses" USING btree ("organization_id","category_id");--> statement-breakpoint
 CREATE INDEX "financial_expenses_cost_center_idx" ON "financial_expenses" USING btree ("organization_id","cost_center_id");
 --> statement-breakpoint
--- Expand/backfill: preserve the original free-text columns as immutable snapshots
--- while linking exact, organization-scoped master-data matches.
-INSERT INTO "suppliers" ("organization_id", "name")
-SELECT DISTINCT "organization_id", "supplier"
-FROM "financial_expenses"
-WHERE btrim("supplier") <> ''
-ON CONFLICT ("organization_id", "name") DO NOTHING;--> statement-breakpoint
-INSERT INTO "financial_categories" ("organization_id", "name", "nature")
-SELECT DISTINCT "organization_id", "category", 'expense'
-FROM "financial_expenses"
-WHERE btrim("category") <> ''
-ON CONFLICT ("organization_id", "name") DO NOTHING;--> statement-breakpoint
-INSERT INTO "cost_centers" ("organization_id", "name")
-SELECT DISTINCT "organization_id", "cost_center"
-FROM "financial_expenses"
-WHERE "cost_center" IS NOT NULL AND btrim("cost_center") <> ''
-ON CONFLICT ("organization_id", "name") DO NOTHING;--> statement-breakpoint
-UPDATE "financial_expenses" AS expense
-SET "supplier_id" = supplier."id"
-FROM "suppliers" AS supplier
-WHERE supplier."organization_id" = expense."organization_id"
-  AND supplier."name" = expense."supplier";--> statement-breakpoint
-UPDATE "financial_expenses" AS expense
-SET "category_id" = category."id"
-FROM "financial_categories" AS category
-WHERE category."organization_id" = expense."organization_id"
-  AND category."name" = expense."category";--> statement-breakpoint
-UPDATE "financial_expenses" AS expense
-SET "cost_center_id" = cost_center."id"
-FROM "cost_centers" AS cost_center
-WHERE cost_center."organization_id" = expense."organization_id"
-  AND cost_center."name" = expense."cost_center";--> statement-breakpoint
+-- Conservative rollout: legacy free text remains the source snapshot and the new
+-- nullable foreign keys deliberately stay unlinked. The newly-created master-data
+-- tables have no reviewed canonical records at this point, so promoting or matching
+-- arbitrary historical strings would manufacture canonical data. Operators can
+-- create canonical records and review/link unambiguous expenses after deployment.
 INSERT INTO "audit_logs" (
   "organization_id", "action", "entity_type", "metadata"
 )
@@ -116,7 +89,13 @@ SELECT
     'expenses', count(*)::int,
     'supplierLinks', count("supplier_id")::int,
     'categoryLinks', count("category_id")::int,
-    'costCenterLinks', count("cost_center_id")::int
+    'costCenterLinks', count("cost_center_id")::int,
+    'unresolvedSuppliers', count(*) FILTER (WHERE btrim("supplier") <> '')::int,
+    'unresolvedCategories', count(*) FILTER (WHERE btrim("category") <> '')::int,
+    'unresolvedCostCenters', count(*) FILTER (
+      WHERE "cost_center" IS NOT NULL AND btrim("cost_center") <> ''
+    )::int,
+    'strategy', 'manual_review_required'
   )
 FROM "financial_expenses" AS organization
 GROUP BY organization."organization_id";--> statement-breakpoint
