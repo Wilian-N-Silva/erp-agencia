@@ -16,7 +16,9 @@ import {
   applyProvisionFilters,
   computeFinanceDashboard,
   getFinancialEntryEffectiveStatus,
+  getFinancialEntrySettledAmount,
   getFinancialExpenseEffectiveStatus,
+  getFinancialExpenseSettledAmount,
   type FinanceDashboardTotals,
   type FinanceFilters,
   type FinancialEntryStatus,
@@ -29,8 +31,10 @@ export type FinanceEntryListItem = {
   clientName: string | null;
   description: string;
   amount: string;
+  settledAmount: string;
   receivedAmount: string | null;
   dueDate: string;
+  settlementDate: string | null;
   receivedDate: string | null;
   paymentMethod: string | null;
   competence: string;
@@ -46,7 +50,9 @@ export type FinanceExpenseListItem = {
   subcategory: string | null;
   description: string;
   amount: string;
+  settledAmount: string;
   dueDate: string;
+  settlementDate: string | null;
   paidDate: string | null;
   competence: string;
   status: FinancialExpenseStatus;
@@ -163,12 +169,38 @@ async function getFinanceDashboard(
     ...computed,
     filters,
     entries: filteredEntryRows.map((entry) => ({
-      ...entry,
+      id: entry.id,
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      description: entry.description,
+      amount: entry.amount,
+      settledAmount: getFinancialEntrySettledAmount(entry),
+      receivedAmount: entry.receivedAmount,
+      dueDate: entry.dueDate,
+      settlementDate: entry.receivedDate,
+      receivedDate: entry.receivedDate,
+      paymentMethod: entry.paymentMethod,
+      competence: entry.competence,
       status: getFinancialEntryEffectiveStatus(entry, asOf),
+      recurring: entry.recurring,
+      notes: entry.notes,
     })),
     expenses: filteredExpenseRows.map((expense) => ({
-      ...expense,
+      id: expense.id,
+      supplier: expense.supplier,
+      category: expense.category,
+      subcategory: expense.subcategory,
+      description: expense.description,
+      amount: expense.amount,
+      settledAmount: getFinancialExpenseSettledAmount(expense),
+      dueDate: expense.dueDate,
+      settlementDate: expense.paidDate,
+      paidDate: expense.paidDate,
+      competence: expense.competence,
       status: getFinancialExpenseEffectiveStatus(expense, asOf),
+      costCenter: expense.costCenter,
+      recurring: expense.recurring,
+      notes: expense.notes,
     })),
     provisions: filteredProvisionRows,
   };

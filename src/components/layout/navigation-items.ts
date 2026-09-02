@@ -59,14 +59,14 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     href: "/app/financeiro/entradas",
-    label: "Entradas",
+    label: "Contas a receber",
     icon: "finance-in",
     section: "Financeiro",
     permissions: ["finance.read"],
   },
   {
     href: "/app/financeiro/saidas",
-    label: "Saídas",
+    label: "Contas a pagar",
     icon: "finance-out",
     section: "Financeiro",
     permissions: ["finance.read"],

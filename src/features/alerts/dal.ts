@@ -408,6 +408,7 @@ async function buildFinancialExpenseAlertCandidates(
       id: financialExpenses.id,
       supplier: financialExpenses.supplier,
       description: financialExpenses.description,
+      amount: financialExpenses.amount,
       dueDate: financialExpenses.dueDate,
       paidDate: financialExpenses.paidDate,
       status: financialExpenses.status,

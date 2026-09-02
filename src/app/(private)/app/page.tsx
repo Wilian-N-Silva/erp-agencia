@@ -120,8 +120,13 @@ function moneyFromCents(cents: number) {
   return formatMoney(centsToMoney(cents));
 }
 
-function entryOutstandingCents(entry: Pick<FinanceEntryListItem, "amount" | "receivedAmount">) {
-  return Math.max(moneyToCents(entry.amount) - moneyToCents(entry.receivedAmount), 0);
+function obligationOutstandingCents(
+  obligation: Pick<FinanceEntryListItem, "amount" | "settledAmount">,
+) {
+  return Math.max(
+    moneyToCents(obligation.amount) - moneyToCents(obligation.settledAmount),
+    0,
+  );
 }
 
 function isUpcoming(dateKey: string, asOfKey: string, endKey: string) {
@@ -129,14 +134,16 @@ function isUpcoming(dateKey: string, asOfKey: string, endKey: string) {
 }
 
 function entryTone(status: FinanceEntryListItem["status"]): BadgeTone {
-  if (status === "received") return "success";
+  if (status === "settled") return "success";
+  if (status === "partial") return "warning-soft";
   if (status === "overdue") return "danger";
   if (status === "cancelled") return "muted";
   return "warning";
 }
 
 function expenseTone(status: FinanceExpenseListItem["status"]): BadgeTone {
-  if (status === "paid") return "success";
+  if (status === "settled") return "success";
+  if (status === "partial") return "warning-soft";
   if (status === "overdue") return "danger";
   if (status === "cancelled") return "muted";
   return "warning";
@@ -284,14 +291,14 @@ export default async function AppHomePage() {
 
   const upcomingReceivables = financeDashboard
     ? financeDashboard.entries
-        .filter((entry) => entry.status !== "received" && entry.status !== "cancelled")
+        .filter((entry) => entry.status !== "settled" && entry.status !== "cancelled")
         .filter((entry) => isUpcoming(toDateKey(entry.dueDate), todayKey, next7Key))
         .sort((a, b) => toDateKey(a.dueDate).localeCompare(toDateKey(b.dueDate)))
         .slice(0, 5)
     : [];
   const upcomingExpenses = financeDashboard
     ? financeDashboard.expenses
-        .filter((expense) => expense.status !== "paid" && expense.status !== "cancelled")
+        .filter((expense) => expense.status !== "settled" && expense.status !== "cancelled")
         .filter((expense) => isUpcoming(toDateKey(expense.dueDate), todayKey, next7Key))
         .sort((a, b) => toDateKey(a.dueDate).localeCompare(toDateKey(b.dueDate)))
         .slice(0, 5)
@@ -315,11 +322,11 @@ export default async function AppHomePage() {
     .slice(0, 4);
 
   const receivablesTotal = upcomingReceivables.reduce(
-    (total, entry) => total + entryOutstandingCents(entry),
+    (total, entry) => total + obligationOutstandingCents(entry),
     0,
   );
   const expensesTotal = upcomingExpenses.reduce(
-    (total, expense) => total + moneyToCents(expense.amount),
+    (total, expense) => total + obligationOutstandingCents(expense),
     0,
   );
 
@@ -345,7 +352,7 @@ export default async function AppHomePage() {
           {canWriteFinance ? (
             <Link className={PRIMARY_LINK} href={"/app/financeiro/entradas" as Route}>
               <Plus size={14} aria-hidden />
-              <span>Nova entrada</span>
+              <span>Nova conta a receber</span>
             </Link>
           ) : null}
         </div>
@@ -354,15 +361,15 @@ export default async function AppHomePage() {
       {financeDashboard ? (
         <div className="fg-grid fg-grid-kpis">
           <KpiCard
-            label="Entradas"
+            label="Contas a receber"
             value={formatMoney(financeDashboard.totals.incomeReceived)}
-            secondary={`Recebido em ${competence}`}
+              secondary={`Liquidado em ${competence}`}
             icon={<ArrowDownRight size={16} />}
           />
           <KpiCard
-            label="Saidas"
+            label="Contas a pagar"
             value={formatMoney(financeDashboard.totals.expensesPaid)}
-            secondary={`Pago em ${competence}`}
+              secondary={`Liquidado em ${competence}`}
             icon={<ArrowUpRight size={16} />}
           />
           <KpiCard
@@ -375,7 +382,7 @@ export default async function AppHomePage() {
           <KpiCard
             label="Prox. 30 dias"
             value={formatMoney(financeDashboard.totals.forecast30Days)}
-            secondary="Entradas - saidas previstas"
+            secondary="Recebimentos - pagamentos previstos"
             icon={<CalendarClock size={16} />}
           />
           <KpiCard
@@ -592,7 +599,7 @@ export default async function AppHomePage() {
         <div className="fg-grid fg-grid-2">
           <Card
             title="A receber - proximos 7 dias"
-            description={`${upcomingReceivables.length} entradas pendentes - ${moneyFromCents(receivablesTotal)}`}
+            description={`${upcomingReceivables.length} contas pendentes - ${moneyFromCents(receivablesTotal)}`}
             action={
               <Link className={ACTION_LINK} href={"/app/financeiro/entradas" as Route}>
                 <span>Ver todas</span>
@@ -608,7 +615,7 @@ export default async function AppHomePage() {
                 { key: "value", right: true },
                 { key: "status" },
               ]}
-              empty="Nenhuma entrada vencendo nos proximos 7 dias."
+              empty="Nenhuma conta a receber vencendo nos proximos 7 dias."
               rows={upcomingReceivables.map((entry) => ({
                 key: entry.id,
                 cells: {
@@ -621,7 +628,7 @@ export default async function AppHomePage() {
                   due: <span className="fg-tabular">{formatDayMonth(entry.dueDate)}</span>,
                   value: (
                     <span className="fg-tabular fg-cell-strong">
-                      {moneyFromCents(entryOutstandingCents(entry))}
+                      {moneyFromCents(obligationOutstandingCents(entry))}
                     </span>
                   ),
                   status: (
@@ -637,7 +644,7 @@ export default async function AppHomePage() {
 
           <Card
             title="A pagar - proximos 7 dias"
-            description={`${upcomingExpenses.length} saidas pendentes - ${moneyFromCents(expensesTotal)}`}
+            description={`${upcomingExpenses.length} contas pendentes - ${moneyFromCents(expensesTotal)}`}
             action={
               <Link className={ACTION_LINK} href={"/app/financeiro/saidas" as Route}>
                 <span>Ver todas</span>
@@ -653,7 +660,7 @@ export default async function AppHomePage() {
                 { key: "value", right: true },
                 { key: "status" },
               ]}
-              empty="Nenhuma saida vencendo nos proximos 7 dias."
+              empty="Nenhuma conta a pagar vencendo nos proximos 7 dias."
               rows={upcomingExpenses.map((expense) => ({
                 key: expense.id,
                 cells: {
@@ -666,7 +673,7 @@ export default async function AppHomePage() {
                   due: <span className="fg-tabular">{formatDayMonth(expense.dueDate)}</span>,
                   value: (
                     <span className="fg-tabular fg-cell-strong">
-                      {formatMoney(expense.amount)}
+                      {moneyFromCents(obligationOutstandingCents(expense))}
                     </span>
                   ),
                   status: (

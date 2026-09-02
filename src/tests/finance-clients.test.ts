@@ -20,6 +20,7 @@ import {
   applyFinanceEntryFilters,
   applyFinanceExpenseFilters,
   computeFinanceDashboard,
+  deriveFinancialObligation,
   formatCompetence,
   formatDate,
   getFinancialEntryEffectiveStatus,
@@ -46,7 +47,9 @@ describe("finance status rules", () => {
     expect(
       getFinancialEntryEffectiveStatus(
         {
+          amount: "100.00",
           dueDate: "2026-05-11",
+          receivedAmount: null,
           receivedDate: null,
           status: "planned",
         },
@@ -56,6 +59,7 @@ describe("finance status rules", () => {
     expect(
       getFinancialExpenseEffectiveStatus(
         {
+          amount: "100.00",
           dueDate: "2026-05-11",
           paidDate: null,
           status: "planned",
@@ -69,16 +73,19 @@ describe("finance status rules", () => {
     expect(
       getFinancialEntryEffectiveStatus(
         {
+          amount: "100.00",
           dueDate: "2026-05-01",
+          receivedAmount: "100.00",
           receivedDate: "2026-05-03",
           status: "planned",
         },
         "2026-05-12",
       ),
-    ).toBe("received");
+    ).toBe("settled");
     expect(
       getFinancialExpenseEffectiveStatus(
         {
+          amount: "100.00",
           dueDate: "2026-05-01",
           paidDate: null,
           status: "cancelled",
@@ -86,6 +93,71 @@ describe("finance status rules", () => {
         "2026-05-12",
       ),
     ).toBe("cancelled");
+  });
+
+  it("derives open, partial, settled, and overdue from amounts and dates", () => {
+    expect(
+      deriveFinancialObligation({
+        amount: "1000.00",
+        settledAmount: "0.00",
+        dueDate: "2026-05-20",
+        asOf: "2026-05-12",
+      }),
+    ).toMatchObject({ status: "open", outstandingAmount: "1000.00" });
+    expect(
+      deriveFinancialObligation({
+        amount: "1000.00",
+        settledAmount: "300.00",
+        dueDate: "2026-05-01",
+        asOf: "2026-05-12",
+      }),
+    ).toEqual({
+      status: "partial",
+      settledAmount: "300.00",
+      outstandingAmount: "700.00",
+    });
+    expect(
+      deriveFinancialObligation({
+        amount: "1000.00",
+        settledAmount: "1000.00",
+        dueDate: "2026-05-01",
+        asOf: "2026-05-12",
+      }).status,
+    ).toBe("settled");
+    expect(
+      deriveFinancialObligation({
+        amount: "1000.00",
+        settledAmount: "0.00",
+        dueDate: "2026-05-01",
+        asOf: "2026-05-12",
+      }).status,
+    ).toBe("overdue");
+  });
+
+  it("does not derive settlement from a settlement date alone", () => {
+    expect(
+      getFinancialEntryEffectiveStatus(
+        {
+          amount: "1000.00",
+          dueDate: "2026-05-20",
+          receivedAmount: null,
+          receivedDate: "2026-05-10",
+          status: "planned",
+        },
+        "2026-05-12",
+      ),
+    ).toBe("open");
+    expect(
+      getFinancialExpenseEffectiveStatus(
+        {
+          amount: "1000.00",
+          dueDate: "2026-05-20",
+          paidDate: "2026-05-10",
+          status: "planned",
+        },
+        "2026-05-12",
+      ),
+    ).toBe("open");
   });
 
   it("computes monthly totals and 30-day forecast with integer cents", () => {
@@ -144,18 +216,40 @@ describe("finance status rules", () => {
     expect(dashboard.totals.forecast30Days).toBe("-300.00");
   });
 
+  it("uses only the settled portion as realized and forecasts the open balance", () => {
+    const dashboard = computeFinanceDashboard({
+      asOf: "2026-05-12",
+      entries: [
+        {
+          amount: "1000.00",
+          receivedAmount: "300.00",
+          competence: "2026-05",
+          dueDate: "2026-05-20",
+          status: "planned",
+        },
+      ],
+      expenses: [],
+      provisions: [],
+    });
+
+    expect(dashboard.totals.incomeExpected).toBe("1000.00");
+    expect(dashboard.totals.incomeReceived).toBe("300.00");
+    expect(dashboard.totals.resultRealized).toBe("300.00");
+    expect(dashboard.totals.forecast30Days).toBe("700.00");
+  });
+
   it("normalizes and applies finance filters", () => {
     const filters = normalizeFinanceFilters({
       competence: "2026-05",
       entryStatus: "overdue",
-      expenseStatus: "paid",
+      expenseStatus: "settled",
       q: "acme",
     });
 
     expect(filters).toEqual({
       competence: "2026-05",
       entryStatus: "overdue",
-      expenseStatus: "paid",
+      expenseStatus: "settled",
       query: "acme",
     });
 
@@ -196,7 +290,7 @@ describe("finance status rules", () => {
             description: "Acme tool",
             dueDate: "2026-05-01",
             paidDate: "2026-05-02",
-            status: "planned",
+            status: "paid",
             supplier: "Vendor",
           },
           {
@@ -244,8 +338,10 @@ describe("finance status rules", () => {
           paymentMethod: "Pix",
           receivedAmount: "100.00",
           receivedDate: "2026-05-12",
+          settledAmount: "100.00",
+          settlementDate: "2026-05-12",
           recurring: true,
-          status: "received",
+          status: "settled",
         },
       ],
       expenses: [],
@@ -264,8 +360,8 @@ describe("finance status rules", () => {
 
     expect(csv).toContain("Tipo;Descricao;Contraparte;Categoria");
     expect(csv).toContain('"Fee; mensal";"Acme ""BR"""');
-    expect(csv).toContain("05/2026;12/05/2026;Recebido;");
-    expect(csv).toContain("Provisao;Folha;;folha;;Dia 30;active;");
+    expect(csv).toContain("05/2026;12/05/2026;12/05/2026;Liquidado;");
+    expect(csv).toContain("Provisao;Folha;;folha;;Dia 30;;active;");
   });
 
   it("escapes CSV cells with separators, quotes, or line breaks", () => {
