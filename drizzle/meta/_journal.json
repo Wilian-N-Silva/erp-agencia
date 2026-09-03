@@ -148,6 +148,27 @@
       "when": 1788405356990,
       "tag": "0020_black_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788408410611,
+      "tag": "0021_abnormal_luckman",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788409184203,
+      "tag": "0022_guard_allocated_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788409626856,
+      "tag": "0023_immutable_financial_allocations",
+      "breakpoints": true
     }
   ]
 }

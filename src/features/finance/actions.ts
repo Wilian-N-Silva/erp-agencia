@@ -341,6 +341,7 @@ async function markFinancialExpensePaidAction(formData: FormData) {
   const [after] = await db
     .update(financialExpenses)
     .set({
+      paidAmount: before.amount,
       paidDate: toDateKey(new Date()),
       status: "paid",
       updatedAt: new Date(),

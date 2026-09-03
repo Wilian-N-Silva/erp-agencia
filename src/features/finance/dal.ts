@@ -129,6 +129,7 @@ async function getFinanceDashboard(
         subcategory: financialExpenses.subcategory,
         description: financialExpenses.description,
         amount: financialExpenses.amount,
+        paidAmount: financialExpenses.paidAmount,
         dueDate: financialExpenses.dueDate,
         paidDate: financialExpenses.paidDate,
         competence: financialExpenses.competence,

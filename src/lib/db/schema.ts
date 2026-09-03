@@ -935,6 +935,10 @@ export const financialEntries = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    organizationIdIdx: uniqueIndex("financial_entries_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     dueDateIdx: index("financial_entries_due_date_idx").on(table.organizationId, table.dueDate),
     statusIdx: index("financial_entries_status_idx").on(table.organizationId, table.status),
     competenceIdx: index("financial_entries_competence_idx").on(
@@ -995,6 +999,9 @@ export const financialExpenses = pgTable(
     subcategory: text("subcategory"),
     description: text("description").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    paidAmount: numeric("paid_amount", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     dueDate: date("due_date").notNull(),
     paidDate: date("paid_date"),
     competence: text("competence").notNull(),
@@ -1010,6 +1017,10 @@ export const financialExpenses = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    organizationIdIdx: uniqueIndex("financial_expenses_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     dueDateIdx: index("financial_expenses_due_date_idx").on(table.organizationId, table.dueDate),
     statusIdx: index("financial_expenses_status_idx").on(table.organizationId, table.status),
     competenceIdx: index("financial_expenses_competence_idx").on(
@@ -1037,6 +1048,62 @@ export const financialExpenses = pgTable(
       foreignColumns: [costCenters.organizationId, costCenters.id],
       name: "financial_expenses_cost_center_tenant_fk",
     }),
+  }),
+);
+
+export const financialAllocations = pgTable(
+  "financial_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    transactionId: uuid("transaction_id").notNull(),
+    financialEntryId: uuid("financial_entry_id"),
+    financialExpenseId: uuid("financial_expense_id"),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    metadata: jsonb("metadata"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    transactionTenantFk: foreignKey({
+      columns: [table.organizationId, table.transactionId],
+      foreignColumns: [financialTransactions.organizationId, financialTransactions.id],
+      name: "financial_allocations_transaction_tenant_fk",
+    }),
+    entryTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialEntryId],
+      foreignColumns: [financialEntries.organizationId, financialEntries.id],
+      name: "financial_allocations_entry_tenant_fk",
+    }),
+    expenseTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialExpenseId],
+      foreignColumns: [financialExpenses.organizationId, financialExpenses.id],
+      name: "financial_allocations_expense_tenant_fk",
+    }),
+    transactionIdx: index("financial_allocations_transaction_idx").on(
+      table.organizationId,
+      table.transactionId,
+    ),
+    entryIdx: index("financial_allocations_entry_idx").on(
+      table.organizationId,
+      table.financialEntryId,
+    ),
+    expenseIdx: index("financial_allocations_expense_idx").on(
+      table.organizationId,
+      table.financialExpenseId,
+    ),
+    positiveAmountCheck: check(
+      "financial_allocations_positive_amount_check",
+      sql`${table.amount} > 0`,
+    ),
+    singleTargetCheck: check(
+      "financial_allocations_single_target_check",
+      sql`(${table.financialEntryId} is not null) <> (${table.financialExpenseId} is not null)`,
+    ),
   }),
 );
 
@@ -1558,6 +1625,7 @@ export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type FinancialAccount = typeof financialAccounts.$inferSelect;
 export type FinancialTransaction = typeof financialTransactions.$inferSelect;
+export type FinancialAllocation = typeof financialAllocations.$inferSelect;
 export type FinancialCategory = typeof financialCategories.$inferSelect;
 export type CostCenter = typeof costCenters.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
