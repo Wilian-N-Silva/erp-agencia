@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentAccessContext: vi.fn(),
   insert: vi.fn(),
   insertResults: [] as unknown[][],
+  lockModes: [] as string[],
   revalidatePath: vi.fn(),
   putStorageObject: vi.fn(),
   runWithCurrentTenantDb: vi.fn(),
@@ -80,6 +81,7 @@ describe("graphic job Action security boundary", () => {
     mocks.resolveWorkItem.mockReset();
     mocks.selectResults.length = 0;
     mocks.insertResults.length = 0;
+    mocks.lockModes.length = 0;
     mocks.updateResults.length = 0;
     mocks.updateSets.length = 0;
     mocks.runWithCurrentTenantDb.mockImplementation(
@@ -97,7 +99,10 @@ describe("graphic job Action security boundary", () => {
           const getResult = () => result ??= mocks.selectResults.shift() ?? [];
           const limit = vi.fn().mockImplementation(() => Promise.resolve(getResult()));
           return {
-            for: vi.fn().mockReturnValue({ limit }),
+            for: vi.fn().mockImplementation((mode: string) => {
+              mocks.lockModes.push(mode);
+              return { limit };
+            }),
             limit,
             then: (resolve: (value: unknown[]) => unknown, reject: (reason: unknown) => unknown) =>
               Promise.resolve(getResult()).then(resolve, reject),
@@ -342,7 +347,7 @@ describe("graphic job Action security boundary", () => {
     await expect(createGraphicSupplierQuoteAction(validQuoteForm())).rejects.toBeInstanceOf(
       AccessDeniedError,
     );
-    expect(mocks.select).toHaveBeenCalledTimes(2);
+    expect(mocks.select).toHaveBeenCalledOnce();
     expect(mocks.insert).not.toHaveBeenCalled();
     expect(mocks.writeAuditLog).not.toHaveBeenCalled();
   });
@@ -384,6 +389,7 @@ describe("graphic job Action security boundary", () => {
 
     await createGraphicSupplierQuoteAction(validQuoteForm());
 
+    expect(mocks.lockModes).toContain("update");
     expect(mocks.updateSets).toContainEqual(expect.objectContaining({
       operationalStatus: "supplier_approval_pending",
     }));

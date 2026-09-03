@@ -45,6 +45,7 @@ import {
   validateGraphicQuoteAttachmentContent,
 } from "./rules";
 import { transitionPendingGraphicSupplierQuote } from "./quote-decision";
+import { lockGraphicJobForQuoteSubmission } from "./quote-submission";
 
 async function createGraphicJobEntryPoint(formData: FormData) {
   const destination = await runWithCurrentTenantDb(() => createGraphicJob(formData));
@@ -192,7 +193,8 @@ async function createGraphicSupplierQuote(
   const input = graphicSupplierQuoteInputSchema.parse(
     formDataToObject(formData, ["attachments"]),
   );
-  const job = await validateOwnedQuoteReferences(input.jobId, input.supplierId, organizationId);
+  const job = await lockGraphicJobForQuoteSubmission(input.jobId, organizationId);
+  await validateOwnedSupplier(input.supplierId, organizationId);
 
   const [quote] = await db
     .insert(graphicSupplierQuotes)
@@ -459,6 +461,15 @@ async function validateOwnedQuoteReferences(
     jobRows[0].operationalStatus !== "supplier_approval_pending"
   ) throw new Error("Supplier quotes can only be submitted during supplier sourcing or approval.");
   return jobRows[0];
+}
+
+async function validateOwnedSupplier(supplierId: string, organizationId: string) {
+  const [supplier] = await db.select({ id: suppliers.id }).from(suppliers).where(and(
+    eq(suppliers.id, supplierId),
+    eq(suppliers.organizationId, organizationId),
+    eq(suppliers.isActive, true),
+  )).limit(1);
+  if (!supplier) throw new AccessDeniedError();
 }
 
 type QuoteWorkItemJob = {
