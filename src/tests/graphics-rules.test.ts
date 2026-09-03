@@ -2,17 +2,40 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertGraphicJobTransition,
+  canApproveGraphicSupplierQuotes,
+  canReadGraphicJobs,
   canTransitionGraphicJob,
+  canWriteGraphicJobs,
+  canWriteGraphicSupplierQuotes,
   graphicJobOperationalStatuses,
   getGraphicJobNextAction,
   graphicJobInputSchema,
   graphicSupplierQuoteInputSchema,
+  graphicSupplierQuoteApproveSchema,
+  graphicSupplierQuoteRejectSchema,
+  getGraphicJobStatusAfterQuoteRejection,
   initialGraphicJobOperationalStatus,
   normalizeGraphicJobFilters,
   validateGraphicQuoteAttachmentContent,
 } from "@/features/graphics/rules";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("graphic job state machine", () => {
+  it("grants approvers read access without granting job or quote write access", () => {
+    const context = createAccessContext({
+      employeeId: null,
+      organizationId: "10000000-0000-4000-8000-000000000001",
+      permissions: ["graphics.supplier_quote_approve"],
+      roles: [],
+      userId: "quote-approver",
+    });
+
+    expect(canReadGraphicJobs(context)).toBe(true);
+    expect(canApproveGraphicSupplierQuotes(context)).toBe(true);
+    expect(canWriteGraphicJobs(context)).toBe(false);
+    expect(canWriteGraphicSupplierQuotes(context)).toBe(false);
+  });
+
   it("starts sourcing a supplier and exposes every PRD status", () => {
     expect(initialGraphicJobOperationalStatus).toBe("supplier_sourcing");
     expect(graphicJobOperationalStatuses).toEqual([
@@ -138,6 +161,36 @@ describe("graphic job state machine", () => {
       ...quote,
       quotedAmount: "0",
     })).toThrow();
+  });
+
+  it("validates internal approval decisions as strict server inputs", () => {
+    const identifiers = {
+      id: "60000000-0000-4000-8000-000000000001",
+      jobId: "40000000-0000-4000-8000-000000000001",
+    };
+    expect(graphicSupplierQuoteApproveSchema.parse(identifiers)).toEqual(identifiers);
+    expect(() => graphicSupplierQuoteApproveSchema.parse({
+      ...identifiers,
+      reviewerUserId: "attacker",
+    })).toThrow();
+    expect(() => graphicSupplierQuoteRejectSchema.parse({
+      ...identifiers,
+      rejectionReason: "  ",
+    })).toThrow();
+    expect(graphicSupplierQuoteRejectSchema.parse({
+      ...identifiers,
+      rejectionReason: "  Prazo incompatível  ",
+    }).rejectionReason).toBe("Prazo incompatível");
+  });
+
+  it("derives the job state after rejection from remaining quote options", () => {
+    expect(getGraphicJobStatusAfterQuoteRejection([])).toBe("supplier_sourcing");
+    expect(getGraphicJobStatusAfterQuoteRejection(["rejected", "cancelled"]))
+      .toBe("supplier_sourcing");
+    expect(getGraphicJobStatusAfterQuoteRejection(["pending", "rejected"]))
+      .toBe("supplier_approval_pending");
+    expect(getGraphicJobStatusAfterQuoteRejection(["pending", "approved"]))
+      .toBe("os_pending");
   });
 
   it("validates attachment signatures instead of trusting browser MIME metadata", () => {

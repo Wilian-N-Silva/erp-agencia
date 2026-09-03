@@ -19,6 +19,7 @@ import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
 import {
   getGraphicJobNextAction,
+  graphicJobReadPermissions,
   type GraphicJobFilters,
   type GraphicJobFinancialStatus,
   type GraphicJobOperationalStatus,
@@ -80,6 +81,10 @@ export type GraphicSupplierQuoteItem = {
   estimatedDeliveryAt: Date | null;
   conditions: string | null;
   status: GraphicSupplierQuoteStatus;
+  reviewerUserId: string | null;
+  reviewerName: string | null;
+  reviewedAt: Date | null;
+  rejectionReason: string | null;
   createdAt: Date;
   updatedAt: Date;
   attachments: GraphicSupplierQuoteAttachmentItem[];
@@ -109,7 +114,7 @@ async function listGraphicJobs(
   context: AccessContext,
   filters: GraphicJobFilters = {},
 ): Promise<GraphicJobListItem[]> {
-  assertCanAny(["graphics.read", "graphics.write", "graphics.supplier_quote_write"], context);
+  assertCanAny(graphicJobReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const conditions: SQL[] = [
     eq(graphicJobs.organizationId, organizationId),
@@ -167,7 +172,7 @@ async function getGraphicJobDetail(
   context: AccessContext,
   id: string,
 ): Promise<GraphicJobDetail | null> {
-  assertCanAny(["graphics.read", "graphics.write", "graphics.supplier_quote_write"], context);
+  assertCanAny(graphicJobReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const [row] = await db
     .select({
@@ -196,7 +201,7 @@ async function getGraphicJobDetail(
 async function listGraphicJobFormOptions(
   context: AccessContext,
 ): Promise<GraphicJobFormOptions> {
-  assertCanAny(["graphics.read", "graphics.write"], context);
+  assertCanAny(graphicJobReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const [clientRows, employeeRows, projectRows] = await Promise.all([
     db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.organizationId, organizationId), isNull(clients.deletedAt))).orderBy(asc(clients.name)),
@@ -227,10 +232,7 @@ async function listGraphicSupplierQuotes(
   context: AccessContext,
   jobId: string,
 ): Promise<GraphicSupplierQuoteItem[]> {
-  assertCanAny(
-    ["graphics.read", "graphics.write", "graphics.supplier_quote_write"],
-    context,
-  );
+  assertCanAny(graphicJobReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const rows = await db
     .select({
@@ -244,6 +246,10 @@ async function listGraphicSupplierQuotes(
       estimatedDeliveryAt: graphicSupplierQuotes.estimatedDeliveryAt,
       conditions: graphicSupplierQuotes.conditions,
       status: graphicSupplierQuotes.status,
+      reviewerUserId: graphicSupplierQuotes.reviewerUserId,
+      reviewerName: users.name,
+      reviewedAt: graphicSupplierQuotes.reviewedAt,
+      rejectionReason: graphicSupplierQuotes.rejectionReason,
       createdAt: graphicSupplierQuotes.createdAt,
       updatedAt: graphicSupplierQuotes.updatedAt,
     })
@@ -251,6 +257,10 @@ async function listGraphicSupplierQuotes(
     .innerJoin(suppliers, and(
       eq(suppliers.id, graphicSupplierQuotes.supplierId),
       eq(suppliers.organizationId, organizationId),
+    ))
+    .leftJoin(users, and(
+      eq(users.id, graphicSupplierQuotes.reviewerUserId),
+      eq(users.organizationId, organizationId),
     ))
     .innerJoin(graphicJobs, and(
       eq(graphicJobs.id, graphicSupplierQuotes.jobId),
@@ -302,10 +312,7 @@ async function listGraphicSupplierQuoteAuditLogs(
   context: AccessContext,
   quoteIds: string[],
 ): Promise<GraphicSupplierQuoteAuditItem[]> {
-  assertCanAny(
-    ["graphics.read", "graphics.write", "graphics.supplier_quote_write"],
-    context,
-  );
+  assertCanAny(graphicJobReadPermissions, context);
   if (!canReadAuditLogs(context) || !quoteIds.length) return [];
   const organizationId = requireOrganizationId(context);
   const rows = await db
@@ -333,10 +340,7 @@ async function fetchGraphicSupplierQuoteAttachment(
   quoteId: string,
   attachmentId: string,
 ) {
-  assertCanAny(
-    ["graphics.read", "graphics.write", "graphics.supplier_quote_write"],
-    context,
-  );
+  assertCanAny(graphicJobReadPermissions, context);
   const organizationId = requireOrganizationId(context);
   const [row] = await db.select({
     attachmentId: graphicSupplierQuoteAttachments.id,

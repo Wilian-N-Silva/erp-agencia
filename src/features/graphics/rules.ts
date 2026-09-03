@@ -80,10 +80,17 @@ export function getGraphicJobNextAction(status: GraphicJobOperationalStatus) {
   return nextActionByStatus[status];
 }
 
+export const graphicJobReadPermissions = [
+  "graphics.read",
+  "graphics.write",
+  "graphics.supplier_quote_write",
+  "graphics.supplier_quote_approve",
+] as const;
+
 export function canReadGraphicJobs(context: AccessContext) {
-  return context.permissions.includes("graphics.read") ||
-    canWriteGraphicJobs(context) ||
-    canWriteGraphicSupplierQuotes(context);
+  return graphicJobReadPermissions.some((permission) =>
+    context.permissions.includes(permission)
+  );
 }
 
 export function canWriteGraphicJobs(context: AccessContext) {
@@ -92,6 +99,10 @@ export function canWriteGraphicJobs(context: AccessContext) {
 
 export function canWriteGraphicSupplierQuotes(context: AccessContext) {
   return context.permissions.includes("graphics.supplier_quote_write");
+}
+
+export function canApproveGraphicSupplierQuotes(context: AccessContext) {
+  return context.permissions.includes("graphics.supplier_quote_approve");
 }
 
 export const graphicJobFiltersSchema = z.strictObject({
@@ -212,6 +223,25 @@ export const graphicSupplierQuoteCancelSchema = z.strictObject({
   id: z.string().uuid(),
   jobId: z.string().uuid(),
 });
+
+export const graphicSupplierQuoteApproveSchema = z.strictObject({
+  id: z.string().uuid(),
+  jobId: z.string().uuid(),
+});
+
+export const graphicSupplierQuoteRejectSchema = z.strictObject({
+  id: z.string().uuid(),
+  jobId: z.string().uuid(),
+  rejectionReason: z.string().trim().min(3).max(2000),
+});
+
+export function getGraphicJobStatusAfterQuoteRejection(
+  otherQuoteStatuses: readonly GraphicSupplierQuoteStatus[],
+): GraphicJobOperationalStatus {
+  if (otherQuoteStatuses.includes("approved")) return "os_pending";
+  if (otherQuoteStatuses.includes("pending")) return "supplier_approval_pending";
+  return "supplier_sourcing";
+}
 
 export function getGraphicQuoteUploads(formData: FormData) {
   const uploads = formData

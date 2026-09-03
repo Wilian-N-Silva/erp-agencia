@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { EmptyState, Page, PageHeader, StatusBadge } from "@/components/fg";
 import { getGraphicJobFormOptions, getGraphicJobs } from "@/features/graphics/dal";
 import {
+  canReadGraphicJobs,
   canWriteGraphicJobs,
   graphicJobOperationalStatusLabels,
   graphicJobOperationalStatuses,
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function GraphicJobsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await getCurrentAccessContext();
   if (!context) redirect("/login");
-  if (!context.permissions.includes("graphics.read") && !canWriteGraphicJobs(context)) redirect("/acesso-negado");
+  if (!canReadGraphicJobs(context)) redirect("/acesso-negado");
 
   const filters = normalizeGraphicJobFilters((await searchParams) ?? {});
   const canWrite = canWriteGraphicJobs(context);

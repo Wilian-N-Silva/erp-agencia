@@ -9,19 +9,27 @@ const mocks = vi.hoisted(() => ({
   getCurrentAccessContext: vi.fn(),
   insert: vi.fn(),
   insertResults: [] as unknown[][],
+  lockModes: [] as string[],
   revalidatePath: vi.fn(),
   putStorageObject: vi.fn(),
   runWithCurrentTenantDb: vi.fn(),
   select: vi.fn(),
   selectResults: [] as unknown[][],
   update: vi.fn(),
+  updateSets: [] as unknown[],
   updateResults: [] as unknown[][],
   writeAuditLog: vi.fn(),
+  generateWorkItem: vi.fn(),
+  resolveWorkItem: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ writeAuditLog: mocks.writeAuditLog }));
+vi.mock("@/features/work-items/dal", () => ({
+  generateWorkItem: mocks.generateWorkItem,
+  resolveWorkItem: mocks.resolveWorkItem,
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     insert: mocks.insert,
@@ -51,10 +59,12 @@ vi.mock("@/lib/storage", async (importOriginal) => {
 });
 
 import {
+  approveGraphicSupplierQuoteAction,
   createGraphicSupplierQuoteAction,
   createGraphicJobAction,
   deleteGraphicJobAction,
   updateGraphicJobAction,
+  rejectGraphicSupplierQuoteAction,
 } from "@/features/graphics/actions";
 
 const organizationId = "30000000-0000-4000-8000-000000000001";
@@ -67,9 +77,13 @@ describe("graphic job Action security boundary", () => {
     mocks.deleteStorageObject.mockReset();
     mocks.putStorageObject.mockReset();
     mocks.writeAuditLog.mockReset();
+    mocks.generateWorkItem.mockReset();
+    mocks.resolveWorkItem.mockReset();
     mocks.selectResults.length = 0;
     mocks.insertResults.length = 0;
+    mocks.lockModes.length = 0;
     mocks.updateResults.length = 0;
+    mocks.updateSets.length = 0;
     mocks.runWithCurrentTenantDb.mockImplementation(
       (operation: () => Promise<unknown>) => operation(),
     );
@@ -80,20 +94,32 @@ describe("graphic job Action security boundary", () => {
     });
     mocks.select.mockImplementation(() => ({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockImplementation(() =>
-            Promise.resolve(mocks.selectResults.shift() ?? []),
-          ),
+        where: vi.fn().mockImplementation(() => {
+          let result: unknown[] | undefined;
+          const getResult = () => result ??= mocks.selectResults.shift() ?? [];
+          const limit = vi.fn().mockImplementation(() => Promise.resolve(getResult()));
+          return {
+            for: vi.fn().mockImplementation((mode: string) => {
+              mocks.lockModes.push(mode);
+              return { limit };
+            }),
+            limit,
+            then: (resolve: (value: unknown[]) => unknown, reject: (reason: unknown) => unknown) =>
+              Promise.resolve(getResult()).then(resolve, reject),
+          };
         }),
       }),
     }));
     mocks.update.mockImplementation(() => ({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockImplementation(() =>
-            Promise.resolve(mocks.updateResults.shift() ?? []),
-          ),
-        }),
+      set: vi.fn().mockImplementation((values) => {
+        mocks.updateSets.push(values);
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockImplementation(() =>
+              Promise.resolve(mocks.updateResults.shift() ?? []),
+            ),
+          }),
+        };
       }),
     }));
     mocks.insert.mockImplementation(() => ({
@@ -191,6 +217,115 @@ describe("graphic job Action security boundary", () => {
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["approve", approveGraphicSupplierQuoteAction, validApprovalForm],
+    ["reject", rejectGraphicSupplierQuoteAction, validRejectionForm],
+  ])("requires the dedicated supplier quote approval permission to %s", async (
+    _decision,
+    action,
+    formFactory,
+  ) => {
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
+
+    await expect(action(formFactory())).rejects.toBeInstanceOf(AccessDeniedError);
+    expect(mocks.enforceAuthenticatedRateLimit).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("requires a rejection reason before reading or changing a quote", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteApproverContext());
+    const form = validApprovalForm();
+
+    await expect(rejectGraphicSupplierQuoteAction(form)).rejects.toThrow();
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects server-owned reviewer and status fields in approval payloads", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteApproverContext());
+    const form = validApprovalForm();
+    form.set("status", "approved");
+    form.set("reviewerUserId", "attacker");
+
+    await expect(approveGraphicSupplierQuoteAction(form)).rejects.toThrow();
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("denies approval of a known cross-tenant quote id", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteApproverContext());
+    mocks.selectResults.push([]);
+
+    await expect(approveGraphicSupplierQuoteAction(validApprovalForm()))
+      .rejects.toBeInstanceOf(AccessDeniedError);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("approves a quote, advances the job, and resolves its work item atomically", async () => {
+    let transactionActive = false;
+    const context = quoteApproverContext();
+    const quote = pendingQuote();
+    const job = approvalPendingJob();
+    mocks.getCurrentAccessContext.mockResolvedValue(context);
+    mocks.runWithCurrentTenantDb.mockImplementation(async (operation: () => Promise<unknown>) => {
+      transactionActive = true;
+      try { return await operation(); } finally { transactionActive = false; }
+    });
+    mocks.selectResults.push([job], [quote], []);
+    mocks.updateResults.push(
+      [{ ...quote, status: "approved", reviewerUserId: context.userId, reviewedAt: new Date() }],
+      [{ ...job, operationalStatus: "os_pending" }],
+      [],
+    );
+    mocks.generateWorkItem.mockResolvedValue({
+      item: { id: "70000000-0000-4000-8000-000000000001", status: "open" },
+    });
+    mocks.resolveWorkItem.mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+    });
+
+    await approveGraphicSupplierQuoteAction(validApprovalForm());
+
+    expect(mocks.updateSets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "approved", reviewerUserId: context.userId }),
+      expect.objectContaining({ operationalStatus: "os_pending" }),
+    ]));
+    expect(mocks.generateWorkItem).toHaveBeenCalledOnce();
+    expect(mocks.resolveWorkItem).toHaveBeenCalledOnce();
+    expect(mocks.writeAuditLog).toHaveBeenCalledTimes(2);
+    expect(mocks.runWithCurrentTenantDb).toHaveBeenCalledOnce();
+    expect(transactionActive).toBe(false);
+  });
+
+  it("rejects a quote with reason and returns a job without alternatives to sourcing", async () => {
+    const context = quoteApproverContext();
+    const quote = pendingQuote();
+    const job = approvalPendingJob();
+    mocks.getCurrentAccessContext.mockResolvedValue(context);
+    mocks.selectResults.push([job], [quote], []);
+    mocks.updateResults.push(
+      [{ ...quote, status: "rejected", reviewerUserId: context.userId, rejectionReason: "Prazo incompatível" }],
+      [{ ...job, operationalStatus: "supplier_sourcing" }],
+    );
+    mocks.generateWorkItem.mockResolvedValue({
+      item: { id: "70000000-0000-4000-8000-000000000001", status: "open" },
+    });
+
+    await rejectGraphicSupplierQuoteAction(validRejectionForm());
+
+    expect(mocks.updateSets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "rejected", rejectionReason: "Prazo incompatível" }),
+      expect.objectContaining({ operationalStatus: "supplier_sourcing" }),
+    ]));
+    expect(mocks.resolveWorkItem).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ resolution: "Cotacao rejeitada: Prazo incompatível" }),
+    );
+    expect(mocks.writeAuditLog).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects quote approval fields as mass assignment before database access", async () => {
     const context = quoteWriterContext();
     mocks.getCurrentAccessContext.mockResolvedValue(context);
@@ -212,7 +347,7 @@ describe("graphic job Action security boundary", () => {
     await expect(createGraphicSupplierQuoteAction(validQuoteForm())).rejects.toBeInstanceOf(
       AccessDeniedError,
     );
-    expect(mocks.select).toHaveBeenCalledTimes(2);
+    expect(mocks.select).toHaveBeenCalledOnce();
     expect(mocks.insert).not.toHaveBeenCalled();
     expect(mocks.writeAuditLog).not.toHaveBeenCalled();
   });
@@ -224,12 +359,13 @@ describe("graphic job Action security boundary", () => {
       transactionActive = true;
       try { return await operation(); } finally { transactionActive = false; }
     });
-    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.selectResults.push([quoteSubmissionJob()], [{ id: "supplier" }]);
     mocks.insertResults.push([{
       id: "60000000-0000-4000-8000-000000000001",
       jobId,
       status: "pending",
     }]);
+    mocks.updateResults.push([{ ...quoteSubmissionJob(), operationalStatus: "supplier_approval_pending" }]);
     mocks.writeAuditLog.mockImplementation(async () => {
       expect(transactionActive).toBe(true);
       throw new Error("audit failed");
@@ -242,6 +378,30 @@ describe("graphic job Action security boundary", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
+  it("submits a new quote for approval and creates a deduplicated work item", async () => {
+    const context = quoteWriterContext();
+    const job = quoteSubmissionJob();
+    const quote = pendingQuote();
+    mocks.getCurrentAccessContext.mockResolvedValue(context);
+    mocks.selectResults.push([job], [{ id: "supplier" }]);
+    mocks.insertResults.push([quote]);
+    mocks.updateResults.push([{ ...job, operationalStatus: "supplier_approval_pending" }]);
+
+    await createGraphicSupplierQuoteAction(validQuoteForm());
+
+    expect(mocks.lockModes).toContain("update");
+    expect(mocks.updateSets).toContainEqual(expect.objectContaining({
+      operationalStatus: "supplier_approval_pending",
+    }));
+    expect(mocks.generateWorkItem).toHaveBeenCalledWith(context, expect.objectContaining({
+      kind: "graphic_supplier_quote_approval",
+      occurrenceKey: "internal_approval",
+      sourceId: quote.id,
+      sourceType: "graphic_supplier_quote",
+    }));
+    expect(mocks.writeAuditLog).toHaveBeenCalledTimes(2);
+  });
+
   it("removes uploaded objects when a later attachment has an invalid signature", async () => {
     const storedObject = {
       bucket: "quotes",
@@ -250,7 +410,7 @@ describe("graphic job Action security boundary", () => {
     };
     mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
     mocks.putStorageObject.mockResolvedValue(storedObject);
-    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.selectResults.push([quoteSubmissionJob()], [{ id: "supplier" }]);
     mocks.insertResults.push(
       [{ id: "60000000-0000-4000-8000-000000000001", jobId, status: "pending" }],
       [{ id: "70000000-0000-4000-8000-000000000001" }],
@@ -284,12 +444,13 @@ describe("graphic job Action security boundary", () => {
     };
     mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
     mocks.putStorageObject.mockResolvedValue(storedObject);
-    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.selectResults.push([quoteSubmissionJob()], [{ id: "supplier" }]);
     mocks.insertResults.push(
       [{ id: "60000000-0000-4000-8000-000000000001", jobId, status: "pending" }],
       [{ id: "70000000-0000-4000-8000-000000000001" }],
       [{ id: "80000000-0000-4000-8000-000000000001" }],
     );
+    mocks.updateResults.push([{ ...quoteSubmissionJob(), operationalStatus: "supplier_approval_pending" }]);
     mocks.writeAuditLog.mockRejectedValue(new Error("audit failed"));
     const form = validQuoteForm();
     form.append("attachments", attachmentFile("%PDF-1.7\nvalid", "valid.pdf"));
@@ -394,10 +555,45 @@ function quoteWriterContext() {
   });
 }
 
+function quoteApproverContext() {
+  return createAccessContext({
+    organizationId,
+    permissions: ["graphics.supplier_quote_approve"],
+    roles: [],
+    userId: "quote-approver",
+  });
+}
+
+function pendingQuote() {
+  return {
+    id: "60000000-0000-4000-8000-000000000001",
+    jobId,
+    status: "pending",
+  };
+}
+
+function approvalPendingJob() {
+  return {
+    ...quoteSubmissionJob(),
+    organizationId,
+    operationalStatus: "supplier_approval_pending",
+  };
+}
+
 function existingJob() {
   return {
     id: jobId,
     organizationId,
+    title: "Banner",
+  };
+}
+
+function quoteSubmissionJob() {
+  return {
+    id: jobId,
+    internalCode: "GRF-42",
+    operationalStatus: "supplier_sourcing",
+    responsibleEmployeeId: "20000000-0000-4000-8000-000000000001",
     title: "Banner",
   };
 }
@@ -437,6 +633,19 @@ function validQuoteForm() {
   form.set("quotedAt", "2026-09-03");
   form.set("estimatedDeliveryAt", "2026-09-10");
   form.set("conditions", "50% na entrada");
+  return form;
+}
+
+function validApprovalForm() {
+  const form = new FormData();
+  form.set("id", "60000000-0000-4000-8000-000000000001");
+  form.set("jobId", jobId);
+  return form;
+}
+
+function validRejectionForm() {
+  const form = validApprovalForm();
+  form.set("rejectionReason", "Prazo incompatível");
   return form;
 }
 

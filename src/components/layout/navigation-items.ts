@@ -1,6 +1,7 @@
 import type { AccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
 import type { PermissionKey } from "@/lib/rbac";
+import { graphicJobReadPermissions } from "@/features/graphics/rules";
 
 export type NavigationIcon =
   | "dashboard"
@@ -56,7 +57,7 @@ export const navigationItems: NavigationItem[] = [
     label: "Gráfica",
     icon: "graphics",
     section: "Operação",
-    permissions: ["graphics.read", "graphics.write"],
+    permissions: [...graphicJobReadPermissions],
   },
   {
     href: "/app/alertas",
