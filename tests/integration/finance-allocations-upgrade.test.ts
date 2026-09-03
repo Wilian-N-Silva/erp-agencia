@@ -131,7 +131,9 @@ describe("FIN-004 real migration upgrade 0020 -> 0023", () => {
 
         await expect(applyMigration(transaction, 23)).resolves.toBeUndefined();
         const allocationGuard = await transaction.execute(sql.raw(`
-          select tgname
+          select tgname,
+            (tgtype & 8) <> 0 as "guardsDelete",
+            (tgtype & 16) <> 0 as "guardsUpdate"
           from pg_trigger t
           join pg_class c on c.oid = t.tgrelid
           join pg_namespace n on n.oid = c.relnamespace
@@ -140,7 +142,11 @@ describe("FIN-004 real migration upgrade 0020 -> 0023", () => {
             and tgname = 'financial_allocations_immutable_guard'
         `));
         expect(allocationGuard.rows).toEqual([
-          { tgname: "financial_allocations_immutable_guard" },
+          {
+            guardsDelete: true,
+            guardsUpdate: true,
+            tgname: "financial_allocations_immutable_guard",
+          },
         ]);
       });
     } finally {

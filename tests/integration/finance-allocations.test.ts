@@ -354,6 +354,44 @@ describe("FIN-004 tenant isolation and database guards", () => {
     expect(afterTransaction.rows).toEqual(beforeTransaction.rows);
   });
 
+  it("rejects same-tenant allocation deletes and preserves reconciled state", async () => {
+    const allocation = await adminDb.execute(sql`
+      select id, amount
+      from financial_allocations
+      where organization_id = ${orgA}
+        and transaction_id = ${transactions.multi300}
+    `);
+    expect(allocation.rows).toHaveLength(1);
+    const allocationId = String(allocation.rows[0]?.id);
+    const beforeEntry = await entryState(entries.multi);
+    const beforeTransaction = await adminDb.execute(sql`
+      select status from financial_transactions where id = ${transactions.multi300}
+    `);
+    const beforeCounts = await allocationCounts(transactions.multi300);
+
+    await expect(createWithTenantDb(runtimeDb)(contextA, async (transaction) => {
+      await transaction.execute(sql`
+        delete from financial_allocations
+        where id = ${allocationId}
+      `);
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: "financial allocations are immutable",
+      }),
+    });
+
+    const persistedAllocation = await adminDb.execute(sql`
+      select amount from financial_allocations where id = ${allocationId}
+    `);
+    expect(persistedAllocation.rows).toEqual([{ amount: allocation.rows[0]?.amount }]);
+    expect(await entryState(entries.multi)).toEqual(beforeEntry);
+    const afterTransaction = await adminDb.execute(sql`
+      select status from financial_transactions where id = ${transactions.multi300}
+    `);
+    expect(afterTransaction.rows).toEqual(beforeTransaction.rows);
+    expect(await allocationCounts(transactions.multi300)).toEqual(beforeCounts);
+  });
+
   it("enforces direction and aggregate capacity for direct database writes", async () => {
     await expect(adminDb.execute(sql`
       insert into financial_allocations (
@@ -444,7 +482,19 @@ async function allocationCounts(transactionId: string) {
 async function cleanup() {
   if (!adminDb) return;
   await adminDb.execute(sql`delete from audit_logs where organization_id in (${orgA}, ${orgB})`);
-  await adminDb.execute(sql`delete from financial_allocations where organization_id in (${orgA}, ${orgB})`);
+  await adminDb.transaction(async (transaction) => {
+    await transaction.execute(sql`
+      alter table financial_allocations
+      disable trigger financial_allocations_immutable_guard
+    `);
+    await transaction.execute(sql`
+      delete from financial_allocations where organization_id in (${orgA}, ${orgB})
+    `);
+    await transaction.execute(sql`
+      alter table financial_allocations
+      enable trigger financial_allocations_immutable_guard
+    `);
+  });
   await adminDb.execute(sql`delete from financial_transactions where organization_id in (${orgA}, ${orgB})`);
   await adminDb.execute(sql`delete from financial_entries where organization_id in (${orgA}, ${orgB})`);
   await adminDb.execute(sql`delete from financial_expenses where organization_id in (${orgA}, ${orgB})`);
