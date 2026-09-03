@@ -190,6 +190,10 @@ export const users = pgTable(
   (table) => ({
     emailIdx: uniqueIndex("users_email_idx").on(table.email),
     organizationIdx: index("users_organization_idx").on(table.organizationId),
+    organizationIdIdx: uniqueIndex("users_organization_id_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
   }),
 );
 
@@ -845,7 +849,7 @@ export const graphicSupplierQuotes = pgTable(
     estimatedDeliveryAt: timestamp("estimated_delivery_at", { withTimezone: true }),
     conditions: text("conditions"),
     status: graphicSupplierQuoteStatusEnum("status").notNull().default("pending"),
-    reviewerUserId: text("reviewer_user_id").references(() => users.id),
+    reviewerUserId: text("reviewer_user_id"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     rejectionReason: text("rejection_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -882,6 +886,11 @@ export const graphicSupplierQuotes = pgTable(
       columns: [table.organizationId, table.supplierId],
       foreignColumns: [suppliers.organizationId, suppliers.id],
       name: "graphic_supplier_quotes_supplier_tenant_fk",
+    }),
+    reviewerTenantFk: foreignKey({
+      columns: [table.organizationId, table.reviewerUserId],
+      foreignColumns: [users.organizationId, users.id],
+      name: "graphic_supplier_quotes_reviewer_tenant_fk",
     }),
   }),
 );

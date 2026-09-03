@@ -7,6 +7,9 @@ import {
   getGraphicJobNextAction,
   graphicJobInputSchema,
   graphicSupplierQuoteInputSchema,
+  graphicSupplierQuoteApproveSchema,
+  graphicSupplierQuoteRejectSchema,
+  getGraphicJobStatusAfterQuoteRejection,
   initialGraphicJobOperationalStatus,
   normalizeGraphicJobFilters,
   validateGraphicQuoteAttachmentContent,
@@ -138,6 +141,36 @@ describe("graphic job state machine", () => {
       ...quote,
       quotedAmount: "0",
     })).toThrow();
+  });
+
+  it("validates internal approval decisions as strict server inputs", () => {
+    const identifiers = {
+      id: "60000000-0000-4000-8000-000000000001",
+      jobId: "40000000-0000-4000-8000-000000000001",
+    };
+    expect(graphicSupplierQuoteApproveSchema.parse(identifiers)).toEqual(identifiers);
+    expect(() => graphicSupplierQuoteApproveSchema.parse({
+      ...identifiers,
+      reviewerUserId: "attacker",
+    })).toThrow();
+    expect(() => graphicSupplierQuoteRejectSchema.parse({
+      ...identifiers,
+      rejectionReason: "  ",
+    })).toThrow();
+    expect(graphicSupplierQuoteRejectSchema.parse({
+      ...identifiers,
+      rejectionReason: "  Prazo incompatível  ",
+    }).rejectionReason).toBe("Prazo incompatível");
+  });
+
+  it("derives the job state after rejection from remaining quote options", () => {
+    expect(getGraphicJobStatusAfterQuoteRejection([])).toBe("supplier_sourcing");
+    expect(getGraphicJobStatusAfterQuoteRejection(["rejected", "cancelled"]))
+      .toBe("supplier_sourcing");
+    expect(getGraphicJobStatusAfterQuoteRejection(["pending", "rejected"]))
+      .toBe("supplier_approval_pending");
+    expect(getGraphicJobStatusAfterQuoteRejection(["pending", "approved"]))
+      .toBe("os_pending");
   });
 
   it("validates attachment signatures instead of trusting browser MIME metadata", () => {

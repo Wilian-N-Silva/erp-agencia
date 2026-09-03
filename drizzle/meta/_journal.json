@@ -176,6 +176,13 @@
       "when": 1788439136634,
       "tag": "0024_secret_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788441770207,
+      "tag": "0025_graphics_supplier_quote_approval",
+      "breakpoints": true
     }
   ]
 }
