@@ -156,6 +156,11 @@ export const graphicJobFinancialStatusEnum = pgEnum(
   ["not_started", "pending", "partial", "settled", "overdue"],
 );
 
+export const graphicSupplierQuoteStatusEnum = pgEnum(
+  "graphic_supplier_quote_status",
+  ["pending", "approved", "rejected", "cancelled"],
+);
+
 export type UserAccessStatus =
   (typeof userAccessStatusEnum.enumValues)[number];
 
@@ -825,6 +830,62 @@ export const suppliers = pgTable(
   }),
 );
 
+export const graphicSupplierQuotes = pgTable(
+  "graphic_supplier_quotes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    jobId: uuid("job_id").notNull(),
+    supplierId: uuid("supplier_id").notNull(),
+    description: text("description").notNull(),
+    quotedAmount: numeric("quoted_amount", { precision: 14, scale: 2 }).notNull(),
+    quotedAt: timestamp("quoted_at", { withTimezone: true }).notNull(),
+    estimatedDeliveryAt: timestamp("estimated_delivery_at", { withTimezone: true }),
+    conditions: text("conditions"),
+    status: graphicSupplierQuoteStatusEnum("status").notNull().default("pending"),
+    reviewerUserId: text("reviewer_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationIdIdx: uniqueIndex("graphic_supplier_quotes_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    jobIdx: index("graphic_supplier_quotes_job_idx").on(
+      table.organizationId,
+      table.jobId,
+      table.createdAt,
+    ),
+    supplierIdx: index("graphic_supplier_quotes_supplier_idx").on(
+      table.organizationId,
+      table.supplierId,
+    ),
+    statusIdx: index("graphic_supplier_quotes_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+    amountCheck: check(
+      "graphic_supplier_quotes_positive_amount_check",
+      sql`${table.quotedAmount} > 0`,
+    ),
+    jobTenantFk: foreignKey({
+      columns: [table.organizationId, table.jobId],
+      foreignColumns: [graphicJobs.organizationId, graphicJobs.id],
+      name: "graphic_supplier_quotes_job_tenant_fk",
+    }),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "graphic_supplier_quotes_supplier_tenant_fk",
+    }),
+  }),
+);
+
 export const financialTransactions = pgTable(
   "financial_transactions",
   {
@@ -1158,7 +1219,43 @@ export const files = pgTable(
   },
   (table) => ({
     ownerIdx: index("files_owner_idx").on(table.ownerEmployeeId),
+    organizationIdIdx: uniqueIndex("files_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     storageIdx: uniqueIndex("files_storage_idx").on(table.storageProvider, table.storageKey),
+  }),
+);
+
+export const graphicSupplierQuoteAttachments = pgTable(
+  "graphic_supplier_quote_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    quoteId: uuid("quote_id").notNull(),
+    fileId: uuid("file_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    quoteFileIdx: uniqueIndex("graphic_supplier_quote_attachments_quote_file_idx").on(
+      table.quoteId,
+      table.fileId,
+    ),
+    organizationIdIdx: uniqueIndex(
+      "graphic_supplier_quote_attachments_organization_id_idx",
+    ).on(table.organizationId, table.id),
+    quoteTenantFk: foreignKey({
+      columns: [table.organizationId, table.quoteId],
+      foreignColumns: [graphicSupplierQuotes.organizationId, graphicSupplierQuotes.id],
+      name: "graphic_supplier_quote_attachments_quote_tenant_fk",
+    }),
+    fileTenantFk: foreignKey({
+      columns: [table.organizationId, table.fileId],
+      foreignColumns: [files.organizationId, files.id],
+      name: "graphic_supplier_quote_attachments_file_tenant_fk",
+    }),
   }),
 );
 
@@ -1631,5 +1728,6 @@ export type CostCenter = typeof costCenters.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type GraphicProject = typeof graphicProjects.$inferSelect;
 export type GraphicJob = typeof graphicJobs.$inferSelect;
+export type GraphicSupplierQuote = typeof graphicSupplierQuotes.$inferSelect;
 export type WorkItem = typeof workItems.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;

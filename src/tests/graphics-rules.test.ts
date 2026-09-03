@@ -6,8 +6,10 @@ import {
   graphicJobOperationalStatuses,
   getGraphicJobNextAction,
   graphicJobInputSchema,
+  graphicSupplierQuoteInputSchema,
   initialGraphicJobOperationalStatus,
   normalizeGraphicJobFilters,
+  validateGraphicQuoteAttachmentContent,
 } from "@/features/graphics/rules";
 
 describe("graphic job state machine", () => {
@@ -99,5 +101,53 @@ describe("graphic job state machine", () => {
         organizationId: "00000000-0000-4000-8000-000000000001",
       }),
     ).toThrow();
+  });
+
+  it("normalizes supplier quote money, dates, and optional terms", () => {
+    expect(graphicSupplierQuoteInputSchema.parse({
+      jobId: "40000000-0000-4000-8000-000000000001",
+      supplierId: "50000000-0000-4000-8000-000000000001",
+      description: "Impressão e acabamento",
+      quotedAmount: "1234,50",
+      quotedAt: "2026-09-03",
+      estimatedDeliveryAt: "2026-09-10",
+      conditions: "50% na entrada",
+    })).toMatchObject({
+      quotedAmount: "1234.50",
+      conditions: "50% na entrada",
+    });
+  });
+
+  it("rejects quote approval and tenant fields as mass assignment", () => {
+    const quote = {
+      jobId: "40000000-0000-4000-8000-000000000001",
+      supplierId: "50000000-0000-4000-8000-000000000001",
+      description: "Impressão",
+      quotedAmount: "100.00",
+      quotedAt: "2026-09-03",
+      estimatedDeliveryAt: "",
+      conditions: "",
+    };
+    expect(() => graphicSupplierQuoteInputSchema.parse({
+      ...quote,
+      organizationId: "90000000-0000-4000-8000-000000000009",
+      status: "approved",
+      reviewerUserId: "attacker",
+    })).toThrow();
+    expect(() => graphicSupplierQuoteInputSchema.parse({
+      ...quote,
+      quotedAmount: "0",
+    })).toThrow();
+  });
+
+  it("validates attachment signatures instead of trusting browser MIME metadata", () => {
+    expect(() => validateGraphicQuoteAttachmentContent(
+      new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]),
+      "pdf",
+    )).not.toThrow();
+    expect(() => validateGraphicQuoteAttachmentContent(
+      new TextEncoder().encode("not a pdf"),
+      "pdf",
+    )).toThrow(/conteúdo/);
   });
 });

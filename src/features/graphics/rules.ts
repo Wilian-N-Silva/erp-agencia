@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { normalizeMoneyInput } from "@/features/finance/rules";
+import { validateUploadMetadata } from "@/features/documents/rules";
 import type { AccessContext } from "@/lib/dal";
 import { isIsoDate } from "@/lib/validation";
 
@@ -79,11 +81,17 @@ export function getGraphicJobNextAction(status: GraphicJobOperationalStatus) {
 }
 
 export function canReadGraphicJobs(context: AccessContext) {
-  return context.permissions.includes("graphics.read") || canWriteGraphicJobs(context);
+  return context.permissions.includes("graphics.read") ||
+    canWriteGraphicJobs(context) ||
+    canWriteGraphicSupplierQuotes(context);
 }
 
 export function canWriteGraphicJobs(context: AccessContext) {
   return context.permissions.includes("graphics.write");
+}
+
+export function canWriteGraphicSupplierQuotes(context: AccessContext) {
+  return context.permissions.includes("graphics.supplier_quote_write");
 }
 
 export const graphicJobFiltersSchema = z.strictObject({
@@ -147,6 +155,99 @@ export const graphicJobUpdateSchema = z.strictObject({
 export const graphicJobDeleteSchema = z.strictObject({
   id: z.string().uuid(),
 });
+
+export const graphicSupplierQuoteStatuses = [
+  "pending",
+  "approved",
+  "rejected",
+  "cancelled",
+] as const;
+
+export type GraphicSupplierQuoteStatus =
+  (typeof graphicSupplierQuoteStatuses)[number];
+
+export const graphicSupplierQuoteStatusLabels: Record<
+  GraphicSupplierQuoteStatus,
+  string
+> = {
+  pending: "Aguardando aprovação",
+  approved: "Aprovada",
+  rejected: "Rejeitada",
+  cancelled: "Cancelada",
+};
+
+const requiredDate = z.string().trim().transform((value, context) => {
+  if (!isIsoDate(value)) {
+    context.addIssue({ code: "custom", message: "Data inválida." });
+    return z.NEVER;
+  }
+  return new Date(`${value}T12:00:00.000Z`);
+});
+
+const positiveMoney = z.string().trim().transform((value, context) => {
+  try {
+    return normalizeMoneyInput(value);
+  } catch {
+    context.addIssue({ code: "custom", message: "Valor inválido." });
+    return z.NEVER;
+  }
+});
+
+export const graphicSupplierQuoteInputSchema = z.strictObject({
+  jobId: z.string().uuid(),
+  supplierId: z.string().uuid(),
+  description: z.string().trim().min(1).max(4000),
+  quotedAmount: positiveMoney,
+  quotedAt: requiredDate,
+  estimatedDeliveryAt: nullableDate,
+  conditions: nullableText(4000),
+});
+
+export const graphicSupplierQuoteUpdateSchema = z.strictObject({
+  ...graphicSupplierQuoteInputSchema.shape,
+  id: z.string().uuid(),
+});
+
+export const graphicSupplierQuoteCancelSchema = z.strictObject({
+  id: z.string().uuid(),
+  jobId: z.string().uuid(),
+});
+
+export function getGraphicQuoteUploads(formData: FormData) {
+  const uploads = formData
+    .getAll("attachments")
+    .filter((value): value is File =>
+      typeof File !== "undefined" && value instanceof File && value.size > 0,
+    );
+
+  if (uploads.length > 5) throw new Error("No máximo 5 anexos são permitidos.");
+  for (const upload of uploads) {
+    validateUploadMetadata({
+      byteSize: upload.size,
+      mimeType: upload.type || "application/octet-stream",
+      originalName: upload.name,
+    });
+  }
+  return uploads;
+}
+
+export function validateGraphicQuoteAttachmentContent(
+  body: Uint8Array,
+  extension: string,
+) {
+  const signatures: Record<string, readonly number[]> = {
+    pdf: [0x25, 0x50, 0x44, 0x46, 0x2d],
+    png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    jpg: [0xff, 0xd8, 0xff],
+    jpeg: [0xff, 0xd8, 0xff],
+    xlsx: [0x50, 0x4b, 0x03, 0x04],
+  };
+  const signature = signatures[extension];
+  const valid = extension === "xml"
+    ? new TextDecoder().decode(body.slice(0, 256)).trimStart().startsWith("<")
+    : Boolean(signature?.every((byte, index) => body[index] === byte));
+  if (!valid) throw new Error("O conteúdo do anexo não corresponde ao tipo informado.");
+}
 
 function optionalUuidFilter() {
   return z.string().uuid().optional().catch(undefined);

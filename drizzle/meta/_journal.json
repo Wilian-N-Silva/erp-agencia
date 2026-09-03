@@ -169,6 +169,13 @@
       "when": 1788409626856,
       "tag": "0023_immutable_financial_allocations",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788439136634,
+      "tag": "0024_secret_alex_wilder",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createStorageKey,
+  deleteStorageObject,
   getSha256Hex,
   getStorageConfig,
 } from "@/lib/storage";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("storage configuration", () => {
   it("falls back to local storage when R2 credentials are incomplete", () => {
@@ -39,6 +44,27 @@ describe("storage configuration", () => {
     expect(key).toMatch(/^documents\/employee\/org_1\/.+-contrato-pj-exemplo.pdf$/);
     expect(getSha256Hex(Buffer.from("abc"))).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+
+  it("deletes R2 objects with a signed DELETE request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteStorageObject(
+      { bucket: "bucket", key: "quotes/quote.pdf", provider: "r2" },
+      getStorageConfig({
+        STORAGE_ACCESS_KEY_ID: "key",
+        STORAGE_BUCKET: "bucket",
+        STORAGE_ENDPOINT: "https://account.r2.cloudflarestorage.com",
+        STORAGE_SECRET_ACCESS_KEY: "secret",
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://account.r2.cloudflarestorage.com/bucket/quotes/quote.pdf",
+      expect.objectContaining({ method: "DELETE" }),
     );
   });
 });
