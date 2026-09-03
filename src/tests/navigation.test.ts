@@ -42,6 +42,7 @@ describe("permission-filtered navigation", () => {
     expect(hrefs).toContain("/app/financeiro/entradas");
     expect(hrefs).toContain("/app/financeiro/saidas");
     expect(hrefs).toContain("/app/financeiro/provisoes");
+    expect(hrefs).toContain("/app/financeiro/cadastros");
     expect(hrefs).toContain("/app/clientes");
     expect(hrefs).toContain("/app/colaboradores");
     expect(hrefs).toContain("/app/ferias");

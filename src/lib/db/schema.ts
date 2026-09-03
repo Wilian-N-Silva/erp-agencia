@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -552,6 +553,130 @@ export const clientBillingProfiles = pgTable(
   }),
 );
 
+export const financialAccounts = pgTable(
+  "financial_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("active"),
+    maskedIdentifier: text("masked_identifier"),
+    openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("financial_accounts_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    statusIdx: index("financial_accounts_status_idx").on(table.organizationId, table.status),
+    typeCheck: check(
+      "financial_accounts_type_check",
+      sql`${table.type} in ('bank', 'cash', 'card', 'clearing')`,
+    ),
+    statusCheck: check(
+      "financial_accounts_status_check",
+      sql`${table.status} in ('active', 'inactive')`,
+    ),
+  }),
+);
+
+export const financialCategories = pgTable(
+  "financial_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    nature: text("nature").notNull().default("both"),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("financial_categories_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationIdIdx: uniqueIndex("financial_categories_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    natureCheck: check(
+      "financial_categories_nature_check",
+      sql`${table.nature} in ('income', 'expense', 'both')`,
+    ),
+  }),
+);
+
+export const costCenters = pgTable(
+  "cost_centers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    code: text("code"),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("cost_centers_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationCodeIdx: uniqueIndex("cost_centers_organization_code_idx").on(
+      table.organizationId,
+      table.code,
+    ),
+    organizationIdIdx: uniqueIndex("cost_centers_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    taxId: text("tax_id"),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("suppliers_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationTaxIdIdx: uniqueIndex("suppliers_organization_tax_id_idx").on(
+      table.organizationId,
+      table.taxId,
+    ),
+    organizationIdIdx: uniqueIndex("suppliers_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
 export const financialEntries = pgTable(
   "financial_entries",
   {
@@ -629,6 +754,10 @@ export const financialExpenses = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    supplierId: uuid("supplier_id"),
+    categoryId: uuid("category_id"),
+    costCenterId: uuid("cost_center_id"),
+    // Legacy snapshots intentionally remain populated when master data names change.
     supplier: text("supplier").notNull(),
     category: text("category").notNull(),
     subcategory: text("subcategory"),
@@ -655,6 +784,27 @@ export const financialExpenses = pgTable(
       table.organizationId,
       table.competence,
     ),
+    supplierIdx: index("financial_expenses_supplier_idx").on(table.organizationId, table.supplierId),
+    categoryIdx: index("financial_expenses_category_idx").on(table.organizationId, table.categoryId),
+    costCenterIdx: index("financial_expenses_cost_center_idx").on(
+      table.organizationId,
+      table.costCenterId,
+    ),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "financial_expenses_supplier_tenant_fk",
+    }),
+    categoryTenantFk: foreignKey({
+      columns: [table.organizationId, table.categoryId],
+      foreignColumns: [financialCategories.organizationId, financialCategories.id],
+      name: "financial_expenses_category_tenant_fk",
+    }),
+    costCenterTenantFk: foreignKey({
+      columns: [table.organizationId, table.costCenterId],
+      foreignColumns: [costCenters.organizationId, costCenters.id],
+      name: "financial_expenses_cost_center_tenant_fk",
+    }),
   }),
 );
 
@@ -1174,5 +1324,9 @@ export type User = typeof users.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type FinancialAccount = typeof financialAccounts.$inferSelect;
+export type FinancialCategory = typeof financialCategories.$inferSelect;
+export type CostCenter = typeof costCenters.$inferSelect;
+export type Supplier = typeof suppliers.$inferSelect;
 export type WorkItem = typeof workItems.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;

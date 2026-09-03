@@ -9,6 +9,7 @@ import {
   RateLimitedActionForm,
 } from "@/components/fg";
 import { listClients } from "@/features/clients/dal";
+import { getFinanceMasterData } from "@/features/finance-master-data/dal";
 import {
   cancelFinancialEntryAction,
   cancelFinancialExpenseAction,
@@ -53,6 +54,7 @@ export async function renderFinancePage({
   const canWrite = can("finance.write", context);
   const canExport = can("finance.export", context);
   const clientOptions = canWrite ? await listClients(context) : [];
+  const masterData = canWrite ? await getFinanceMasterData(context) : null;
 
   const exportHref = `/app/financeiro/exportar${buildFinanceExportQuery(filters)}`;
   const exportXlsxHref = `/app/financeiro/exportar-xlsx${buildFinanceExportQuery(filters)}`;
@@ -88,6 +90,7 @@ export async function renderFinancePage({
     >
       <ExpenseForm
         action={createFinancialExpenseAction}
+        masterData={masterData!}
         mode="create"
         submitLabel="Criar conta a pagar"
       />
@@ -119,7 +122,7 @@ export async function renderFinancePage({
       );
     }
     for (const expense of dashboard.expenses) {
-      expenseActions[expense.id] = <ExpenseRowActions expense={expense} />;
+      expenseActions[expense.id] = <ExpenseRowActions expense={expense} masterData={masterData!} />;
     }
     for (const provision of dashboard.provisions) {
       provisionActions[provision.id] = (
@@ -162,6 +165,7 @@ function buildFinanceExportQuery(filters: FinanceFilters) {
 
 type FinanceFormAction = (formData: FormData) => Promise<void>;
 type FinanceFormMode = "create" | "edit";
+type FinanceMasterData = Awaited<ReturnType<typeof getFinanceMasterData>>;
 
 const paymentMethodOptions = ["TED", "PIX", "Boleto", "Cartao", "Debito", "Dinheiro"];
 const entryCategorySuggestions = [
@@ -350,48 +354,35 @@ function EntryForm({
 function ExpenseForm({
   action,
   expense,
+  masterData,
   mode,
   submitLabel,
 }: {
   action: FinanceFormAction;
   expense?: FinanceExpenseListItem;
+  masterData: FinanceMasterData;
   mode: FinanceFormMode;
   submitLabel: string;
 }) {
   const SubmitIcon = mode === "create" ? Plus : Save;
-  const categoryDatalistId = expense
-    ? `finance-expense-category-options-${expense.id}`
-    : "finance-expense-category-options-new";
-  const costCenterDatalistId = expense
-    ? `finance-expense-cost-center-options-${expense.id}`
-    : "finance-expense-cost-center-options-new";
   return (
     <form action={action} className="fg-form">
       {expense ? <input name="id" type="hidden" value={expense.id} /> : null}
-      <datalist id={categoryDatalistId}>
-        {expenseCategorySuggestions.map((category) => (
-          <option key={category} value={category} />
-        ))}
-      </datalist>
-      <datalist id={costCenterDatalistId}>
-        {costCenterSuggestions.map((costCenter) => (
-          <option key={costCenter} value={costCenter} />
-        ))}
-      </datalist>
       <div className="fg-form-row">
         <div className="fg-field">
           <label className="fg-label">
             Fornecedor<span className="fg-required">*</span>
           </label>
           <div className="fg-input-wrap">
-            <input
+            <select
               className="fg-input"
-              defaultValue={expense?.supplier ?? ""}
-              maxLength={160}
-              name="supplier"
-              placeholder="Nome do fornecedor"
-              required
-            />
+              defaultValue={expense?.supplierId ?? ""}
+              name="supplierId"
+              required={!expense}
+            >
+              <option value="">{expense?.supplierId ? "Selecione" : expense ? `Legado: ${expense.supplier}` : "Selecione"}</option>
+              {masterData.suppliers.filter((item) => item.isActive || item.id === expense?.supplierId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
           </div>
         </div>
         <div className="fg-field">
@@ -399,14 +390,15 @@ function ExpenseForm({
             Categoria<span className="fg-required">*</span>
           </label>
           <div className="fg-input-wrap">
-            <input
+            <select
               className="fg-input"
-              defaultValue={expense?.category ?? ""}
-              list={categoryDatalistId}
-              maxLength={80}
-              name="category"
-              required
-            />
+              defaultValue={expense?.categoryId ?? ""}
+              name="categoryId"
+              required={!expense}
+            >
+              <option value="">{expense?.categoryId ? "Selecione" : expense ? `Legado: ${expense.category}` : "Selecione"}</option>
+              {masterData.categories.filter((item) => item.isActive || item.id === expense?.categoryId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
           </div>
         </div>
       </div>
@@ -475,13 +467,14 @@ function ExpenseForm({
       <div className="fg-field">
         <label className="fg-label">Centro de custo</label>
         <div className="fg-input-wrap">
-          <input
+          <select
             className="fg-input"
-            defaultValue={expense?.costCenter ?? ""}
-            list={costCenterDatalistId}
-            maxLength={100}
-            name="costCenter"
-          />
+            defaultValue={expense?.costCenterId ?? ""}
+            name="costCenterId"
+          >
+            <option value="">{expense?.costCenterId ? "Sem centro de custo" : expense?.costCenter ? `Legado: ${expense.costCenter}` : "Sem centro de custo"}</option>
+            {masterData.costCenters.filter((item) => item.isActive || item.id === expense?.costCenterId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
         </div>
       </div>
       <DisabledSelectField
@@ -758,7 +751,7 @@ function EntryRowActions({
   );
 }
 
-function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
+function ExpenseRowActions({ expense, masterData }: { expense: FinanceExpenseListItem; masterData: FinanceMasterData }) {
   return (
     <div style={{ display: "inline-flex", gap: 4, justifyContent: "flex-end" }}>
       <ActionSheet
@@ -777,6 +770,7 @@ function ExpenseRowActions({ expense }: { expense: FinanceExpenseListItem }) {
         <ExpenseForm
           action={updateFinancialExpenseAction}
           expense={expense}
+          masterData={masterData}
           mode="edit"
           submitLabel="Salvar conta a pagar"
         />

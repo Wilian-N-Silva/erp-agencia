@@ -69,6 +69,42 @@ export type FinanceFilters = {
   query?: string;
 };
 
+export type FinancialExpenseEditableFields = {
+  amount: string;
+  competence: string;
+  description: string;
+  dueDate: string;
+  notes: string | null;
+  recurring: boolean;
+  subcategory: string | null;
+};
+
+export type FinancialExpenseMasterDataUpdate = {
+  categoryId: string | null;
+  costCenterId: string | null;
+  supplierId: string | null;
+};
+
+export function buildFinancialExpenseUpdateValues(
+  input: FinancialExpenseEditableFields,
+  masterData: FinancialExpenseMasterDataUpdate,
+  updatedAt: Date = new Date(),
+) {
+  return {
+    supplierId: masterData.supplierId,
+    categoryId: masterData.categoryId,
+    costCenterId: masterData.costCenterId,
+    subcategory: input.subcategory,
+    description: input.description,
+    amount: input.amount,
+    dueDate: input.dueDate,
+    competence: input.competence,
+    recurring: input.recurring,
+    notes: input.notes,
+    updatedAt,
+  };
+}
+
 const financeExportFiltersSchema = z.strictObject({
   competence: isoMonthSchema.optional(),
   entryStatus: z
