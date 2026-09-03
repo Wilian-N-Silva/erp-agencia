@@ -27,7 +27,7 @@ afterAll(async () => {
   await adminDb?.$client.end();
 });
 
-describe("FIN-004 real migration upgrade 0020 -> 0022", () => {
+describe("FIN-004 real migration upgrade 0020 -> 0023", () => {
   it("preserves data, enables allocation RLS, and guards allocated title mutations", async () => {
     await dropUpgradeSchema();
 
@@ -127,6 +127,20 @@ describe("FIN-004 real migration upgrade 0020 -> 0022", () => {
         expect(titleGuards.rows).toEqual([
           { tgname: "financial_entries_allocated_title_guard" },
           { tgname: "financial_expenses_allocated_title_guard" },
+        ]);
+
+        await expect(applyMigration(transaction, 23)).resolves.toBeUndefined();
+        const allocationGuard = await transaction.execute(sql.raw(`
+          select tgname
+          from pg_trigger t
+          join pg_class c on c.oid = t.tgrelid
+          join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = '${schemaName}'
+            and c.relname = 'financial_allocations'
+            and tgname = 'financial_allocations_immutable_guard'
+        `));
+        expect(allocationGuard.rows).toEqual([
+          { tgname: "financial_allocations_immutable_guard" },
         ]);
       });
     } finally {
