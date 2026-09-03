@@ -118,7 +118,7 @@ describe("FIN-003 transaction creation", () => {
 });
 
 describe("FIN-003 RLS and database invariants", () => {
-  it("allows same-tenant access and blocks cross-tenant or absent context", async () => {
+  it("allows same-tenant access and blocks cross-tenant reads, updates, and deletes", async () => {
     const transactionId = id(101);
     await adminDb.execute(sql`
       insert into financial_transactions (
@@ -151,8 +151,78 @@ describe("FIN-003 RLS and database invariants", () => {
       expect(updated.rows).toHaveLength(0);
       expect(deleted.rows).toHaveLength(0);
     });
+  });
 
-    expect((await runtimeDb.execute(sql`select id from financial_transactions where id = ${transactionId}`)).rows).toHaveLength(0);
+  it("rejects cross-tenant inserts through the runtime role", async () => {
+    const crossTenantInsertId = id(102);
+    const withTenantDb = createWithTenantDb(runtimeDb);
+
+    await expectRlsViolation(() =>
+      withTenantDb(contextA, (transaction) =>
+        transaction.execute(sql`
+        insert into financial_transactions (
+          id, organization_id, account_id, direction, amount, occurred_at,
+          created_by_user_id
+        ) values (
+          ${crossTenantInsertId}, ${orgB}, ${accountB}, 'in', 10, now(),
+          'fin-003-user-b'
+        )
+      `),
+      ),
+    );
+
+    const inserted = await adminDb.execute(sql`
+      select id from financial_transactions where id = ${crossTenantInsertId}
+    `);
+    expect(inserted.rows).toHaveLength(0);
+  });
+
+  it("denies inserts, updates, and deletes through the runtime role without context", async () => {
+    const transactionId = id(103);
+    const noContextInsertId = id(104);
+    await adminDb.execute(sql`
+      insert into financial_transactions (
+        id, organization_id, account_id, direction, amount, occurred_at,
+        created_by_user_id
+      ) values (
+        ${transactionId}, ${orgA}, ${accountA}, 'out', 25, now(),
+        'fin-003-user-a'
+      )
+    `);
+
+    await expectRlsViolation(() =>
+      runtimeDb.execute(sql`
+      insert into financial_transactions (
+        id, organization_id, account_id, direction, amount, occurred_at,
+        created_by_user_id
+      ) values (
+        ${noContextInsertId}, ${orgA}, ${accountA}, 'in', 10, now(),
+        'fin-003-user-a'
+      )
+    `),
+    );
+    const selected = await runtimeDb.execute(sql`
+      select id from financial_transactions where id = ${transactionId}
+    `);
+    const updated = await runtimeDb.execute(sql`
+      update financial_transactions
+      set reference = 'no-context'
+      where id = ${transactionId}
+      returning id
+    `);
+    const deleted = await runtimeDb.execute(sql`
+      delete from financial_transactions where id = ${transactionId} returning id
+    `);
+
+    expect(selected.rows).toHaveLength(0);
+    expect(updated.rows).toHaveLength(0);
+    expect(deleted.rows).toHaveLength(0);
+    const preserved = await adminDb.execute(sql`
+      select id, reference
+      from financial_transactions
+      where id in (${transactionId}, ${noContextInsertId})
+    `);
+    expect(preserved.rows).toEqual([{ id: transactionId, reference: null }]);
   });
 
   it("rejects cross-tenant account links, non-positive values, and client-supplied invalid states", async () => {
@@ -182,6 +252,18 @@ async function counts() {
       (select count(*)::int from audit_logs where organization_id = ${orgA} and entity_type = 'financial_transaction') as audits
   `);
   return result.rows[0];
+}
+
+async function expectRlsViolation(operation: () => Promise<unknown>) {
+  let caught: unknown;
+  try {
+    await operation();
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(Error);
+  const databaseError = (caught as Error & { cause?: unknown }).cause ?? caught;
+  expect(databaseError).toMatchObject({ code: "42501" });
 }
 
 async function cleanup() {
