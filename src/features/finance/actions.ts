@@ -584,15 +584,8 @@ async function resolveExpenseMasterData(
 
   return {
     supplierId: supplier?.id ?? legacy.supplierId,
-    ...(supplier && supplier.id !== legacy.supplierId ? { supplier: supplier.name } : {}),
     categoryId: category?.id ?? legacy.categoryId,
-    ...(category && category.id !== legacy.categoryId ? { category: category.name } : {}),
     costCenterId: input.costCenterId ? costCenter?.id ?? null : null,
-    ...(costCenter && costCenter.id !== legacy.costCenterId
-      ? { costCenter: costCenter.name }
-      : legacy.costCenterId && !input.costCenterId
-        ? { costCenter: null }
-        : {}),
   };
 }
 

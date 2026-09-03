@@ -101,8 +101,13 @@ describe("FIN-002 master data validation", () => {
     });
   });
 
-  it("updates AP snapshots when linked master data is explicitly changed", () => {
+  it("associates legacy AP master data without replacing its snapshots", () => {
     const updatedAt = new Date("2026-09-02T12:00:00.000Z");
+    const legacyExpense = {
+      supplier: "Fornecedor original",
+      category: "Categoria original",
+      costCenter: "Centro original",
+    };
     const update = buildFinancialExpenseUpdateValues(
       {
         amount: "100.00",
@@ -115,26 +120,27 @@ describe("FIN-002 master data validation", () => {
       },
       {
         supplierId: "72000000-0000-4000-8000-000000000012",
-        supplier: "Fornecedor novo",
         categoryId: "72000000-0000-4000-8000-000000000022",
-        category: "Categoria nova",
         costCenterId: "72000000-0000-4000-8000-000000000032",
-        costCenter: "Centro novo",
       },
       updatedAt,
     );
 
-    expect(update).toMatchObject({
+    expect({ ...legacyExpense, ...update }).toMatchObject({
       supplierId: "72000000-0000-4000-8000-000000000012",
-      supplier: "Fornecedor novo",
+      supplier: "Fornecedor original",
       categoryId: "72000000-0000-4000-8000-000000000022",
-      category: "Categoria nova",
+      category: "Categoria original",
       costCenterId: "72000000-0000-4000-8000-000000000032",
-      costCenter: "Centro novo",
+      costCenter: "Centro original",
     });
+    expect(update).not.toHaveProperty("supplier");
+    expect(update).not.toHaveProperty("category");
+    expect(update).not.toHaveProperty("costCenter");
   });
 
-  it("clears the AP cost-center snapshot when its link is explicitly removed", () => {
+  it("preserves the AP cost-center snapshot when its link is explicitly removed", () => {
+    const legacyExpense = { costCenter: "Centro original" };
     const update = buildFinancialExpenseUpdateValues(
       {
         amount: "100.00",
@@ -149,11 +155,14 @@ describe("FIN-002 master data validation", () => {
         supplierId: null,
         categoryId: null,
         costCenterId: null,
-        costCenter: null,
       },
     );
 
-    expect(update).toMatchObject({ costCenterId: null, costCenter: null });
+    expect({ ...legacyExpense, ...update }).toMatchObject({
+      costCenterId: null,
+      costCenter: "Centro original",
+    });
+    expect(update).not.toHaveProperty("costCenter");
   });
 
   it("keeps legacy free text unresolved instead of promoting it to canonical master data", async () => {

@@ -81,11 +81,8 @@ export type FinancialExpenseEditableFields = {
 
 export type FinancialExpenseMasterDataUpdate = {
   categoryId: string | null;
-  category?: string;
   costCenterId: string | null;
-  costCenter?: string | null;
   supplierId: string | null;
-  supplier?: string;
 };
 
 export function buildFinancialExpenseUpdateValues(
@@ -97,9 +94,6 @@ export function buildFinancialExpenseUpdateValues(
     supplierId: masterData.supplierId,
     categoryId: masterData.categoryId,
     costCenterId: masterData.costCenterId,
-    ...(masterData.supplier === undefined ? {} : { supplier: masterData.supplier }),
-    ...(masterData.category === undefined ? {} : { category: masterData.category }),
-    ...(masterData.costCenter === undefined ? {} : { costCenter: masterData.costCenter }),
     subcategory: input.subcategory,
     description: input.description,
     amount: input.amount,
