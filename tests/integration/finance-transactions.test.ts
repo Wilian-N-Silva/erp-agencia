@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+﻿import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFinancialTransactionRecord } from "@/features/finance-transactions/dal";
@@ -13,7 +13,7 @@ if (!runtimeUrl || !adminUrl || runtimeUrl === adminUrl) {
 }
 
 const id = (suffix: number) =>
-  `73000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  `83000300-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
 const orgA = id(1);
 const orgB = id(2);
 const accountA = id(11);
