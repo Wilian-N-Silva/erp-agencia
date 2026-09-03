@@ -141,6 +141,13 @@
       "when": 1788401428934,
       "tag": "0019_grf_jobs_ui_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788405356990,
+      "tag": "0020_black_earthquake",
+      "breakpoints": true
     }
   ]
 }

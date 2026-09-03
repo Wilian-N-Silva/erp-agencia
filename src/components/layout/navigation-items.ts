@@ -87,6 +87,13 @@ export const navigationItems: NavigationItem[] = [
     permissions: ["finance.read"],
   },
   {
+    href: "/app/financeiro/movimentacoes",
+    label: "Movimentações",
+    icon: "finance",
+    section: "Financeiro",
+    permissions: ["finance.read"],
+  },
+  {
     href: "/app/financeiro/cadastros",
     label: "Cadastros financeiros",
     icon: "finance",

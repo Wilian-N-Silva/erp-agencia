@@ -35,6 +35,7 @@ const criticalActions: RateLimitAction[] = [
   "export",
   "reconciliation",
   "graphics_import",
+  "financial_transaction",
 ];
 
 describe("critical authenticated rate limits", () => {

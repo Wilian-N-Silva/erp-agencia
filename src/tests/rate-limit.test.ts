@@ -55,6 +55,10 @@ describe("rate-limit configuration", () => {
       limit: 3,
       windowMs: 60 * 60 * 1000,
     });
+    expect(config.financial_transaction).toEqual({
+      limit: 30,
+      windowMs: 5 * 60 * 1000,
+    });
   });
 
   it("accepts bounded environment overrides and rejects invalid values", () => {
