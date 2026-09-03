@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertGraphicJobTransition,
+  canApproveGraphicSupplierQuotes,
+  canReadGraphicJobs,
   canTransitionGraphicJob,
+  canWriteGraphicJobs,
+  canWriteGraphicSupplierQuotes,
   graphicJobOperationalStatuses,
   getGraphicJobNextAction,
   graphicJobInputSchema,
@@ -14,8 +18,24 @@ import {
   normalizeGraphicJobFilters,
   validateGraphicQuoteAttachmentContent,
 } from "@/features/graphics/rules";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("graphic job state machine", () => {
+  it("grants approvers read access without granting job or quote write access", () => {
+    const context = createAccessContext({
+      employeeId: null,
+      organizationId: "10000000-0000-4000-8000-000000000001",
+      permissions: ["graphics.supplier_quote_approve"],
+      roles: [],
+      userId: "quote-approver",
+    });
+
+    expect(canReadGraphicJobs(context)).toBe(true);
+    expect(canApproveGraphicSupplierQuotes(context)).toBe(true);
+    expect(canWriteGraphicJobs(context)).toBe(false);
+    expect(canWriteGraphicSupplierQuotes(context)).toBe(false);
+  });
+
   it("starts sourcing a supplier and exposes every PRD status", () => {
     expect(initialGraphicJobOperationalStatus).toBe("supplier_sourcing");
     expect(graphicJobOperationalStatuses).toEqual([

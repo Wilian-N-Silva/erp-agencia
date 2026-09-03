@@ -80,11 +80,17 @@ export function getGraphicJobNextAction(status: GraphicJobOperationalStatus) {
   return nextActionByStatus[status];
 }
 
+export const graphicJobReadPermissions = [
+  "graphics.read",
+  "graphics.write",
+  "graphics.supplier_quote_write",
+  "graphics.supplier_quote_approve",
+] as const;
+
 export function canReadGraphicJobs(context: AccessContext) {
-  return context.permissions.includes("graphics.read") ||
-    canWriteGraphicJobs(context) ||
-    canWriteGraphicSupplierQuotes(context) ||
-    canApproveGraphicSupplierQuotes(context);
+  return graphicJobReadPermissions.some((permission) =>
+    context.permissions.includes(permission)
+  );
 }
 
 export function canWriteGraphicJobs(context: AccessContext) {

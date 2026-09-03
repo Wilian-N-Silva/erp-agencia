@@ -31,6 +31,18 @@ describe("permission-filtered navigation", () => {
     );
   });
 
+  it("shows the graphics module for a supplier quote approver", () => {
+    const context = createAccessContext({
+      permissions: ["graphics.supplier_quote_approve"],
+      roles: [],
+      userId: "quote-approver",
+    });
+
+    expect(getVisibleNavigationItems(context).map((item) => item.href)).toContain(
+      "/app/grafica",
+    );
+  });
+
   it("shows only implemented back-office routes", () => {
     const context = createAccessContext({
       userId: "director_1",
