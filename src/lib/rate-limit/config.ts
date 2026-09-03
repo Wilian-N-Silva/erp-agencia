@@ -6,6 +6,7 @@ export const rateLimitActions = [
   "export",
   "reconciliation",
   "common_mutation",
+  "financial_transaction",
   "graphics_import",
 ] as const;
 
@@ -39,6 +40,8 @@ const configSchema = z.object({
   commonMutationWindowSeconds: positiveIntegerSchema,
   graphicsImportLimit: positiveIntegerSchema,
   graphicsImportWindowSeconds: positiveIntegerSchema,
+  financialTransactionLimit: positiveIntegerSchema,
+  financialTransactionWindowSeconds: positiveIntegerSchema,
   cleanupBatchSize: positiveIntegerSchema.max(10_000),
   cleanupProbability: probabilitySchema,
 });
@@ -62,6 +65,10 @@ export function loadRateLimitConfig(
     graphicsImportLimit: env.RATE_LIMIT_GRAPHICS_IMPORT_LIMIT ?? 3,
     graphicsImportWindowSeconds:
       env.RATE_LIMIT_GRAPHICS_IMPORT_WINDOW_SECONDS ?? 3600,
+    financialTransactionLimit:
+      env.RATE_LIMIT_FINANCIAL_TRANSACTION_LIMIT ?? 30,
+    financialTransactionWindowSeconds:
+      env.RATE_LIMIT_FINANCIAL_TRANSACTION_WINDOW_SECONDS ?? 300,
     cleanupBatchSize: env.RATE_LIMIT_CLEANUP_BATCH_SIZE ?? 500,
     cleanupProbability: env.RATE_LIMIT_CLEANUP_PROBABILITY ?? 0.01,
   });
@@ -81,6 +88,10 @@ export function loadRateLimitConfig(
     graphics_import: toRule(
       values.graphicsImportLimit,
       values.graphicsImportWindowSeconds,
+    ),
+    financial_transaction: toRule(
+      values.financialTransactionLimit,
+      values.financialTransactionWindowSeconds,
     ),
     cleanup: {
       batchSize: values.cleanupBatchSize,

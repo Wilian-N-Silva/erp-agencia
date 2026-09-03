@@ -718,6 +718,10 @@ export const financialAccounts = pgTable(
       table.name,
     ),
     statusIdx: index("financial_accounts_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("financial_accounts_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     typeCheck: check(
       "financial_accounts_type_check",
       sql`${table.type} in ('bank', 'cash', 'card', 'clearing')`,
@@ -817,6 +821,90 @@ export const suppliers = pgTable(
     organizationIdIdx: uniqueIndex("suppliers_organization_id_idx").on(
       table.organizationId,
       table.id,
+    ),
+  }),
+);
+
+export const financialTransactions = pgTable(
+  "financial_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    accountId: uuid("account_id").notNull(),
+    direction: text("direction").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    method: text("method"),
+    reference: text("reference"),
+    counterpartyName: text("counterparty_name"),
+    clientId: uuid("client_id"),
+    supplierId: uuid("supplier_id"),
+    status: text("status").notNull().default("pending_reconciliation"),
+    origin: text("origin").notNull().default("manual"),
+    importMetadata: jsonb("import_metadata"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountTenantFk: foreignKey({
+      columns: [table.organizationId, table.accountId],
+      foreignColumns: [financialAccounts.organizationId, financialAccounts.id],
+      name: "financial_transactions_account_tenant_fk",
+    }),
+    clientTenantFk: foreignKey({
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+      name: "financial_transactions_client_tenant_fk",
+    }),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "financial_transactions_supplier_tenant_fk",
+    }),
+    organizationIdIdx: uniqueIndex("financial_transactions_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    occurredAtIdx: index("financial_transactions_occurred_at_idx").on(
+      table.organizationId,
+      table.occurredAt,
+    ),
+    statusIdx: index("financial_transactions_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+    accountIdx: index("financial_transactions_account_idx").on(
+      table.organizationId,
+      table.accountId,
+    ),
+    directionCheck: check(
+      "financial_transactions_direction_check",
+      sql`${table.direction} in ('in', 'out')`,
+    ),
+    positiveAmountCheck: check(
+      "financial_transactions_positive_amount_check",
+      sql`${table.amount} > 0`,
+    ),
+    statusCheck: check(
+      "financial_transactions_status_check",
+      sql`${table.status} in ('pending_reconciliation', 'partially_reconciled', 'reconciled', 'reversed')`,
+    ),
+    originCheck: check(
+      "financial_transactions_origin_check",
+      sql`${table.origin} in ('manual', 'import', 'legacy_backfill')`,
+    ),
+    counterpartyCheck: check(
+      "financial_transactions_counterparty_check",
+      sql`not (${table.clientId} is not null and ${table.supplierId} is not null)`,
+    ),
+    directionCounterpartyCheck: check(
+      "financial_transactions_direction_counterparty_check",
+      sql`(${table.direction} = 'in' and ${table.supplierId} is null) or (${table.direction} = 'out' and ${table.clientId} is null)`,
     ),
   }),
 );
@@ -1469,6 +1557,7 @@ export type Role = typeof roles.$inferSelect;
 export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type FinancialAccount = typeof financialAccounts.$inferSelect;
+export type FinancialTransaction = typeof financialTransactions.$inferSelect;
 export type FinancialCategory = typeof financialCategories.$inferSelect;
 export type CostCenter = typeof costCenters.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
