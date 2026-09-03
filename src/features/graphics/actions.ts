@@ -21,7 +21,13 @@ import { getCurrentAccessContext, runWithCurrentTenantDb } from "@/lib/dal";
 import { enforceAuthenticatedRateLimit, withRateLimitActionResult } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { formDataToObject } from "@/lib/validation";
-import { createStorageKey, getSha256Hex, putStorageObject } from "@/lib/storage";
+import {
+  createStorageKey,
+  deleteStorageObject,
+  getSha256Hex,
+  putStorageObject,
+  type StoredObject,
+} from "@/lib/storage";
 import { validateUploadMetadata } from "@/features/documents/rules";
 
 import {
@@ -166,10 +172,15 @@ async function validateOwnedReferences(
 }
 
 async function createGraphicSupplierQuoteEntryPoint(formData: FormData) {
-  await runWithCurrentTenantDb(() => createGraphicSupplierQuote(formData));
+  await runQuoteMutationWithStorageRollback((uploadedObjects) =>
+    createGraphicSupplierQuote(formData, uploadedObjects),
+  );
 }
 
-async function createGraphicSupplierQuote(formData: FormData) {
+async function createGraphicSupplierQuote(
+  formData: FormData,
+  uploadedObjects: StoredObject[],
+) {
   const { context, organizationId } = await requireQuoteWriter();
   const uploads = getGraphicQuoteUploads(formData);
   if (uploads.length) await enforceAuthenticatedRateLimit("upload", context);
@@ -187,6 +198,7 @@ async function createGraphicSupplierQuote(formData: FormData) {
     quote.id,
     organizationId,
     context.userId,
+    uploadedObjects,
   );
 
   await writeAuditLog(context, {
@@ -200,10 +212,15 @@ async function createGraphicSupplierQuote(formData: FormData) {
 }
 
 async function updateGraphicSupplierQuoteEntryPoint(formData: FormData) {
-  await runWithCurrentTenantDb(() => updateGraphicSupplierQuote(formData));
+  await runQuoteMutationWithStorageRollback((uploadedObjects) =>
+    updateGraphicSupplierQuote(formData, uploadedObjects),
+  );
 }
 
-async function updateGraphicSupplierQuote(formData: FormData) {
+async function updateGraphicSupplierQuote(
+  formData: FormData,
+  uploadedObjects: StoredObject[],
+) {
   const { context, organizationId } = await requireQuoteWriter();
   const uploads = getGraphicQuoteUploads(formData);
   if (uploads.length) await enforceAuthenticatedRateLimit("upload", context);
@@ -229,6 +246,7 @@ async function updateGraphicSupplierQuote(formData: FormData) {
     after.id,
     organizationId,
     context.userId,
+    uploadedObjects,
   );
   await writeAuditLog(context, {
     action: "update",
@@ -320,6 +338,7 @@ async function saveQuoteAttachments(
   quoteId: string,
   organizationId: string,
   userId: string,
+  uploadedObjects: StoredObject[],
 ) {
   const saved = [];
   for (const upload of uploads) {
@@ -339,6 +358,7 @@ async function saveQuoteAttachments(
         prefix: `graphics/supplier-quotes/${quoteId}`,
       }),
     });
+    uploadedObjects.push(stored);
     const [file] = await db.insert(files).values({
       organizationId,
       storageProvider: stored.provider,
@@ -360,6 +380,32 @@ async function saveQuoteAttachments(
     saved.push(attachment);
   }
   return saved;
+}
+
+async function runQuoteMutationWithStorageRollback(
+  operation: (uploadedObjects: StoredObject[]) => Promise<void>,
+) {
+  const uploadedObjects: StoredObject[] = [];
+
+  try {
+    await runWithCurrentTenantDb(() => operation(uploadedObjects));
+  } catch (error) {
+    const cleanupResults = await Promise.allSettled(
+      uploadedObjects.reverse().map((object) => deleteStorageObject(object)),
+    );
+    const cleanupErrors = cleanupResults.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        "Supplier quote mutation failed and storage rollback was incomplete.",
+      );
+    }
+
+    throw error;
+  }
 }
 
 function refresh(id: string) {

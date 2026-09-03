@@ -5,10 +5,12 @@ import { createAccessContext } from "@/tests/helpers/access-context";
 
 const mocks = vi.hoisted(() => ({
   enforceAuthenticatedRateLimit: vi.fn(),
+  deleteStorageObject: vi.fn(),
   getCurrentAccessContext: vi.fn(),
   insert: vi.fn(),
   insertResults: [] as unknown[][],
   revalidatePath: vi.fn(),
+  putStorageObject: vi.fn(),
   runWithCurrentTenantDb: vi.fn(),
   select: vi.fn(),
   selectResults: [] as unknown[][],
@@ -39,6 +41,14 @@ vi.mock("@/lib/rate-limit", () => ({
   enforceAuthenticatedRateLimit: mocks.enforceAuthenticatedRateLimit,
   withRateLimitActionResult: (operation: (...args: unknown[]) => Promise<unknown>) => operation,
 }));
+vi.mock("@/lib/storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/storage")>();
+  return {
+    ...actual,
+    deleteStorageObject: mocks.deleteStorageObject,
+    putStorageObject: mocks.putStorageObject,
+  };
+});
 
 import {
   createGraphicSupplierQuoteAction,
@@ -54,6 +64,8 @@ describe("graphic job Action security boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.enforceAuthenticatedRateLimit.mockReset();
+    mocks.deleteStorageObject.mockReset();
+    mocks.putStorageObject.mockReset();
     mocks.writeAuditLog.mockReset();
     mocks.selectResults.length = 0;
     mocks.insertResults.length = 0;
@@ -61,6 +73,11 @@ describe("graphic job Action security boundary", () => {
     mocks.runWithCurrentTenantDb.mockImplementation(
       (operation: () => Promise<unknown>) => operation(),
     );
+    mocks.putStorageObject.mockResolvedValue({
+      bucket: "quotes",
+      key: "graphics/supplier-quotes/quote/valid.pdf",
+      provider: "r2",
+    });
     mocks.select.mockImplementation(() => ({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -225,6 +242,64 @@ describe("graphic job Action security boundary", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
+  it("removes uploaded objects when a later attachment has an invalid signature", async () => {
+    const storedObject = {
+      bucket: "quotes",
+      key: "graphics/supplier-quotes/quote/valid.pdf",
+      provider: "r2" as const,
+    };
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
+    mocks.putStorageObject.mockResolvedValue(storedObject);
+    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.insertResults.push(
+      [{ id: "60000000-0000-4000-8000-000000000001", jobId, status: "pending" }],
+      [{ id: "70000000-0000-4000-8000-000000000001" }],
+      [{ id: "80000000-0000-4000-8000-000000000001" }],
+    );
+    const form = validQuoteForm();
+    form.append(
+      "attachments",
+      attachmentFile("%PDF-1.7\nvalid", "valid.pdf"),
+    );
+    form.append(
+      "attachments",
+      attachmentFile("invalid", "invalid.pdf"),
+    );
+
+    await expect(createGraphicSupplierQuoteAction(form)).rejects.toThrow(
+      /anexo n.o corresponde ao tipo informado/,
+    );
+    expect(mocks.putStorageObject).toHaveBeenCalledOnce();
+    expect(mocks.deleteStorageObject).toHaveBeenCalledOnce();
+    expect(mocks.deleteStorageObject).toHaveBeenCalledWith(storedObject);
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("removes uploaded objects when audit failure rolls back quote metadata", async () => {
+    const storedObject = {
+      bucket: "quotes",
+      key: "graphics/supplier-quotes/quote/valid.pdf",
+      provider: "r2" as const,
+    };
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
+    mocks.putStorageObject.mockResolvedValue(storedObject);
+    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.insertResults.push(
+      [{ id: "60000000-0000-4000-8000-000000000001", jobId, status: "pending" }],
+      [{ id: "70000000-0000-4000-8000-000000000001" }],
+      [{ id: "80000000-0000-4000-8000-000000000001" }],
+    );
+    mocks.writeAuditLog.mockRejectedValue(new Error("audit failed"));
+    const form = validQuoteForm();
+    form.append("attachments", attachmentFile("%PDF-1.7\nvalid", "valid.pdf"));
+
+    await expect(createGraphicSupplierQuoteAction(form)).rejects.toThrow("audit failed");
+    expect(mocks.deleteStorageObject).toHaveBeenCalledOnce();
+    expect(mocks.deleteStorageObject).toHaveBeenCalledWith(storedObject);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["update", updateGraphicJobAction, validUpdateForm],
     ["archive", deleteGraphicJobAction, validDeleteForm],
@@ -363,4 +438,13 @@ function validQuoteForm() {
   form.set("estimatedDeliveryAt", "2026-09-10");
   form.set("conditions", "50% na entrada");
   return form;
+}
+
+function attachmentFile(contents: string, name: string) {
+  const body = new TextEncoder().encode(contents);
+  const file = new File([body], name, { type: "application/pdf" });
+  Object.defineProperty(file, "arrayBuffer", {
+    value: async () => body.buffer,
+  });
+  return file;
 }
