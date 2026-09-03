@@ -27,8 +27,8 @@ afterAll(async () => {
   await adminDb?.$client.end();
 });
 
-describe("GRF-001 real migration upgrade 0017 -> 0018", () => {
-  it("preserves existing tenant data and installs protected empty graphics tables", async () => {
+describe("Graphics real migration upgrade 0017 -> 0019", () => {
+  it("preserves tenant data, protects graphics tables, and installs UI permissions", async () => {
     await dropUpgradeSchema();
 
     try {
@@ -64,6 +64,13 @@ describe("GRF-001 real migration upgrade 0017 -> 0018", () => {
         `));
 
         await applyMigration(transaction, 18);
+        await transaction.execute(sql.raw(`
+          insert into roles (key, name) values
+            ('technical_admin', 'Technical admin'),
+            ('director', 'Director'),
+            ('finance', 'Finance')
+        `));
+        await applyMigration(transaction, 19);
 
         const result = await transaction.execute(sql.raw(`
           select
@@ -81,12 +88,22 @@ describe("GRF-001 real migration upgrade 0017 -> 0018", () => {
               join pg_namespace n on n.oid = c.relnamespace
               where n.nspname = '${schemaName}'
                 and c.relname in ('graphic_jobs', 'graphic_projects')
-                and c.relrowsecurity and c.relforcerowsecurity) as "protectedTables"
+                and c.relrowsecurity and c.relforcerowsecurity) as "protectedTables",
+            (select count(*)::int from permissions
+              where key in ('graphics.read', 'graphics.write')) as "graphicsPermissions",
+            (select count(*)::int from role_permissions grant_row
+              join roles role on role.id = grant_row.role_id
+              join permissions permission on permission.id = grant_row.permission_id
+              where (role.key in ('technical_admin', 'director')
+                  and permission.key in ('graphics.read', 'graphics.write'))
+                or (role.key = 'finance' and permission.key = 'graphics.read')) as "graphicsGrants"
         `));
 
         expect(result.rows).toEqual([{
           clients: 1,
           employees: 1,
+          graphicsGrants: 5,
+          graphicsPermissions: 2,
           jobs: 0,
           policies: 2,
           projects: 0,

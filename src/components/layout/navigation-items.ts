@@ -9,6 +9,7 @@ export type NavigationIcon =
   | "finance-out"
   | "finance-provision"
   | "clients"
+  | "graphics"
   | "invoices"
   | "people"
   | "timeoff"
@@ -49,6 +50,13 @@ export const navigationItems: NavigationItem[] = [
     icon: "dashboard",
     section: "Operação",
     permissions: ["dashboard.read", "dashboard.configure"],
+  },
+  {
+    href: "/app/grafica",
+    label: "Gráfica",
+    icon: "graphics",
+    section: "Operação",
+    permissions: ["graphics.read", "graphics.write"],
   },
   {
     href: "/app/alertas",

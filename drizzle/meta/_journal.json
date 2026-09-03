@@ -134,6 +134,13 @@
       "when": 1788399344420,
       "tag": "0018_pretty_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788401428934,
+      "tag": "0019_grf_jobs_ui_permissions",
+      "breakpoints": true
     }
   ]
 }
