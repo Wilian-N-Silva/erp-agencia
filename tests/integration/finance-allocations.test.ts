@@ -133,6 +133,54 @@ describe("FIN-004 atomic many-to-many allocations", () => {
     expect(getFinancialExpenseEffectiveStatus(row, "2026-09-03")).toBe("partial");
   });
 
+  it("rejects reducing or cancelling a receivable after it has allocations", async () => {
+    await expect(adminDb.execute(sql`
+      update financial_entries set amount = 999 where id = ${entries.multi}
+    `)).rejects.toThrow();
+    await expect(adminDb.execute(sql`
+      update financial_entries set status = 'cancelled' where id = ${entries.multi}
+    `)).rejects.toThrow();
+
+    expect(await entryState(entries.multi)).toMatchObject({
+      amount: "1000.00",
+      settled: "1000.00",
+      status: "received",
+    });
+    const reconciliation = await adminDb.execute(sql`
+      select
+        (select count(*)::int from financial_allocations
+          where financial_entry_id = ${entries.multi}) as allocations,
+        (select count(*)::int from financial_transactions
+          where id in (${transactions.multi300}, ${transactions.multi700})
+            and status = 'reconciled') as reconciled
+    `);
+    expect(reconciliation.rows[0]).toEqual({ allocations: 2, reconciled: 2 });
+  });
+
+  it("rejects reducing or cancelling a payable after it has allocations", async () => {
+    await expect(adminDb.execute(sql`
+      update financial_expenses set amount = 299 where id = ${expense}
+    `)).rejects.toThrow();
+    await expect(adminDb.execute(sql`
+      update financial_expenses set status = 'cancelled' where id = ${expense}
+    `)).rejects.toThrow();
+
+    const state = await adminDb.execute(sql`
+      select amount, paid_amount as "settled", status
+      from financial_expenses where id = ${expense}
+    `);
+    expect(state.rows[0]).toMatchObject({
+      amount: "1000.00",
+      settled: "300.00",
+      status: "planned",
+    });
+    expect((await allocationCounts(transactions.payable)).allocations).toBe(1);
+    const transactionState = await adminDb.execute(sql`
+      select status from financial_transactions where id = ${transactions.payable}
+    `);
+    expect(transactionState.rows[0]).toEqual({ status: "reconciled" });
+  });
+
   it("rejects over-allocation against either the transaction or the title", async () => {
     await expect(createFinancialAllocations(contextA, {
       allocations: [{ amount: "101.01", targetId: entries.over, targetType: "receivable" }],
@@ -197,10 +245,13 @@ describe("FIN-004 tenant isolation and database guards", () => {
 
   it("blocks cross-tenant reads and writes through the runtime role and denies missing context", async () => {
     const allocationId = id(901);
+    const noContextAllocationId = id(902);
     const existing = await adminDb.execute(sql`
-      select id, organization_id as "organizationId" from financial_allocations limit 1
+      select id, organization_id as "organizationId"
+      from financial_allocations where organization_id = ${orgA} limit 1
     `);
     expect(existing.rows.length).toBeGreaterThan(0);
+    const existingAllocationId = String(existing.rows[0]?.id);
 
     const contextB = { ...contextA, organizationId: orgB, userId: "fin-004-user-b" };
     await createWithTenantDb(runtimeDb)(contextB, async (transaction) => {
@@ -217,8 +268,53 @@ describe("FIN-004 tenant isolation and database guards", () => {
       `)).rejects.toThrow();
     });
 
+    await createWithTenantDb(runtimeDb)(contextB, async (transaction) => {
+      const updated = await transaction.execute(sql`
+        update financial_allocations set amount = amount + 1
+        where id = ${existingAllocationId}
+        returning id
+      `);
+      expect(updated.rows).toHaveLength(0);
+    });
+
+    await expect(createWithTenantDb(runtimeDb)(contextA, async (transaction) => {
+      await transaction.execute(sql`
+        update financial_allocations set organization_id = ${orgB}
+        where id = ${existingAllocationId}
+      `);
+    })).rejects.toThrow();
+
+    await createWithTenantDb(runtimeDb)(contextB, async (transaction) => {
+      const deleted = await transaction.execute(sql`
+        delete from financial_allocations where id = ${existingAllocationId}
+        returning id
+      `);
+      expect(deleted.rows).toHaveLength(0);
+    });
+
     const noContextRows = await runtimeDb.execute(sql`select id from financial_allocations`);
     expect(noContextRows.rows).toHaveLength(0);
+    await expect(runtimeDb.execute(sql`
+      insert into financial_allocations (
+        id, organization_id, transaction_id, financial_entry_id, amount, created_by_user_id
+      ) values (
+        ${noContextAllocationId}, ${orgA}, ${transactions.cross}, ${entries.atomic50},
+        1, 'fin-004-user-a'
+      )
+    `)).rejects.toThrow();
+
+    const noContextUpdate = await runtimeDb.execute(sql`
+      update financial_allocations set amount = amount + 1
+      where id = ${existingAllocationId}
+      returning id
+    `);
+    expect(noContextUpdate.rows).toHaveLength(0);
+
+    const noContextDelete = await runtimeDb.execute(sql`
+      delete from financial_allocations where id = ${existingAllocationId}
+      returning id
+    `);
+    expect(noContextDelete.rows).toHaveLength(0);
   });
 
   it("enforces direction and aggregate capacity for direct database writes", async () => {
@@ -292,7 +388,7 @@ async function createFixtures() {
 
 async function entryState(entryId: string) {
   const result = await adminDb.execute(sql`
-    select received_amount as "settled", status
+    select amount, received_amount as "settled", status
     from financial_entries where id = ${entryId}
   `);
   return result.rows[0];
