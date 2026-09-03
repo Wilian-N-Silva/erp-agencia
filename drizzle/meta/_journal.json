@@ -148,6 +148,13 @@
       "when": 1788405356990,
       "tag": "0020_black_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788408410611,
+      "tag": "0021_abnormal_luckman",
+      "breakpoints": true
     }
   ]
 }

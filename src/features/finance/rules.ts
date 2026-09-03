@@ -34,6 +34,7 @@ export type FinanceExpenseRecord = {
   amount: string;
   competence: string;
   dueDate: string | Date;
+  paidAmount?: string | null;
   paidDate?: string | Date | null;
   status: LegacyFinancialExpenseStatus;
 };
@@ -364,6 +365,7 @@ export function getFinancialExpenseEffectiveStatus(
   expense: {
     amount: string;
     dueDate: string | Date;
+    paidAmount?: string | null;
     paidDate?: string | Date | null;
     status: FinancialExpenseStatusSource;
   },
@@ -426,8 +428,16 @@ export function getFinancialEntrySettledAmount(
 }
 
 export function getFinancialExpenseSettledAmount(
-  expense: { amount: string; status: FinancialExpenseStatusSource },
+  expense: {
+    amount: string;
+    paidAmount?: string | null;
+    status: FinancialExpenseStatusSource;
+  },
 ) {
+  if (expense.paidAmount !== null && expense.paidAmount !== undefined) {
+    return centsToMoney(Math.max(moneyToCents(expense.paidAmount), 0));
+  }
+
   return expense.status === "paid" || expense.status === "settled"
     ? expense.amount
     : "0.00";
