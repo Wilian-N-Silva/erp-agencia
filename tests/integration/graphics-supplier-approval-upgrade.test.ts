@@ -53,9 +53,17 @@ describe("Graphics supplier approval migration upgrade 0024 -> 0025", () => {
             (select count(*)::int from work_items
               where kind = 'graphic_supplier_quote_approval'
                 and source_id = '${ids.quoteA}') as "workItems",
+            (select operational_status from graphic_jobs where id = '${ids.jobA}') as "jobStatus",
             (select count(*)::int from audit_logs
               where entity_type = 'work_item'
-                and metadata ->> 'backfill' = 'GRF-004') as audits,
+                and metadata ->> 'backfill' = 'GRF-004') as "workItemAudits",
+            (select count(*)::int from audit_logs
+              where entity_type = 'graphic_job'
+                and entity_id = '${ids.jobA}'
+                and action = 'status_change'
+                and before ->> 'operational_status' = 'supplier_sourcing'
+                and after ->> 'operational_status' = 'supplier_approval_pending'
+                and metadata ->> 'backfill' = 'GRF-004') as "jobAudits",
             (select count(*)::int from role_permissions grant_row
               join roles role on role.id = grant_row.role_id
               join permissions permission on permission.id = grant_row.permission_id
@@ -63,11 +71,13 @@ describe("Graphics supplier approval migration upgrade 0024 -> 0025", () => {
                 and permission.key = 'graphics.supplier_quote_approve') as grants
         `));
         expect(result.rows).toEqual([{
-          audits: 1,
           grants: 2,
+          jobAudits: 1,
+          jobStatus: "supplier_approval_pending",
           permissions: 1,
           quotes: 1,
           workItems: 1,
+          workItemAudits: 1,
         }]);
 
         await expect(transaction.transaction(async (savepoint) => {
@@ -116,11 +126,10 @@ async function createPreMigrationFixtures(database: Pick<Database, "execute">) {
   await database.execute(sql.raw(`insert into suppliers (id, organization_id, name) values
     ('${ids.supplierA}', '${ids.orgA}', 'Supplier A')`));
   await database.execute(sql.raw(`insert into graphic_jobs (
-    id, organization_id, internal_code, client_id, title, description, responsible_employee_id,
-    operational_status
+    id, organization_id, internal_code, client_id, title, description, responsible_employee_id
   ) values (
     '${ids.jobA}', '${ids.orgA}', 'GRF-004', '${ids.clientA}', 'Banner', 'Description',
-    '${ids.employeeA}', 'supplier_approval_pending'
+    '${ids.employeeA}'
   )`));
   await database.execute(sql.raw(`insert into graphic_supplier_quotes (
     id, organization_id, job_id, supplier_id, description, quoted_amount, quoted_at

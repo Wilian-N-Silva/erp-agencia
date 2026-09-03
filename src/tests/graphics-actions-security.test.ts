@@ -95,8 +95,10 @@ describe("graphic job Action security boundary", () => {
         where: vi.fn().mockImplementation(() => {
           let result: unknown[] | undefined;
           const getResult = () => result ??= mocks.selectResults.shift() ?? [];
+          const limit = vi.fn().mockImplementation(() => Promise.resolve(getResult()));
           return {
-            limit: vi.fn().mockImplementation(() => Promise.resolve(getResult())),
+            for: vi.fn().mockReturnValue({ limit }),
+            limit,
             then: (resolve: (value: unknown[]) => unknown, reject: (reason: unknown) => unknown) =>
               Promise.resolve(getResult()).then(resolve, reject),
           };
@@ -266,7 +268,7 @@ describe("graphic job Action security boundary", () => {
       transactionActive = true;
       try { return await operation(); } finally { transactionActive = false; }
     });
-    mocks.selectResults.push([quote], [job], []);
+    mocks.selectResults.push([job], [quote], []);
     mocks.updateResults.push(
       [{ ...quote, status: "approved", reviewerUserId: context.userId, reviewedAt: new Date() }],
       [{ ...job, operationalStatus: "os_pending" }],
@@ -297,7 +299,7 @@ describe("graphic job Action security boundary", () => {
     const quote = pendingQuote();
     const job = approvalPendingJob();
     mocks.getCurrentAccessContext.mockResolvedValue(context);
-    mocks.selectResults.push([quote], [job], []);
+    mocks.selectResults.push([job], [quote], []);
     mocks.updateResults.push(
       [{ ...quote, status: "rejected", reviewerUserId: context.userId, rejectionReason: "Prazo incompatível" }],
       [{ ...job, operationalStatus: "supplier_sourcing" }],

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabase, createWithTenantDb, type Database } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
+import { transitionPendingGraphicSupplierQuote } from "@/features/graphics/quote-decision";
 
 const runtimeUrl = process.env.DATABASE_TEST_URL;
 const adminUrl = process.env.DATABASE_TEST_ADMIN_URL;
@@ -15,7 +16,9 @@ const ids = {
   orgA: id(1), orgB: id(2), areaA: id(11), areaB: id(12), positionA: id(21), positionB: id(22),
   employeeA: id(31), employeeB: id(32), clientA: id(41), clientB: id(42),
   supplierA: id(51), supplierB: id(52), jobA: id(61), jobB: id(62),
+  rejectionJob: id(63), cancellationJob: id(64),
   quoteA: id(71), quoteA2: id(72), quoteB: id(73), quoteAllowed: id(74), quoteCross: id(75),
+  rejectionQuote1: id(76), rejectionQuote2: id(77), cancellationQuote1: id(78), cancellationQuote2: id(79),
   fileA: id(81), fileB: id(82), attachmentA: id(91), attachmentB: id(92), attachmentAllowed: id(93),
 } as const;
 const userA = "grf-003-user-a";
@@ -96,6 +99,45 @@ describe("GRF-003 supplier quotes", () => {
     `)).rejects.toThrow();
     await expectRows(runtimeDb, sql`select id from graphic_supplier_quote_attachments where id = ${ids.attachmentA}`, 0);
   });
+
+  it.each([
+    ["rejections", ids.rejectionJob, ids.rejectionQuote1, ids.rejectionQuote2, "rejected"],
+    ["cancellations", ids.cancellationJob, ids.cancellationQuote1, ids.cancellationQuote2, "cancelled"],
+  ] as const)("serializes concurrent %s by job and returns it to sourcing", async (
+    _operation,
+    concurrentJobId,
+    firstQuoteId,
+    secondQuoteId,
+    decision,
+  ) => {
+    const withTenantDb = createWithTenantDb(runtimeDb);
+    const decide = (quoteId: string) => withTenantDb(contextA, () =>
+      transitionPendingGraphicSupplierQuote({
+        decision,
+        jobId: concurrentJobId,
+        organizationId: ids.orgA,
+        quoteId,
+        rejectionReason: decision === "rejected" ? "Prazo incompatível" : undefined,
+        reviewerUserId: decision === "rejected" ? userA : undefined,
+      }));
+
+    await expect(Promise.all([decide(firstQuoteId), decide(secondQuoteId)]))
+      .resolves.toHaveLength(2);
+
+    const state = await adminDb.execute(sql`
+      select
+        (select operational_status from graphic_jobs where id = ${concurrentJobId}) as "jobStatus",
+        (select count(*)::int from graphic_supplier_quotes
+          where job_id = ${concurrentJobId} and status = ${decision}) as "decidedQuotes",
+        (select count(*)::int from graphic_supplier_quotes
+          where job_id = ${concurrentJobId} and status = 'pending') as "pendingQuotes"
+    `);
+    expect(state.rows).toEqual([{
+      decidedQuotes: 2,
+      jobStatus: "supplier_sourcing",
+      pendingQuotes: 0,
+    }]);
+  });
 });
 
 async function createFixtures() {
@@ -106,8 +148,19 @@ async function createFixtures() {
   await adminDb.execute(sql`insert into employees (id, organization_id, registration_number, full_name, position_id, area_id, employment_type, start_date, current_compensation) values (${ids.employeeA}, ${ids.orgA}, 'G3-A', 'Employee A', ${ids.positionA}, ${ids.areaA}, 'clt', '2026-01-01', 1000), (${ids.employeeB}, ${ids.orgB}, 'G3-B', 'Employee B', ${ids.positionB}, ${ids.areaB}, 'clt', '2026-01-01', 1000)`);
   await adminDb.execute(sql`insert into clients (id, organization_id, name, code) values (${ids.clientA}, ${ids.orgA}, 'Client A', 'G3-A'), (${ids.clientB}, ${ids.orgB}, 'Client B', 'G3-B')`);
   await adminDb.execute(sql`insert into suppliers (id, organization_id, name) values (${ids.supplierA}, ${ids.orgA}, 'Supplier A'), (${ids.supplierB}, ${ids.orgB}, 'Supplier B')`);
-  await adminDb.execute(sql`insert into graphic_jobs (id, organization_id, internal_code, client_id, title, description, responsible_employee_id) values (${ids.jobA}, ${ids.orgA}, 'G3-A', ${ids.clientA}, 'Job A', 'Description', ${ids.employeeA}), (${ids.jobB}, ${ids.orgB}, 'G3-B', ${ids.clientB}, 'Job B', 'Description', ${ids.employeeB})`);
-  await adminDb.execute(sql`insert into graphic_supplier_quotes (id, organization_id, job_id, supplier_id, description, quoted_amount, quoted_at, conditions) values (${ids.quoteA}, ${ids.orgA}, ${ids.jobA}, ${ids.supplierA}, 'Quote A', 150, '2026-09-01', 'Cash'), (${ids.quoteA2}, ${ids.orgA}, ${ids.jobA}, ${ids.supplierA}, 'Quote A2', 200, '2026-09-02', 'Terms'), (${ids.quoteB}, ${ids.orgB}, ${ids.jobB}, ${ids.supplierB}, 'Quote B', 250, '2026-09-01', 'Cash')`);
+  await adminDb.execute(sql`insert into graphic_jobs (id, organization_id, internal_code, client_id, title, description, responsible_employee_id, operational_status) values
+    (${ids.jobA}, ${ids.orgA}, 'G3-A', ${ids.clientA}, 'Job A', 'Description', ${ids.employeeA}, 'supplier_sourcing'),
+    (${ids.jobB}, ${ids.orgB}, 'G3-B', ${ids.clientB}, 'Job B', 'Description', ${ids.employeeB}, 'supplier_sourcing'),
+    (${ids.rejectionJob}, ${ids.orgA}, 'G4-R', ${ids.clientA}, 'Concurrent rejection', 'Description', ${ids.employeeA}, 'supplier_approval_pending'),
+    (${ids.cancellationJob}, ${ids.orgA}, 'G4-C', ${ids.clientA}, 'Concurrent cancellation', 'Description', ${ids.employeeA}, 'supplier_approval_pending')`);
+  await adminDb.execute(sql`insert into graphic_supplier_quotes (id, organization_id, job_id, supplier_id, description, quoted_amount, quoted_at, conditions) values
+    (${ids.quoteA}, ${ids.orgA}, ${ids.jobA}, ${ids.supplierA}, 'Quote A', 150, '2026-09-01', 'Cash'),
+    (${ids.quoteA2}, ${ids.orgA}, ${ids.jobA}, ${ids.supplierA}, 'Quote A2', 200, '2026-09-02', 'Terms'),
+    (${ids.quoteB}, ${ids.orgB}, ${ids.jobB}, ${ids.supplierB}, 'Quote B', 250, '2026-09-01', 'Cash'),
+    (${ids.rejectionQuote1}, ${ids.orgA}, ${ids.rejectionJob}, ${ids.supplierA}, 'Concurrent rejection 1', 100, now(), 'Cash'),
+    (${ids.rejectionQuote2}, ${ids.orgA}, ${ids.rejectionJob}, ${ids.supplierA}, 'Concurrent rejection 2', 110, now(), 'Cash'),
+    (${ids.cancellationQuote1}, ${ids.orgA}, ${ids.cancellationJob}, ${ids.supplierA}, 'Concurrent cancellation 1', 120, now(), 'Cash'),
+    (${ids.cancellationQuote2}, ${ids.orgA}, ${ids.cancellationJob}, ${ids.supplierA}, 'Concurrent cancellation 2', 130, now(), 'Cash')`);
   await adminDb.execute(sql`insert into files (id, organization_id, storage_provider, storage_key, original_name, mime_type, extension, byte_size, uploaded_by_user_id) values (${ids.fileA}, ${ids.orgA}, 'local', 'grf-003/a.pdf', 'a.pdf', 'application/pdf', 'pdf', 10, ${userA}), (${ids.fileB}, ${ids.orgB}, 'local', 'grf-003/b.pdf', 'b.pdf', 'application/pdf', 'pdf', 10, ${userB})`);
   await adminDb.execute(sql`insert into graphic_supplier_quote_attachments (id, organization_id, quote_id, file_id) values (${ids.attachmentA}, ${ids.orgA}, ${ids.quoteA}, ${ids.fileA}), (${ids.attachmentB}, ${ids.orgB}, ${ids.quoteB}, ${ids.fileB})`);
 }
