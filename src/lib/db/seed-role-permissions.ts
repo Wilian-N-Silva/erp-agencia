@@ -17,6 +17,8 @@ export const defaultRolePermissions: Record<
   technical_admin: [
     "dashboard.configure",
     "clients.configure",
+    "graphics.read",
+    "graphics.write",
     "people.configure",
     "equipment.configure",
     "access_records.configure",
@@ -36,6 +38,7 @@ export const defaultRolePermissions: Record<
     "finance.configure",
     "clients.read",
     "clients.write",
+    "graphics.read",
     "people.read",
     "compensation.read",
     "compensation.write",

@@ -8,6 +8,7 @@ const ROUTE_TITLES: Record<string, string[]> = {
   "/app/alertas": ["Operação", "Alertas"],
   "/app/financeiro": ["Financeiro"],
   "/app/clientes": ["Financeiro", "Clientes"],
+  "/app/grafica": ["Operação", "Gráfica"],
   "/app/colaboradores": ["Pessoas", "Colaboradores"],
   "/app/colaboradores/admissoes": ["Pessoas", "Admissões"],
   "/app/colaboradores/desligamentos": ["Pessoas", "Desligamentos"],
@@ -35,6 +36,9 @@ function resolveCrumbs(pathname: string | null): string[] {
   // Best-effort dynamic resolution
   if (/^\/app\/clientes\/[^/]+/.test(pathname)) {
     return ["Financeiro", "Clientes", "Detalhe"];
+  }
+  if (/^\/app\/grafica\/[^/]+/.test(pathname)) {
+    return ["Operação", "Gráfica", pathname.endsWith("/novo") ? "Novo" : "Detalhe"];
   }
   if (/^\/app\/colaboradores\/[^/]+/.test(pathname)) {
     return ["Pessoas", "Colaboradores", "Detalhe"];
