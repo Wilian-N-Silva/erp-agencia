@@ -23,6 +23,8 @@ export const directTenantPolicyTables = [
   "financial_transactions",
   "graphic_jobs",
   "graphic_projects",
+  "graphic_supplier_quote_attachments",
+  "graphic_supplier_quotes",
   "invoice_requests",
   "lifecycle_checklists",
   "positions",

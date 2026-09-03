@@ -7,16 +7,32 @@ import { redirect } from "next/navigation";
 
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { clients, employees, graphicJobs, graphicProjects } from "@/lib/db/schema";
+import {
+  clients,
+  employees,
+  files,
+  graphicJobs,
+  graphicProjects,
+  graphicSupplierQuoteAttachments,
+  graphicSupplierQuotes,
+  suppliers,
+} from "@/lib/db/schema";
 import { getCurrentAccessContext, runWithCurrentTenantDb } from "@/lib/dal";
 import { enforceAuthenticatedRateLimit, withRateLimitActionResult } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { formDataToObject } from "@/lib/validation";
+import { createStorageKey, getSha256Hex, putStorageObject } from "@/lib/storage";
+import { validateUploadMetadata } from "@/features/documents/rules";
 
 import {
   graphicJobDeleteSchema,
   graphicJobInputSchema,
   graphicJobUpdateSchema,
+  getGraphicQuoteUploads,
+  graphicSupplierQuoteCancelSchema,
+  graphicSupplierQuoteInputSchema,
+  graphicSupplierQuoteUpdateSchema,
+  validateGraphicQuoteAttachmentContent,
 } from "./rules";
 
 async function createGraphicJobEntryPoint(formData: FormData) {
@@ -149,6 +165,203 @@ async function validateOwnedReferences(
   if (!client[0] || !responsible[0] || !project[0]) throw new AccessDeniedError();
 }
 
+async function createGraphicSupplierQuoteEntryPoint(formData: FormData) {
+  await runWithCurrentTenantDb(() => createGraphicSupplierQuote(formData));
+}
+
+async function createGraphicSupplierQuote(formData: FormData) {
+  const { context, organizationId } = await requireQuoteWriter();
+  const uploads = getGraphicQuoteUploads(formData);
+  if (uploads.length) await enforceAuthenticatedRateLimit("upload", context);
+  const input = graphicSupplierQuoteInputSchema.parse(
+    formDataToObject(formData, ["attachments"]),
+  );
+  await validateOwnedQuoteReferences(input.jobId, input.supplierId, organizationId);
+
+  const [quote] = await db
+    .insert(graphicSupplierQuotes)
+    .values({ organizationId, ...input })
+    .returning();
+  const attachments = await saveQuoteAttachments(
+    uploads,
+    quote.id,
+    organizationId,
+    context.userId,
+  );
+
+  await writeAuditLog(context, {
+    action: "create",
+    entityType: "graphic_supplier_quote",
+    entityId: quote.id,
+    after: quote,
+    metadata: { attachmentIds: attachments.map(({ id }) => id), jobId: quote.jobId },
+  });
+  refresh(quote.jobId);
+}
+
+async function updateGraphicSupplierQuoteEntryPoint(formData: FormData) {
+  await runWithCurrentTenantDb(() => updateGraphicSupplierQuote(formData));
+}
+
+async function updateGraphicSupplierQuote(formData: FormData) {
+  const { context, organizationId } = await requireQuoteWriter();
+  const uploads = getGraphicQuoteUploads(formData);
+  if (uploads.length) await enforceAuthenticatedRateLimit("upload", context);
+  const input = graphicSupplierQuoteUpdateSchema.parse(
+    formDataToObject(formData, ["attachments"]),
+  );
+  const before = await getOwnedPendingQuote(input.id, input.jobId, organizationId);
+  await validateOwnedQuoteReferences(input.jobId, input.supplierId, organizationId);
+  const { id, ...values } = input;
+  const [after] = await db
+    .update(graphicSupplierQuotes)
+    .set({ ...values, updatedAt: new Date() })
+    .where(and(
+      eq(graphicSupplierQuotes.id, id),
+      eq(graphicSupplierQuotes.organizationId, organizationId),
+      eq(graphicSupplierQuotes.jobId, input.jobId),
+      eq(graphicSupplierQuotes.status, "pending"),
+    ))
+    .returning();
+  if (!after) throw new AccessDeniedError();
+  const attachments = await saveQuoteAttachments(
+    uploads,
+    after.id,
+    organizationId,
+    context.userId,
+  );
+  await writeAuditLog(context, {
+    action: "update",
+    entityType: "graphic_supplier_quote",
+    entityId: after.id,
+    before,
+    after,
+    metadata: { attachmentIds: attachments.map(({ id: attachmentId }) => attachmentId), jobId: after.jobId },
+  });
+  refresh(after.jobId);
+}
+
+async function cancelGraphicSupplierQuoteEntryPoint(formData: FormData) {
+  await runWithCurrentTenantDb(() => cancelGraphicSupplierQuote(formData));
+}
+
+async function cancelGraphicSupplierQuote(formData: FormData) {
+  const { context, organizationId } = await requireQuoteWriter();
+  const input = graphicSupplierQuoteCancelSchema.parse(formDataToObject(formData));
+  const before = await getOwnedPendingQuote(input.id, input.jobId, organizationId);
+  const [after] = await db
+    .update(graphicSupplierQuotes)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(
+      eq(graphicSupplierQuotes.id, input.id),
+      eq(graphicSupplierQuotes.organizationId, organizationId),
+      eq(graphicSupplierQuotes.jobId, input.jobId),
+      eq(graphicSupplierQuotes.status, "pending"),
+    ))
+    .returning();
+  if (!after) throw new AccessDeniedError();
+  await writeAuditLog(context, {
+    action: "status_change",
+    entityType: "graphic_supplier_quote",
+    entityId: after.id,
+    before,
+    after,
+    metadata: { jobId: after.jobId },
+  });
+  refresh(after.jobId);
+}
+
+async function requireQuoteWriter() {
+  const context = await getCurrentAccessContext();
+  if (!context) redirect("/login");
+  assertCan("graphics.supplier_quote_write", context);
+  if (!context.organizationId) throw new AccessDeniedError();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
+  return { context, organizationId: context.organizationId };
+}
+
+async function validateOwnedQuoteReferences(
+  jobId: string,
+  supplierId: string,
+  organizationId: string,
+) {
+  const [jobRows, supplierRows] = await Promise.all([
+    db.select({ id: graphicJobs.id }).from(graphicJobs).where(and(
+      eq(graphicJobs.id, jobId),
+      eq(graphicJobs.organizationId, organizationId),
+      isNull(graphicJobs.deletedAt),
+    )).limit(1),
+    db.select({ id: suppliers.id }).from(suppliers).where(and(
+      eq(suppliers.id, supplierId),
+      eq(suppliers.organizationId, organizationId),
+      eq(suppliers.isActive, true),
+    )).limit(1),
+  ]);
+  if (!jobRows[0] || !supplierRows[0]) throw new AccessDeniedError();
+}
+
+async function getOwnedPendingQuote(
+  id: string,
+  jobId: string,
+  organizationId: string,
+) {
+  const [quote] = await db.select().from(graphicSupplierQuotes).where(and(
+    eq(graphicSupplierQuotes.id, id),
+    eq(graphicSupplierQuotes.jobId, jobId),
+    eq(graphicSupplierQuotes.organizationId, organizationId),
+    eq(graphicSupplierQuotes.status, "pending"),
+  )).limit(1);
+  if (!quote) throw new AccessDeniedError();
+  return quote;
+}
+
+async function saveQuoteAttachments(
+  uploads: File[],
+  quoteId: string,
+  organizationId: string,
+  userId: string,
+) {
+  const saved = [];
+  for (const upload of uploads) {
+    const metadata = validateUploadMetadata({
+      byteSize: upload.size,
+      mimeType: upload.type || "application/octet-stream",
+      originalName: upload.name,
+    });
+    const body = Buffer.from(await upload.arrayBuffer());
+    validateGraphicQuoteAttachmentContent(body, metadata.extension);
+    const stored = await putStorageObject({
+      body,
+      contentType: metadata.normalizedMimeType,
+      key: createStorageKey({
+        fileName: upload.name,
+        organizationId,
+        prefix: `graphics/supplier-quotes/${quoteId}`,
+      }),
+    });
+    const [file] = await db.insert(files).values({
+      organizationId,
+      storageProvider: stored.provider,
+      bucket: stored.bucket,
+      storageKey: stored.key,
+      originalName: upload.name,
+      mimeType: metadata.normalizedMimeType,
+      extension: metadata.extension,
+      byteSize: upload.size,
+      sensitivity: "restricted",
+      checksum: getSha256Hex(body),
+      uploadedByUserId: userId,
+    }).returning();
+    const [attachment] = await db.insert(graphicSupplierQuoteAttachments).values({
+      organizationId,
+      quoteId,
+      fileId: file.id,
+    }).returning();
+    saved.push(attachment);
+  }
+  return saved;
+}
+
 function refresh(id: string) {
   revalidatePath("/app/grafica");
   revalidatePath(`/app/grafica/${id}`);
@@ -157,3 +370,6 @@ function refresh(id: string) {
 export const createGraphicJobAction = withRateLimitActionResult(createGraphicJobEntryPoint);
 export const updateGraphicJobAction = withRateLimitActionResult(updateGraphicJobEntryPoint);
 export const deleteGraphicJobAction = withRateLimitActionResult(deleteGraphicJobEntryPoint);
+export const createGraphicSupplierQuoteAction = withRateLimitActionResult(createGraphicSupplierQuoteEntryPoint);
+export const updateGraphicSupplierQuoteAction = withRateLimitActionResult(updateGraphicSupplierQuoteEntryPoint);
+export const cancelGraphicSupplierQuoteAction = withRateLimitActionResult(cancelGraphicSupplierQuoteEntryPoint);

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   enforceAuthenticatedRateLimit: vi.fn(),
   getCurrentAccessContext: vi.fn(),
   insert: vi.fn(),
+  insertResults: [] as unknown[][],
   revalidatePath: vi.fn(),
   runWithCurrentTenantDb: vi.fn(),
   select: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("@/lib/rate-limit", () => ({
 }));
 
 import {
+  createGraphicSupplierQuoteAction,
   createGraphicJobAction,
   deleteGraphicJobAction,
   updateGraphicJobAction,
@@ -54,6 +56,7 @@ describe("graphic job Action security boundary", () => {
     mocks.enforceAuthenticatedRateLimit.mockReset();
     mocks.writeAuditLog.mockReset();
     mocks.selectResults.length = 0;
+    mocks.insertResults.length = 0;
     mocks.updateResults.length = 0;
     mocks.runWithCurrentTenantDb.mockImplementation(
       (operation: () => Promise<unknown>) => operation(),
@@ -74,6 +77,13 @@ describe("graphic job Action security boundary", () => {
             Promise.resolve(mocks.updateResults.shift() ?? []),
           ),
         }),
+      }),
+    }));
+    mocks.insert.mockImplementation(() => ({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockImplementation(() =>
+          Promise.resolve(mocks.insertResults.shift() ?? []),
+        ),
       }),
     }));
   });
@@ -151,6 +161,68 @@ describe("graphic job Action security boundary", () => {
 
     await expect(createGraphicJobAction(validForm())).rejects.toThrow("rate limited");
     expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("requires the dedicated supplier quote write permission", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(writerContext());
+
+    await expect(createGraphicSupplierQuoteAction(validQuoteForm())).rejects.toBeInstanceOf(
+      AccessDeniedError,
+    );
+    expect(mocks.enforceAuthenticatedRateLimit).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects quote approval fields as mass assignment before database access", async () => {
+    const context = quoteWriterContext();
+    mocks.getCurrentAccessContext.mockResolvedValue(context);
+    const form = validQuoteForm();
+    form.set("organizationId", "90000000-0000-4000-8000-000000000009");
+    form.set("status", "approved");
+    form.set("reviewerUserId", "attacker");
+
+    await expect(createGraphicSupplierQuoteAction(form)).rejects.toThrow();
+    expect(mocks.enforceAuthenticatedRateLimit).toHaveBeenCalledWith("common_mutation", context);
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cross-tenant job id when creating a quote", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
+    mocks.selectResults.push([], [{ id: "supplier" }]);
+
+    await expect(createGraphicSupplierQuoteAction(validQuoteForm())).rejects.toBeInstanceOf(
+      AccessDeniedError,
+    );
+    expect(mocks.select).toHaveBeenCalledTimes(2);
+    expect(mocks.insert).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("keeps quote creation and its history in one transaction boundary", async () => {
+    let transactionActive = false;
+    mocks.getCurrentAccessContext.mockResolvedValue(quoteWriterContext());
+    mocks.runWithCurrentTenantDb.mockImplementation(async (operation: () => Promise<unknown>) => {
+      transactionActive = true;
+      try { return await operation(); } finally { transactionActive = false; }
+    });
+    mocks.selectResults.push([{ id: jobId }], [{ id: "supplier" }]);
+    mocks.insertResults.push([{
+      id: "60000000-0000-4000-8000-000000000001",
+      jobId,
+      status: "pending",
+    }]);
+    mocks.writeAuditLog.mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+      throw new Error("audit failed");
+    });
+
+    await expect(createGraphicSupplierQuoteAction(validQuoteForm())).rejects.toThrow("audit failed");
+    expect(mocks.runWithCurrentTenantDb).toHaveBeenCalledOnce();
+    expect(mocks.insert).toHaveBeenCalledOnce();
+    expect(mocks.writeAuditLog).toHaveBeenCalledOnce();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -238,6 +310,15 @@ function writerContext() {
   });
 }
 
+function quoteWriterContext() {
+  return createAccessContext({
+    organizationId,
+    permissions: ["graphics.supplier_quote_write"],
+    roles: [],
+    userId: "quote-writer",
+  });
+}
+
 function existingJob() {
   return {
     id: jobId,
@@ -269,5 +350,17 @@ function validUpdateForm() {
 function validDeleteForm() {
   const form = new FormData();
   form.set("id", jobId);
+  return form;
+}
+
+function validQuoteForm() {
+  const form = new FormData();
+  form.set("jobId", jobId);
+  form.set("supplierId", "50000000-0000-4000-8000-000000000001");
+  form.set("description", "Impressão e acabamento");
+  form.set("quotedAmount", "1250,00");
+  form.set("quotedAt", "2026-09-03");
+  form.set("estimatedDeliveryAt", "2026-09-10");
+  form.set("conditions", "50% na entrada");
   return form;
 }
