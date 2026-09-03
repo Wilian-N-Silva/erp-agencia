@@ -31,6 +31,8 @@ export const auditEntityLabels: Record<string, string> = {
   file: "Arquivo",
   financial_entry: "Entrada financeira",
   financial_expense: "Saida financeira",
+  graphic_job: "Trabalho da Grafica",
+  graphic_project: "Projeto da Grafica",
   financial_report: "Relatorio financeiro",
   invoice_request: "NF PJ",
   lifecycle_checklist: "Checklist",
