@@ -127,6 +127,13 @@
       "when": 1788377627143,
       "tag": "0017_glorious_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788399344420,
+      "tag": "0018_pretty_madame_masque",
+      "breakpoints": true
     }
   ]
 }

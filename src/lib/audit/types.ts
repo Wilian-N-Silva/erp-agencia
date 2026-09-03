@@ -24,6 +24,8 @@ export type AuditEntityType =
   | "client"
   | "financial_entry"
   | "financial_expense"
+  | "graphic_job"
+  | "graphic_project"
   | "provision"
   | "file"
   | "invoice_request"

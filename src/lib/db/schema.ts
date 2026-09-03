@@ -127,6 +127,35 @@ export const userAccessStatusEnum = pgEnum("user_access_status", [
   "revoked",
 ]);
 
+export const graphicProjectKindEnum = pgEnum("graphic_project_kind", [
+  "project",
+  "event",
+]);
+
+export const graphicJobOperationalStatusEnum = pgEnum(
+  "graphic_job_operational_status",
+  [
+    "supplier_sourcing",
+    "supplier_approval_pending",
+    "os_pending",
+    "client_approval_pending",
+    "client_revision",
+    "client_rejected",
+    "approved",
+    "in_production",
+    "waiting",
+    "ready",
+    "delivered",
+    "closed",
+    "cancelled",
+  ],
+);
+
+export const graphicJobFinancialStatusEnum = pgEnum(
+  "graphic_job_financial_status",
+  ["not_started", "pending", "partial", "settled", "overdue"],
+);
+
 export type UserAccessStatus =
   (typeof userAccessStatusEnum.enumValues)[number];
 
@@ -426,6 +455,10 @@ export const employees = pgTable(
     // ACC-003 remains in expand/cleanup rollout until legacy duplicate links are resolved.
     userIdx: index("employees_user_idx").on(table.userId),
     statusIdx: index("employees_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("employees_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
   }),
 );
 
@@ -517,6 +550,117 @@ export const clients = pgTable(
   (table) => ({
     codeIdx: uniqueIndex("clients_code_idx").on(table.organizationId, table.code),
     statusIdx: index("clients_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("clients_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
+export const graphicProjects = pgTable(
+  "graphic_projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code"),
+    name: text("name").notNull(),
+    description: text("description"),
+    kind: graphicProjectKindEnum("kind").notNull().default("project"),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationCodeIdx: uniqueIndex("graphic_projects_organization_code_idx").on(
+      table.organizationId,
+      table.code,
+    ),
+    organizationIdIdx: uniqueIndex("graphic_projects_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    activeIdx: index("graphic_projects_active_idx").on(
+      table.organizationId,
+      table.deletedAt,
+    ),
+    periodCheck: check(
+      "graphic_projects_period_check",
+      sql`${table.endsAt} is null or ${table.startsAt} is null or ${table.endsAt} >= ${table.startsAt}`,
+    ),
+  }),
+);
+
+export const graphicJobs = pgTable(
+  "graphic_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    internalCode: text("internal_code").notNull(),
+    clientId: uuid("client_id").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    responsibleEmployeeId: uuid("responsible_employee_id").notNull(),
+    projectId: uuid("project_id"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    desiredDeliveryAt: timestamp("desired_delivery_at", { withTimezone: true }),
+    operationalStatus: graphicJobOperationalStatusEnum("operational_status")
+      .notNull()
+      .default("supplier_sourcing"),
+    // Server-owned cacheable summary; detailed AR/AP remains authoritative.
+    financialStatus: graphicJobFinancialStatusEnum("financial_status")
+      .notNull()
+      .default("not_started"),
+    notes: text("notes"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    internalCodeIdx: uniqueIndex("graphic_jobs_internal_code_idx").on(
+      table.organizationId,
+      table.internalCode,
+    ),
+    organizationIdIdx: uniqueIndex("graphic_jobs_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    operationalStatusIdx: index("graphic_jobs_operational_status_idx").on(
+      table.organizationId,
+      table.operationalStatus,
+    ),
+    clientIdx: index("graphic_jobs_client_idx").on(
+      table.organizationId,
+      table.clientId,
+    ),
+    responsibleIdx: index("graphic_jobs_responsible_idx").on(
+      table.organizationId,
+      table.responsibleEmployeeId,
+    ),
+    projectIdx: index("graphic_jobs_project_idx").on(
+      table.organizationId,
+      table.projectId,
+    ),
+    clientTenantFk: foreignKey({
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+      name: "graphic_jobs_client_tenant_fk",
+    }),
+    responsibleTenantFk: foreignKey({
+      columns: [table.organizationId, table.responsibleEmployeeId],
+      foreignColumns: [employees.organizationId, employees.id],
+      name: "graphic_jobs_responsible_tenant_fk",
+    }),
+    projectTenantFk: foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [graphicProjects.organizationId, graphicProjects.id],
+      name: "graphic_jobs_project_tenant_fk",
+    }),
   }),
 );
 
@@ -1328,5 +1472,7 @@ export type FinancialAccount = typeof financialAccounts.$inferSelect;
 export type FinancialCategory = typeof financialCategories.$inferSelect;
 export type CostCenter = typeof costCenters.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
+export type GraphicProject = typeof graphicProjects.$inferSelect;
+export type GraphicJob = typeof graphicJobs.$inferSelect;
 export type WorkItem = typeof workItems.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;
