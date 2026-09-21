@@ -17,8 +17,13 @@ import {
   lifecycleChecklists,
   positions,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  runWithCurrentTenantDb,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput, toDateKey } from "@/features/finance/rules";
 import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
@@ -30,7 +35,7 @@ import {
   getNextRegistrationNumber,
 } from "./rules";
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const employeeStatusSchema = z.enum(
   Object.keys(employeeStatusLabels) as [
     keyof typeof employeeStatusLabels,
@@ -44,7 +49,7 @@ const employmentTypeSchema = z.enum(
   ],
 );
 
-const employeeBaseSchema = z.object({
+const employeeBaseSchema = z.strictObject({
   fullName: z.string().trim().min(1).max(180),
   socialName: optionalTextSchema(120),
   corporateEmail: optionalEmailSchema(),
@@ -78,7 +83,7 @@ const updateEmployeeSchema = employeeBaseSchema.extend({
   id: z.string().uuid(),
 });
 
-const updateCompensationSchema = z.object({
+const updateCompensationSchema = z.strictObject({
   employeeId: z.string().uuid(),
   newAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
   recurringCostAllowance: optionalMoneySchema(),
@@ -87,7 +92,7 @@ const updateCompensationSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-const createBenefitSchema = z.object({
+const createBenefitSchema = z.strictObject({
   employeeId: z.string().uuid(),
   benefitType: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(160),
@@ -101,16 +106,26 @@ const createBenefitSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
-const endBenefitSchema = z.object({
+const endBenefitSchema = z.strictObject({
   id: z.string().uuid(),
   employeeId: z.string().uuid(),
 });
 
 export async function createEmployeeAction(formData: FormData) {
+  const redirectTo = await runWithCurrentTenantDb(() =>
+    createEmployee(formData),
+  );
+
+  redirect(redirectTo as Route);
+}
+
+async function createEmployee(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterWithCompensationContext();
   const shouldCreateOnboardingChecklist = formData.get("createOnboardingChecklist") === "on";
   const redirectTo = normalizeRedirectPath(formData.get("redirectTo"));
-  const input = createEmployeeSchema.parse(formDataToObject(formData));
+  const input = createEmployeeSchema.parse(
+    formDataToObject(formData, ["createOnboardingChecklist", "redirectTo"]),
+  );
   await assertAreaPositionAndManager(input, organizationId);
   const registrationNumber = await getNextRegistrationForOrganization(organizationId);
 
@@ -197,14 +212,10 @@ export async function createEmployeeAction(formData: FormData) {
   revalidatePath("/app/colaboradores");
   revalidatePath("/app/colaboradores/admissoes");
 
-  if (redirectTo) {
-    redirect(redirectTo as Route);
-  }
-
-  redirect(`/app/colaboradores/${employee.id}`);
+  return redirectTo ?? `/app/colaboradores/${employee.id}`;
 }
 
-export async function updateEmployeeAction(formData: FormData) {
+async function updateEmployeeAction(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterContext();
   const input = updateEmployeeSchema.parse(formDataToObject(formData));
   await assertAreaPositionAndManager(input, organizationId, input.id);
@@ -257,7 +268,7 @@ export async function updateEmployeeAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.id}`);
 }
 
-export async function updateEmployeeCompensationAction(formData: FormData) {
+async function updateEmployeeCompensationAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = updateCompensationSchema.parse(formDataToObject(formData));
   const before = await getEmployeeForWrite(input.employeeId, organizationId);
@@ -312,7 +323,7 @@ export async function updateEmployeeCompensationAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function createEmployeeBenefitAction(formData: FormData) {
+async function createEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = createBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -347,7 +358,7 @@ export async function createEmployeeBenefitAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function endEmployeeBenefitAction(formData: FormData) {
+async function endEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = endBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -510,10 +521,6 @@ async function getBenefitForWrite(id: string, employeeId: string, organizationId
   return benefit;
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -529,7 +536,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }
@@ -563,3 +570,19 @@ function optionalMoneySchema() {
 function normalizeRedirectPath(value: FormDataEntryValue | null) {
   return typeof value === "string" && value.startsWith("/app/") ? value : null;
 }
+
+export {
+  tenantUpdateEmployeeAction as updateEmployeeAction,
+  tenantUpdateEmployeeCompensationAction as updateEmployeeCompensationAction,
+  tenantCreateEmployeeBenefitAction as createEmployeeBenefitAction,
+  tenantEndEmployeeBenefitAction as endEmployeeBenefitAction,
+};
+
+const tenantUpdateEmployeeAction = bindCurrentTenantContext(updateEmployeeAction);
+const tenantUpdateEmployeeCompensationAction = bindCurrentTenantContext(
+  updateEmployeeCompensationAction,
+);
+const tenantCreateEmployeeBenefitAction = bindCurrentTenantContext(
+  createEmployeeBenefitAction,
+);
+const tenantEndEmployeeBenefitAction = bindCurrentTenantContext(endEmployeeBenefitAction);

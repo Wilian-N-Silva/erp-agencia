@@ -1,9 +1,25 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { db } from "@/lib/db";
-import { employees, roles, userRoles, users } from "@/lib/db/schema";
+import {
+  AccessInvitationAuthError,
+  assertSessionUserIsAuthorized,
+} from "@/features/access-invitations/auth";
+import { db, withTenantDb } from "@/lib/db";
+import {
+  employees,
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from "@/lib/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { getPermissionsForRoles, isRoleKey, type PermissionKey, type RoleKey } from "@/lib/rbac";
+import {
+  isPermissionKey,
+  isRoleKey,
+  type PermissionKey,
+  type RoleKey,
+} from "@/lib/rbac";
 
 export type AccessContext = {
   userId: string;
@@ -23,7 +39,7 @@ export function createAccessContext(input: {
   organizationId?: string | null;
   employeeId?: string | null;
   roles: readonly RoleKey[];
-  permissions?: readonly PermissionKey[];
+  permissions: readonly PermissionKey[];
 }): AccessContext {
   const roles = [...input.roles];
 
@@ -32,7 +48,7 @@ export function createAccessContext(input: {
     organizationId: input.organizationId ?? null,
     employeeId: input.employeeId ?? null,
     roles,
-    permissions: [...(input.permissions ?? getPermissionsForRoles(roles))],
+    permissions: [...input.permissions],
   };
 }
 
@@ -43,40 +59,112 @@ export async function getCurrentAccessContext() {
     return null;
   }
 
+  try {
+    await assertSessionUserIsAuthorized(session.user.id);
+  } catch (error) {
+    if (error instanceof AccessInvitationAuthError) {
+      return null;
+    }
+
+    throw error;
+  }
+
   const [user] = await db
     .select({
       organizationId: users.organizationId,
     })
     .from(users)
-    .where(eq(users.id, session.user.id))
+    .where(
+      and(
+        eq(users.id, session.user.id),
+        eq(users.accessStatus, "active"),
+        eq(users.isActive, true),
+      ),
+    )
     .limit(1);
 
-  const [employee] = await db
-    .select({
-      id: employees.id,
-    })
-    .from(employees)
-    .where(eq(employees.userId, session.user.id))
-    .limit(1);
+  if (!user) {
+    return null;
+  }
 
-  const assignedRoles = await db
+  const assignedAccess = await db
     .select({
-      key: roles.key,
+      permissionKey: permissions.key,
+      roleKey: roles.key,
     })
     .from(userRoles)
     .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+    .leftJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
     .where(eq(userRoles.userId, session.user.id));
 
-  const roleKeys = assignedRoles
-    .map((role) => role.key)
-    .filter(isRoleKey);
+  const roleKeys = [...new Set(
+    assignedAccess.map((row) => row.roleKey).filter(isRoleKey),
+  )].sort();
+  const permissionKeys = [...new Set(
+    assignedAccess.flatMap((row) =>
+      isRoleKey(row.roleKey) &&
+      row.permissionKey &&
+      isPermissionKey(row.permissionKey)
+        ? [row.permissionKey]
+        : [],
+    ),
+  )].sort();
+
+  const bootstrapContext = createAccessContext({
+    userId: session.user.id,
+    organizationId: user.organizationId,
+    permissions: permissionKeys,
+    roles: roleKeys,
+  });
+  const employeeRows = bootstrapContext.organizationId
+    ? await withTenantDb(bootstrapContext, async (tenantDb) => {
+        return tenantDb
+          .select({
+            deletedAt: employees.deletedAt,
+            id: employees.id,
+          })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.organizationId, bootstrapContext.organizationId!),
+              eq(employees.userId, session.user.id),
+            ),
+          )
+          .limit(2);
+      })
+    : [];
+  const employee = employeeRows.length === 1 && !employeeRows[0]?.deletedAt
+    ? employeeRows[0]
+    : undefined;
 
   return createAccessContext({
     userId: session.user.id,
-    organizationId: user?.organizationId ?? null,
+    organizationId: bootstrapContext.organizationId,
     employeeId: employee?.id ?? null,
-    roles: roleKeys.length > 0 ? roleKeys : ["employee"],
+    permissions: bootstrapContext.permissions,
+    roles: bootstrapContext.roles,
   });
+}
+
+export async function runWithCurrentTenantDb<Result>(
+  operation: () => Promise<Result>,
+) {
+  const context = await getCurrentAccessContext();
+
+  if (!context?.organizationId) {
+    return operation();
+  }
+
+  return withTenantDb(context, operation);
+}
+
+export function bindCurrentTenantContext<
+  Arguments extends unknown[],
+  Result,
+>(operation: (...args: Arguments) => Promise<Result>) {
+  return async (...args: Arguments) =>
+    runWithCurrentTenantDb(() => operation(...args));
 }
 
 export function isOwnEmployee(context: AccessContext, employeeId: string) {

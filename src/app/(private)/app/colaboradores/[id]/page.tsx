@@ -133,6 +133,7 @@ export default async function EmployeeDetailPage({ params }: PageProps) {
       employee={{
         ...employee,
         managerEmployeeId: employee.managerEmployeeId ?? null,
+        managerName: employee.managerName ?? null,
         startDate: toDateKey(employee.startDate),
         endDate: employee.endDate ? toDateKey(employee.endDate) : null,
         birthDate: employee.birthDate ? toDateKey(employee.birthDate) : null,

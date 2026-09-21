@@ -49,19 +49,26 @@ You need credentials for all of these before starting:
 ### 1. Database
 
 1. Create a fresh Postgres 17 database in Neon.
-2. Copy the **pooled** connection string into `DATABASE_URL` and the **direct** (non-pooled) connection string into `DATABASE_DIRECT_URL`. Drizzle migrations need the direct URL because the pooler does not support prepared statements.
+2. Provision the dedicated migration/seed and runtime roles with
+   `docs/runbooks/database-roles.md`. `DATABASE_DIRECT_URL` must use the controlled
+   migration/seed role with `BYPASSRLS` (preferred; `SUPERUSER` only if the provider
+   makes a dedicated role impossible). `DATABASE_URL` must use the separate
+   `NOBYPASSRLS` runtime role, which must never own application tables.
 3. Run migrations from a clean local checkout against the staging URL:
    ```powershell
-   $env:DATABASE_URL = "<staging direct url>"
+   $env:DATABASE_DIRECT_URL = "<staging direct url>"
    npm run db:migrate
    ```
 4. Seed initial RBAC + admin (set `SEED_DEMO_DATA=false` for staging — only run demo seed if you want fake data):
    ```powershell
+   $env:DATABASE_DIRECT_URL = "<staging migrator/seed direct url>"
    $env:INITIAL_ADMIN_EMAIL = "you@example.com"
    $env:INITIAL_ADMIN_NAME = "Staging Admin"
    $env:INITIAL_ADMIN_PASSWORD = "<random strong password>"
    npm run db:seed
    ```
+   The seed validates the administrative role before any write and fails if the
+   credential cannot safely seed after `FORCE ROW LEVEL SECURITY`.
 
 ### 2. Object storage
 
@@ -90,18 +97,26 @@ You need credentials for all of these before starting:
 1. In Google Cloud, create a new OAuth 2.0 client (Web). Authorized redirect URI: `https://staging.<domain>/api/auth/callback/google`.
 2. Capture `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
 3. Pick a 32-byte random secret for `BETTER_AUTH_SECRET` (e.g. `openssl rand -hex 32`). Never reuse the prod secret.
-4. Set:
+4. Pick a separate 32-byte random secret for `RATE_LIMIT_HASH_SECRET`. It is used
+   only to HMAC rate-limit identities before persistence and must differ between
+   staging and production.
+5. Set:
    - `BETTER_AUTH_URL=https://staging.<domain>`
    - `BETTER_AUTH_TRUSTED_ORIGINS=https://staging.<domain>`
    - `NEXT_PUBLIC_BETTER_AUTH_URL=https://staging.<domain>`
    - `APP_URL=https://staging.<domain>`
+   - `RATE_LIMIT_HASH_SECRET=<independent random secret>`
    - `ALLOWED_EMAIL_DOMAIN=<your domain>` (or leave empty to allow any verified Google account).
 
 ### 4. Hosting (Vercel example)
 
 1. `vercel link` from the repo root, pointing at a new project named `erp-agencia-staging`.
 2. In the Vercel dashboard, set the `development` branch as the production branch of this project (so each push to `development` ships staging).
-3. Add every variable from the `.env.example` file as a Vercel environment variable, scoped to "Production" (this project's "Production" environment is your staging deployment).
+3. Add the runtime variables from `.env.example` as Vercel environment variables,
+   scoped to "Production" (this project's "Production" environment is staging).
+   Do not add `DATABASE_DIRECT_URL`; keep it only in the controlled
+   migration/seed/backup environment. `DATABASE_URL` must be the verified pooled
+   app-role URL.
 4. Trigger a deploy by pushing to `development` or running `vercel --prod`.
 5. Add the custom domain `staging.<domain>` to the Vercel project and update DNS.
 

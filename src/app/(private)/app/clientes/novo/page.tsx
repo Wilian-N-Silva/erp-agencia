@@ -7,6 +7,7 @@ import { createClientAction } from "@/features/clients/actions";
 import { listClientOwnerOptions } from "@/features/clients/dal";
 import { canWriteClients } from "@/features/clients/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
+import { can } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export default async function NewClientPage() {
   }
 
   const ownerOptions = await listClientOwnerOptions(context);
+  const canConfigureBilling = can("finance.write", context);
 
   return (
     <section className="flex w-full flex-col gap-6">
@@ -32,12 +34,17 @@ export default async function NewClientPage() {
         </Link>
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-normal">Novo cliente</h1>
-          <p className="text-sm text-muted-foreground">Cadastro completo da carteira</p>
+          <p className="text-sm text-muted-foreground">
+            O perfil de cobrança recorrente é opcional e pode ser configurado depois.
+          </p>
         </div>
       </div>
 
       <form action={createClientAction} className="rounded-lg border bg-card p-4">
-        <ClientFormFields ownerOptions={ownerOptions} />
+        <ClientFormFields
+          canConfigureBilling={canConfigureBilling}
+          ownerOptions={ownerOptions}
+        />
         <div className="mt-5 flex justify-end">
           <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
             <Plus className="size-4" aria-hidden="true" />
@@ -50,8 +57,10 @@ export default async function NewClientPage() {
 }
 
 function ClientFormFields({
+  canConfigureBilling,
   ownerOptions,
 }: {
+  canConfigureBilling: boolean;
   ownerOptions: { id: string; name: string }[];
 }) {
   return (
@@ -61,21 +70,24 @@ function ClientFormFields({
           Nome
           <input className={inputClassName} maxLength={160} name="name" required />
         </label>
-        <label className={fieldClassName}>
-          Fee mensal
-          <MoneyInput name="monthlyFee" required />
-        </label>
-        <label className={fieldClassName}>
-          Dia de cobranca
-          <input
-            className={inputClassName}
-            max={31}
-            min={1}
-            name="billingDay"
-            required
-            type="number"
-          />
-        </label>
+        {canConfigureBilling ? (
+          <>
+            <label className={fieldClassName}>
+              Fee mensal (opcional)
+              <MoneyInput name="monthlyFee" />
+            </label>
+            <label className={fieldClassName}>
+              Dia de cobrança (opcional)
+              <input
+                className={inputClassName}
+                max={31}
+                min={1}
+                name="billingDay"
+                type="number"
+              />
+            </label>
+          </>
+        ) : null}
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         <label className={fieldClassName}>
@@ -89,15 +101,22 @@ function ClientFormFields({
             ))}
           </select>
         </label>
-        <label className={fieldClassName}>
-          Cobranca
-          <input className={inputClassName} maxLength={80} name="billingMethod" />
-        </label>
+        {canConfigureBilling ? (
+          <label className={fieldClassName}>
+            Método de cobrança
+            <input className={inputClassName} maxLength={80} name="billingMethod" />
+          </label>
+        ) : null}
         <label className={fieldClassName}>
           Inicio
           <input className={inputClassName} name="startDate" type="date" />
         </label>
       </div>
+      {!canConfigureBilling ? (
+        <p className="text-sm text-muted-foreground">
+          Você pode cadastrar o cliente agora; o Financeiro configura a cobrança depois.
+        </p>
+      ) : null}
       <label className={fieldClassName}>
         Observacoes
         <textarea className={textareaClassName} maxLength={1000} name="notes" rows={5} />

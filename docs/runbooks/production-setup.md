@@ -46,22 +46,28 @@ Leave TTL low (300s) until the cutover is verified, then raise to 3600.
 ### 2. Database
 
 1. Create a fresh Postgres 17 database in Neon (project `erp-prod`).
-2. Capture the **pooled** URL (`DATABASE_URL`) and the **direct** URL (`DATABASE_DIRECT_URL`).
+2. Provision the dedicated migration/seed and runtime roles with
+   `docs/runbooks/database-roles.md`. `DATABASE_DIRECT_URL` must use the controlled
+   migration/seed role with `BYPASSRLS` (preferred; `SUPERUSER` only if the provider
+   makes a dedicated role impossible). `DATABASE_URL` must use the separate
+   `NOBYPASSRLS` runtime role, which must never own application tables.
 3. Apply migrations from a clean local checkout pointed at the prod direct URL:
    ```powershell
-   $env:DATABASE_URL = "<prod direct url>"
    $env:DATABASE_DIRECT_URL = "<prod direct url>"
    npm run db:migrate
    ```
    If `db:migrate` exits silently with code 1, check the `public` schema exists on the target database — some managed Postgres setups omit it. Create it with `CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO <db_user>;` and retry.
 4. Seed RBAC + initial admin (NO demo data):
    ```powershell
+   $env:DATABASE_DIRECT_URL = "<prod migrator/seed direct url>"
    $env:SEED_DEMO_DATA = "false"
    $env:INITIAL_ADMIN_EMAIL = "<director-mailbox>@formulagroup.com.br"
    $env:INITIAL_ADMIN_NAME = "<full name>"
    $env:INITIAL_ADMIN_PASSWORD = "<openssl rand -base64 24>"
    npm run db:seed
    ```
+   The seed validates the administrative role before any write and fails if the
+   credential cannot safely seed after `FORCE ROW LEVEL SECURITY`.
 5. Rotate the bootstrap password via the UI on first login.
 
 ### 3. Object storage
@@ -91,7 +97,9 @@ Leave TTL low (300s) until the cutover is verified, then raise to 3600.
 
 1. `vercel link` from the repo root into a new project named `erp-agencia-prod`.
 2. Production branch = `main`. (Staging project tracks `development`; prod tracks `main`.)
-3. Add every variable from `.env.production.example` to the Vercel dashboard under the "Production" environment. Suggested values:
+3. Add the runtime variables from `.env.production.example` to the Vercel dashboard
+   under the "Production" environment. Do not add `DATABASE_DIRECT_URL`; keep it in
+   the controlled migration/seed/backup environment only. Suggested values:
    ```
    BETTER_AUTH_URL=https://app.formulagroup.com.br
    BETTER_AUTH_TRUSTED_ORIGINS=https://app.formulagroup.com.br

@@ -1,8 +1,8 @@
 import { AlertCircle, Plus, Umbrella } from "lucide-react";
-import { redirect } from "next/navigation";
 
 import { ActionSheet, Button, Card, EmptyState, StatusBadge } from "@/components/fg";
-import { getPortalEmployeeSummary } from "@/features/portal/dal";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import { createTimeOffRequestAction } from "@/features/timeoff/actions";
 import {
   listTimeOffRequests,
@@ -18,18 +18,17 @@ import {
   type TimeOffType,
 } from "@/features/timeoff/rules";
 import { formatDate } from "@/features/finance/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalTimeOffPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const employee = await getPortalEmployeeSummary(context);
-  const isCLT = employee?.employmentType === "clt";
+  const { context, employee } = access;
+  const isCLT = employee.employmentType === "clt";
 
   const [requests, balances] = await Promise.all([
     listTimeOffRequests(context, { ownOnly: true }),
@@ -44,7 +43,7 @@ export default async function PortalTimeOffPage() {
     <>
       <div className="fg-portal-page-head">
         <h1 className="fg-portal-h1">{isCLT ? "Minhas férias" : "Minhas pausas"}</h1>
-        <NewTimeOffSheet employmentType={employee?.employmentType ?? "clt"} />
+        <NewTimeOffSheet employmentType={employee.employmentType} />
       </div>
 
       {activeBalance ? <VacationHero balance={activeBalance} /> : null}
@@ -64,7 +63,7 @@ export default async function PortalTimeOffPage() {
               <TimeOffRow
                 key={request.id}
                 request={request}
-                employmentType={employee?.employmentType ?? "clt"}
+                employmentType={employee.employmentType}
               />
             ))}
           </ul>

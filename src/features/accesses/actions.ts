@@ -8,21 +8,30 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { accessRecords, employees } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { accessRecordStatusLabels, type AccessRecordStatus } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const accessRecordStatusSchema = z.enum(
   Object.keys(accessRecordStatusLabels) as [
     keyof typeof accessRecordStatusLabels,
     ...(keyof typeof accessRecordStatusLabels)[],
   ],
 );
-const accessRecordBaseSchema = z.object({
+const accessRecordBaseSchema = z.strictObject({
   employeeId: z.string().uuid(),
   platform: z.string().trim().min(1).max(160),
   accountIdentifier: optionalTextSchema(160),
@@ -36,15 +45,15 @@ const createAccessRecordSchema = accessRecordBaseSchema;
 const updateAccessRecordSchema = accessRecordBaseSchema.extend({
   id: z.string().uuid(),
 });
-const reviewAccessRecordSchema = z.object({
+const reviewAccessRecordSchema = z.strictObject({
   id: z.string().uuid(),
   reviewDueDate: dateSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function createAccessRecordAction(formData: FormData) {
+async function createAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = createAccessRecordSchema.parse(formDataToObject(formData));
 
@@ -78,13 +87,14 @@ export async function createAccessRecordAction(formData: FormData) {
   revalidateAccessPaths();
 }
 
-export async function updateAccessRecordAction(formData: FormData) {
+async function updateAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = updateAccessRecordSchema.parse(formDataToObject(formData));
 
   assertCriticalReviewDate(input);
   await getEmployeeForWrite(input.employeeId, context.organizationId);
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
@@ -95,10 +105,12 @@ export async function updateAccessRecordAction(formData: FormData) {
       critical: input.critical,
       reviewDueDate: input.reviewDueDate,
       status: input.status,
-      removedAt: input.status === "removed" ? (before.removedAt ?? new Date()) : null,
+      statusChangedAt:
+        input.status === before.status ? before.statusChangedAt : now,
+      removedAt: input.status === "removed" ? (before.removedAt ?? now) : null,
       responsibleUserId: context.userId,
       notes: input.notes,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();
@@ -114,25 +126,28 @@ export async function updateAccessRecordAction(formData: FormData) {
   revalidateAccessPaths();
 }
 
-export async function approveAccessRecordAction(formData: FormData) {
+async function approveAccessRecordAction(formData: FormData) {
   await updateAccessStatus(formData, "active", "approve");
 }
 
-export async function markAccessRemovedAction(formData: FormData) {
+async function markAccessRemovedAction(formData: FormData) {
   await updateAccessStatus(formData, "removed", "status_change");
 }
 
-export async function reviewAccessRecordAction(formData: FormData) {
+async function reviewAccessRecordAction(formData: FormData) {
   const context = await requireAccessWriterContext();
   const input = reviewAccessRecordSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
       responsibleUserId: context.userId,
       reviewDueDate: input.reviewDueDate,
       status: "active",
-      updatedAt: new Date(),
+      statusChangedAt:
+        before.status === "active" ? before.statusChangedAt : now,
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();
@@ -158,15 +173,18 @@ async function updateAccessStatus(
   action: "approve" | "status_change",
 ) {
   const context = await requireAccessWriterContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getAccessRecordForWrite(input.id, context.organizationId);
+  const now = new Date();
   const [after] = await db
     .update(accessRecords)
     .set({
-      removedAt: status === "removed" ? new Date() : before.removedAt,
+      removedAt: status === "removed" ? now : before.removedAt,
       responsibleUserId: context.userId,
       status,
-      updatedAt: new Date(),
+      statusChangedAt: status === before.status ? before.statusChangedAt : now,
+      updatedAt: now,
     })
     .where(eq(accessRecords.id, input.id))
     .returning();
@@ -244,10 +262,6 @@ function revalidateAccessPaths() {
   revalidatePath("/portal");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function checkboxSchema() {
   return z
     .string()
@@ -270,7 +284,25 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }
+
+export {
+  tenantCreateAccessRecordAction as createAccessRecordAction,
+  tenantUpdateAccessRecordAction as updateAccessRecordAction,
+  tenantApproveAccessRecordAction as approveAccessRecordAction,
+  tenantMarkAccessRemovedAction as markAccessRemovedAction,
+  tenantReviewAccessRecordAction as reviewAccessRecordAction,
+};
+
+const tenantCreateAccessRecordAction = bindCurrentTenantContext(createAccessRecordAction);
+const tenantUpdateAccessRecordAction = bindCurrentTenantContext(updateAccessRecordAction);
+const tenantApproveAccessRecordAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveAccessRecordAction),
+);
+const tenantMarkAccessRemovedAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markAccessRemovedAction),
+);
+const tenantReviewAccessRecordAction = bindCurrentTenantContext(reviewAccessRecordAction);

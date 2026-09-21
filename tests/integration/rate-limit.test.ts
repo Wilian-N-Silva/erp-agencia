@@ -1,0 +1,291 @@
+import { sql } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createDatabase,
+  getDb,
+  withTenantDb,
+  type Database,
+} from "@/lib/db";
+import {
+  enforceAuthenticatedRateLimit,
+  createPostgresRateLimiter,
+  loadRateLimitConfig,
+  type RateLimitConfig,
+  type RateLimitInput,
+} from "@/lib/rate-limit";
+
+const runtimeUrl = process.env.DATABASE_TEST_URL;
+const adminUrl = process.env.DATABASE_TEST_ADMIN_URL;
+
+if (!runtimeUrl || !adminUrl) {
+  throw new Error(
+    "DATABASE_TEST_URL and DATABASE_TEST_ADMIN_URL are required for the rate-limit integration suite.",
+  );
+}
+
+const secret = "sec-005-test-secret-with-at-least-32-characters";
+const orgA = "50000000-0000-4000-8000-000000000001";
+const orgB = "50000000-0000-4000-8000-000000000002";
+const authenticatedSubject = {
+  type: "authenticated" as const,
+  organizationId: orgA,
+  userId: "sec-005-user-a",
+};
+const baseInput: RateLimitInput = {
+  action: "common_mutation",
+  subject: authenticatedSubject,
+};
+
+let runtimeDb: Database;
+let adminDb: Database;
+let currentTime: Date;
+let originalDatabaseUrl: string | undefined;
+let originalHashSecret: string | undefined;
+
+beforeAll(() => {
+  originalDatabaseUrl = process.env.DATABASE_URL;
+  originalHashSecret = process.env.RATE_LIMIT_HASH_SECRET;
+  process.env.DATABASE_URL = runtimeUrl;
+  process.env.RATE_LIMIT_HASH_SECRET = secret;
+  runtimeDb = createDatabase(runtimeUrl, { allowExitOnIdle: true, max: 20 });
+  adminDb = createDatabase(adminUrl, { allowExitOnIdle: true, max: 1 });
+});
+
+beforeEach(async () => {
+  currentTime = new Date("2026-08-18T12:00:30.000Z");
+  await adminDb.execute(sql`delete from rate_limit_buckets`);
+});
+
+afterAll(async () => {
+  if (adminDb) await adminDb.execute(sql`delete from rate_limit_buckets`);
+  await Promise.all([
+    runtimeDb?.$client.end(),
+    adminDb?.$client.end(),
+    getDb().$client.end(),
+  ]);
+  restoreEnvironmentVariable("DATABASE_URL", originalDatabaseUrl);
+  restoreEnvironmentVariable("RATE_LIMIT_HASH_SECRET", originalHashSecret);
+});
+
+describe("PostgreSQL rate limiter", () => {
+  it("allows the threshold, blocks threshold + 1, and opens a new window", async () => {
+    const limiter = createLimiter(configWithCommonLimit(2));
+
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: true,
+      remaining: 1,
+    });
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: true,
+      remaining: 0,
+    });
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+      shouldEmitSecurityEvent: true,
+    });
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: false,
+      shouldEmitSecurityEvent: false,
+    });
+
+    currentTime = new Date("2026-08-18T12:01:00.000Z");
+    await expect(limiter.consume(baseInput)).resolves.toMatchObject({
+      allowed: true,
+      remaining: 1,
+    });
+
+    const buckets = await readBuckets();
+    expect(buckets.map(({ count }) => count).sort()).toEqual([1, 3]);
+  });
+
+  it("isolates users, organizations, actions, and hashed IP subjects", async () => {
+    const limiter = createLimiter(configWithCommonLimit(1));
+
+    expect((await limiter.consume(baseInput)).allowed).toBe(true);
+    expect((await limiter.consume(baseInput)).allowed).toBe(false);
+    expect(
+      (
+        await limiter.consume({
+          ...baseInput,
+          subject: { ...authenticatedSubject, userId: "sec-005-user-b" },
+        })
+      ).allowed,
+    ).toBe(true);
+    expect(
+      (
+        await limiter.consume({
+          ...baseInput,
+          subject: { ...authenticatedSubject, organizationId: orgB },
+        })
+      ).allowed,
+    ).toBe(true);
+    expect(
+      (await limiter.consume({ ...baseInput, action: "export" })).allowed,
+    ).toBe(true);
+    expect(
+      (
+        await limiter.consume({
+          action: "invitation",
+          subject: { type: "ip", ipAddress: "203.0.113.42" },
+        })
+      ).allowed,
+    ).toBe(true);
+
+    const buckets = await readBuckets();
+    const persisted = JSON.stringify(buckets);
+
+    expect(buckets).toHaveLength(5);
+    expect(buckets.every(({ keyHash }) => /^[a-f0-9]{64}$/.test(keyHash))).toBe(
+      true,
+    );
+    expect(persisted).not.toContain("203.0.113.42");
+    expect(persisted).not.toContain("sec-005-user-a");
+    expect(persisted).not.toContain(orgA);
+  });
+
+  it("atomically caps concurrent requests at the configured limit", async () => {
+    const limiter = createLimiter(configWithCommonLimit(5));
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => limiter.consume(baseInput)),
+    );
+
+    expect(results.filter(({ allowed }) => allowed)).toHaveLength(5);
+    expect(results.filter(({ allowed }) => !allowed)).toHaveLength(15);
+    expect(
+      results.filter(({ shouldEmitSecurityEvent }) => shouldEmitSecurityEvent),
+    ).toHaveLength(1);
+
+    const buckets = await readBuckets();
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]?.count).toBe(6);
+  });
+
+  it("reuses tenant transaction connections when Actions are concurrent", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 20 }, (_, index) => {
+        const context = {
+          employeeId: null,
+          organizationId: orgA,
+          permissions: [],
+          roles: [],
+          userId: `sec-006-concurrent-user-${index}`,
+        };
+
+        return withTenantDb(context, () =>
+          enforceAuthenticatedRateLimit("common_mutation", context),
+        );
+      }),
+    );
+
+    expect(results).toHaveLength(20);
+    expect(results.every(({ allowed }) => allowed)).toBe(true);
+    expect(await readBuckets()).toHaveLength(20);
+  });
+
+  it("persists Action consumption after the tenant transaction rolls back", async () => {
+    const context = {
+      employeeId: null,
+      organizationId: orgA,
+      permissions: [],
+      roles: [],
+      userId: "sec-006-rollback-user",
+    };
+
+    await expect(
+      withTenantDb(context, async () => {
+        await enforceAuthenticatedRateLimit("common_mutation", context);
+        throw new Error("simulated Action failure");
+      }),
+    ).rejects.toThrow("simulated Action failure");
+
+    const buckets = await readBuckets();
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]).toMatchObject({
+      action: "common_mutation",
+      count: 1,
+    });
+  });
+
+  it("deletes expired buckets in bounded batches without removing active ones", async () => {
+    const limiter = createLimiter(configWithCommonLimit(2));
+
+    await limiter.consume(baseInput);
+    currentTime = new Date("2026-08-18T12:01:01.000Z");
+    await limiter.consume(baseInput);
+
+    await expect(limiter.cleanup({ batchSize: 1 })).resolves.toBe(1);
+
+    const buckets = await readBuckets();
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]?.expiresAt.getTime()).toBeGreaterThan(
+      currentTime.getTime(),
+    );
+  });
+});
+
+function createLimiter(config: RateLimitConfig) {
+  return createPostgresRateLimiter({
+    config,
+    database: runtimeDb,
+    hashSecret: secret,
+    now: () => currentTime,
+    random: () => 1,
+  });
+}
+
+function configWithCommonLimit(limit: number): RateLimitConfig {
+  return {
+    ...loadRateLimitConfig({}),
+    common_mutation: { limit, windowMs: 60_000 },
+    cleanup: { batchSize: 100, probability: 0 },
+  };
+}
+
+async function readBuckets() {
+  const result = await adminDb.execute(sql<{
+    action: string;
+    count: number;
+    expiresAt: string;
+    keyHash: string;
+  }>`
+    select
+      action,
+      count,
+      expires_at as "expiresAt",
+      key_hash as "keyHash"
+    from rate_limit_buckets
+    order by window_start, key_hash
+  `);
+
+  const rows = result.rows as Array<{
+    action: string;
+    count: number;
+    expiresAt: string;
+    keyHash: string;
+  }>;
+
+  return rows.map((row) => {
+    // Raw execute does not apply the Drizzle schema timestamp mapping.
+    const expiresAt = new Date(row.expiresAt);
+
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw new Error(
+        "Rate-limit fixture returned an invalid expiration timestamp.",
+      );
+    }
+
+    return { ...row, expiresAt };
+  });
+}
+
+function restoreEnvironmentVariable(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}

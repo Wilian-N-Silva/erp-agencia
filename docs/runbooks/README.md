@@ -3,6 +3,8 @@
 Preserve os runbooks existentes do repositório:
 
 - `backup-restore.md`;
+- `database-roles.md`;
+- `user-employee-link-rollout.md`;
 - `staging-setup.md`;
 - `production-setup.md`.
 

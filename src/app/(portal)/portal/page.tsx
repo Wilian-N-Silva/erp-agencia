@@ -1,31 +1,30 @@
 import { AlertCircle, ArrowRight, ChevronRight, Laptop, Receipt, Umbrella } from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
-import { redirect } from "next/navigation";
 
 import { Card, EmptyState } from "@/components/fg";
 import { listEquipment } from "@/features/equipment/dal";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
 import {
-  getPortalEmployeeSummary,
   listInvoiceRequests,
   listReimbursements,
   type InvoiceRequestListItem,
 } from "@/features/portal/dal";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import { canSubmitInvoice } from "@/features/portal/rules";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { listTimeOffRequests, listVacationBalances } from "@/features/timeoff/dal";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalHomePage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const employee = await getPortalEmployeeSummary(context);
-  const isPJ = employee?.employmentType === "pj";
+  const { context, employee } = access;
+  const isPJ = employee.employmentType === "pj";
 
   const [invoices, reimbursements, timeOff, equipment] = await Promise.all([
     isPJ ? listInvoiceRequests(context, { ownOnly: true, limit: 6 }) : Promise.resolve([]),
@@ -46,7 +45,7 @@ export default async function PortalHomePage() {
   );
 
   let vacationDaysAvailable: number | null = null;
-  if (employee?.employmentType === "clt" && context.employeeId) {
+  if (employee.employmentType === "clt" && context.employeeId) {
     const balances = await listVacationBalances(context, { employeeId: context.employeeId });
     const active = balances.find((b) => b.status === "active");
     if (active) {
@@ -55,7 +54,7 @@ export default async function PortalHomePage() {
   }
 
   const greeting = getGreeting();
-  const firstName = (employee?.fullName ?? "Colaborador").split(/\s+/)[0];
+  const firstName = employee.fullName.split(/\s+/)[0];
   const today = new Date();
   const todayLabel = today.toLocaleDateString("pt-BR", {
     weekday: "long",

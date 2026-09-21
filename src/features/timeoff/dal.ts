@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { areas, employees, timeOffRequests, vacationBalances } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -39,7 +39,7 @@ export type TimeOffListItem = {
   createdAt: Date;
 };
 
-export async function listTimeOffRequests(
+async function listTimeOffRequests(
   context: AccessContext,
   options: { ownOnly?: boolean; limit?: number } = {},
 ): Promise<TimeOffListItem[]> {
@@ -125,7 +125,7 @@ type VacationBalanceContext = {
   today: string;
 };
 
-export async function listVacationBalances(
+async function listVacationBalances(
   context: AccessContext,
   options: { employeeId?: string } = {},
 ): Promise<VacationBalanceListItem[]> {
@@ -187,7 +187,7 @@ export async function listVacationBalances(
   return allowedRows.map((row) => buildBalanceItem(row, requestsByEmployee.get(row.employeeId) ?? [], ctx));
 }
 
-export async function getVacationBalanceForWrite(
+async function getVacationBalanceForWrite(
   context: AccessContext,
   id: string,
 ): Promise<VacationBalanceListItem> {
@@ -231,7 +231,7 @@ export async function getVacationBalanceForWrite(
   return buildBalanceItem(row, requests.get(row.employeeId) ?? [], { today: getTodayIso() });
 }
 
-export async function summarizeEmployeeVacation(
+async function summarizeEmployeeVacation(
   context: AccessContext,
   employeeId: string,
 ): Promise<{ current: VacationBalanceListItem | null; history: VacationBalanceListItem[] }> {
@@ -349,3 +349,15 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListTimeOffRequests as listTimeOffRequests,
+  tenantListVacationBalances as listVacationBalances,
+  tenantGetVacationBalanceForWrite as getVacationBalanceForWrite,
+  tenantSummarizeEmployeeVacation as summarizeEmployeeVacation,
+};
+
+const tenantListTimeOffRequests = bindTenantContext(listTimeOffRequests);
+const tenantListVacationBalances = bindTenantContext(listVacationBalances);
+const tenantGetVacationBalanceForWrite = bindTenantContext(getVacationBalanceForWrite);
+const tenantSummarizeEmployeeVacation = bindTenantContext(summarizeEmployeeVacation);

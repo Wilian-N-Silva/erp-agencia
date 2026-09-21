@@ -11,6 +11,7 @@ export const auditActions = [
   "reject",
   "status_change",
   "permission_change",
+  "rate_limit_exceeded",
 ] as const;
 
 export type AuditAction = (typeof auditActions)[number];
@@ -23,6 +24,8 @@ export type AuditEntityType =
   | "client"
   | "financial_entry"
   | "financial_expense"
+  | "graphic_job"
+  | "graphic_project"
   | "provision"
   | "file"
   | "invoice_request"

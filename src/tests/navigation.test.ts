@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getVisibleNavigationItems } from "@/components/layout/navigation-items";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("permission-filtered navigation", () => {
   it("shows finance navigation only for finance permissions", () => {
@@ -31,6 +31,18 @@ describe("permission-filtered navigation", () => {
     );
   });
 
+  it("shows the graphics module for a supplier quote approver", () => {
+    const context = createAccessContext({
+      permissions: ["graphics.supplier_quote_approve"],
+      roles: [],
+      userId: "quote-approver",
+    });
+
+    expect(getVisibleNavigationItems(context).map((item) => item.href)).toContain(
+      "/app/grafica",
+    );
+  });
+
   it("shows only implemented back-office routes", () => {
     const context = createAccessContext({
       userId: "director_1",
@@ -42,6 +54,8 @@ describe("permission-filtered navigation", () => {
     expect(hrefs).toContain("/app/financeiro/entradas");
     expect(hrefs).toContain("/app/financeiro/saidas");
     expect(hrefs).toContain("/app/financeiro/provisoes");
+    expect(hrefs).toContain("/app/financeiro/movimentacoes");
+    expect(hrefs).toContain("/app/financeiro/cadastros");
     expect(hrefs).toContain("/app/clientes");
     expect(hrefs).toContain("/app/colaboradores");
     expect(hrefs).toContain("/app/ferias");

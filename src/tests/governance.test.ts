@@ -16,7 +16,7 @@ import {
   canReadSaasSubscription,
   getSaasRenewalState,
 } from "@/features/saas/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("equipment governance rules", () => {
   it("generates sequential asset numbers and enforces responsible statuses", () => {

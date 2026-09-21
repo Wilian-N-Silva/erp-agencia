@@ -112,6 +112,17 @@ Cobrir SELECT, INSERT, UPDATE e DELETE/soft-delete conforme entidade.
 
 ## 6. RLS test matrix
 
+O Postgres descartável do wrapper usa três fronteiras distintas:
+
+- o usuário bootstrap do container apenas recria o banco e provisiona roles;
+- `codex_test_migrator` é `NOSUPERUSER BYPASSRLS`, é owner do banco e alimenta
+  `DATABASE_DIRECT_URL`/`DATABASE_TEST_ADMIN_URL`;
+- `codex_test_app` é `NOSUPERUSER NOBYPASSRLS`, não possui tabelas e alimenta
+  `DATABASE_URL`/`DATABASE_TEST_URL`.
+
+Credenciais podem ser customizadas pelas variáveis `CODEX_TEST_*`, mas URLs com
+credenciais nunca são escritas nos logs.
+
 Para cada nova tabela tenant:
 
 - [ ] contexto correto lê/escreve;

@@ -2,6 +2,7 @@ import { Ban, CheckCircle2, KeyRound, RefreshCw, ShieldAlert } from "lucide-reac
 import { redirect } from "next/navigation";
 
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { RateLimitedActionForm } from "@/components/fg";
 import {
   approveAccessRecordAction,
   createAccessRecordAction,
@@ -267,10 +268,10 @@ function AccessRecordRow({ canWrite, record }: { canWrite: boolean; record: Acce
         <td className="px-4 py-3">
           <div className="flex flex-wrap justify-end gap-2">
             {record.status === "pending" ? (
-              <form action={approveAccessRecordAction}>
+              <RateLimitedActionForm action={approveAccessRecordAction}>
                 <input name="id" type="hidden" value={record.id} />
                 <IconButton icon={CheckCircle2} label="Aprovar" tone="primary" />
-              </form>
+              </RateLimitedActionForm>
             ) : null}
             {record.status !== "removed" ? (
               <ActionDialog
@@ -283,10 +284,10 @@ function AccessRecordRow({ canWrite, record }: { canWrite: boolean; record: Acce
               </ActionDialog>
             ) : null}
             {record.status !== "removed" ? (
-              <form action={markAccessRemovedAction}>
+              <RateLimitedActionForm action={markAccessRemovedAction}>
                 <input name="id" type="hidden" value={record.id} />
                 <IconButton icon={Ban} label="Remover" tone="destructive" />
-              </form>
+              </RateLimitedActionForm>
             ) : null}
           </div>
         </td>

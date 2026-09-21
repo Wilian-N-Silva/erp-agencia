@@ -1,6 +1,7 @@
 import type { AccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
 import type { PermissionKey } from "@/lib/rbac";
+import { graphicJobReadPermissions } from "@/features/graphics/rules";
 
 export type NavigationIcon =
   | "dashboard"
@@ -9,6 +10,7 @@ export type NavigationIcon =
   | "finance-out"
   | "finance-provision"
   | "clients"
+  | "graphics"
   | "invoices"
   | "people"
   | "timeoff"
@@ -51,6 +53,13 @@ export const navigationItems: NavigationItem[] = [
     permissions: ["dashboard.read", "dashboard.configure"],
   },
   {
+    href: "/app/grafica",
+    label: "Gráfica",
+    icon: "graphics",
+    section: "Operação",
+    permissions: [...graphicJobReadPermissions],
+  },
+  {
     href: "/app/alertas",
     label: "Alertas",
     icon: "alerts",
@@ -59,14 +68,14 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     href: "/app/financeiro/entradas",
-    label: "Entradas",
+    label: "Contas a receber",
     icon: "finance-in",
     section: "Financeiro",
     permissions: ["finance.read"],
   },
   {
     href: "/app/financeiro/saidas",
-    label: "Saídas",
+    label: "Contas a pagar",
     icon: "finance-out",
     section: "Financeiro",
     permissions: ["finance.read"],
@@ -77,6 +86,20 @@ export const navigationItems: NavigationItem[] = [
     icon: "finance-provision",
     section: "Financeiro",
     permissions: ["finance.read"],
+  },
+  {
+    href: "/app/financeiro/movimentacoes",
+    label: "Movimentações",
+    icon: "finance",
+    section: "Financeiro",
+    permissions: ["finance.read"],
+  },
+  {
+    href: "/app/financeiro/cadastros",
+    label: "Cadastros financeiros",
+    icon: "finance",
+    section: "Financeiro",
+    permissions: ["finance.read", "finance.configure"],
   },
   {
     href: "/app/clientes",

@@ -6,7 +6,7 @@ import {
   getLifecycleChecklistProgress,
   getLifecycleChecklistState,
 } from "@/features/lifecycle/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("lifecycle checklist rules", () => {
   it("allows RH and IT governance to write lifecycle checklists", () => {

@@ -1,10 +1,9 @@
 import { hashPassword } from "better-auth/crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { createRequire } from "node:module";
 
-import { getOptionalEnv } from "@/lib/env";
+import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
 import {
-  defaultRolePermissions,
   permissionDescriptions,
   roleKeys,
   roleLabels,
@@ -12,7 +11,8 @@ import {
   type RoleKey,
 } from "@/lib/rbac";
 
-import { db } from "./index";
+import { createDatabase } from "./index";
+import { defaultRolePermissions } from "./seed-role-permissions";
 import {
   accounts,
   accessRecords,
@@ -52,6 +52,8 @@ const { loadEnvConfig } = require("@next/env") as typeof import("@next/env");
 
 loadEnvConfig(process.cwd());
 
+const db = createDatabase(getRequiredEnv("DATABASE_DIRECT_URL"));
+
 const organizationSeed = {
   name: "Formula Group",
   slug: "formula-group",
@@ -60,6 +62,7 @@ const organizationSeed = {
 type DemoUserKey = RoleKey | "all_roles";
 
 async function main() {
+  await assertAdministrativeSeedCredential();
   const organization = await seedOrganization();
   const roleByKey = await seedRoles();
   const permissionByKey = await seedPermissions();
@@ -110,9 +113,31 @@ async function main() {
   console.log(`- admin: ${adminUser?.email ?? "skipped"}`);
   console.log(
     shouldSeedDemo
-      ? `- demo users: ${Object.keys(demoUsers).length} (password: ${getDemoUserPassword()})`
+      ? `- demo users: ${Object.keys(demoUsers).length} (password configured via DEMO_USER_PASSWORD)`
       : "- demo data: skipped (set SEED_DEMO_DATA=true to enable)",
   );
+}
+
+async function assertAdministrativeSeedCredential() {
+  const result = await db.execute<{
+    currentUser: string;
+    isSuperuser: boolean;
+    bypassesRls: boolean;
+  }>(sql`
+    select
+      current_user as "currentUser",
+      rolsuper as "isSuperuser",
+      rolbypassrls as "bypassesRls"
+    from pg_roles
+    where rolname = current_user
+  `);
+  const credential = result.rows[0];
+
+  if (!credential || (!credential.bypassesRls && !credential.isSuperuser)) {
+    throw new Error(
+      "DATABASE_DIRECT_URL must use the controlled migration/seed role with BYPASSRLS (preferred) or, only when unavoidable, SUPERUSER. The runtime DATABASE_URL role must not be used for seed.",
+    );
+  }
 }
 
 async function seedOrganization() {
@@ -220,6 +245,7 @@ async function seedInitialAdmin(
       name,
       email,
       emailVerified: true,
+      accessStatus: "active",
       isActive: true,
     })
     .onConflictDoUpdate({
@@ -228,6 +254,7 @@ async function seedInitialAdmin(
         organizationId,
         name,
         emailVerified: true,
+        accessStatus: "active",
         isActive: true,
         updatedAt: new Date(),
       },
@@ -348,6 +375,7 @@ async function seedRoleTestUsers(
         name: fixture.name,
         email: fixture.email,
         emailVerified: true,
+        accessStatus: "active",
         isActive: true,
       })
       .onConflictDoUpdate({
@@ -356,6 +384,7 @@ async function seedRoleTestUsers(
           organizationId,
           name: fixture.name,
           emailVerified: true,
+          accessStatus: "active",
           isActive: true,
           updatedAt: new Date(),
         },
@@ -469,6 +498,7 @@ async function seedInitialEmployee(organizationId: string, userId: string) {
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00001"),
       organizationId,
       userId,
       registrationNumber: "FG-00001",
@@ -535,6 +565,7 @@ async function seedLeadershipDemoEmployee(
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00003"),
       organizationId,
       userId,
       registrationNumber: "FG-00003",
@@ -623,6 +654,19 @@ async function seedFinanceClientDemoData(
     reminderBeforeDays: 5,
     reminderAfterDays: 2,
   });
+
+  for (const client of [
+    { code: "CLI-00003", name: "Aurora Cafe - Projeto Avulso" },
+    { code: "CLI-00004", name: "Horizonte Eventos - Grafica" },
+    { code: "CLI-00005", name: "Jardim Studio - Sem Mensalidade" },
+  ]) {
+    await upsertClient({
+      ...client,
+      organizationId,
+      internalOwnerEmployeeId: ownerEmployeeId ?? null,
+      notes: "Cliente ficticio para validacao manual, sem cobranca recorrente.",
+    });
+  }
 
   await ensureFinancialEntry("Fee maio - Cliente Exemplo Ativo", {
     organizationId,
@@ -729,6 +773,7 @@ async function seedPeopleDemoData(
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00002"),
       organizationId,
       userId: employeeUserId ?? null,
       registrationNumber: "FG-00002",
@@ -878,7 +923,7 @@ async function seedCltVacationDemoData(
     .insert(employees)
     .values({
       organizationId,
-      registrationNumber: "FG-00003",
+      registrationNumber: "FG-00004",
       fullName: "Colaborador CLT Exemplo",
       corporateEmail: "clt.exemplo@formula.local",
       positionId: position.id,
@@ -1331,12 +1376,18 @@ async function ensureAccessRecord(
   values: typeof accessRecords.$inferInsert,
 ) {
   const [existing] = await db
-    .select({ id: accessRecords.id })
+    .select({
+      id: accessRecords.id,
+      status: accessRecords.status,
+      statusChangedAt: accessRecords.statusChangedAt,
+    })
     .from(accessRecords)
     .where(and(eq(accessRecords.employeeId, employeeId), eq(accessRecords.platform, platform)))
     .limit(1);
 
   if (existing) {
+    const nextStatus = values.status ?? "active";
+    const now = new Date();
     await db
       .update(accessRecords)
       .set({
@@ -1347,8 +1398,10 @@ async function ensureAccessRecord(
         removedAt: values.removedAt,
         responsibleUserId: values.responsibleUserId,
         reviewDueDate: values.reviewDueDate,
-        status: values.status ?? "active",
-        updatedAt: new Date(),
+        status: nextStatus,
+        statusChangedAt:
+          nextStatus === existing.status ? existing.statusChangedAt : now,
+        updatedAt: now,
       })
       .where(eq(accessRecords.id, existing.id));
     return;
@@ -1599,6 +1652,21 @@ function typedEntries<T extends Record<string, unknown>>(value: T) {
   return Object.entries(value) as {
     [K in keyof T]: [K, T[K]];
   }[keyof T][];
+}
+
+async function findSeedEmployeeId(organizationId: string, registrationNumber: string) {
+  const [employee] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(
+      eq(employees.organizationId, organizationId),
+      eq(employees.registrationNumber, registrationNumber),
+    ))
+    .limit(1);
+
+  // BEFORE INSERT validates the user link before ON CONFLICT runs. Reusing the
+  // existing identity makes repeated seeds compatible with that protection.
+  return employee?.id;
 }
 
 function getDemoUserPassword() {

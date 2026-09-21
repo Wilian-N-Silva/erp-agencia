@@ -9,17 +9,30 @@ import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
   clients,
+  costCenters,
+  financialCategories,
   financialEntries,
   financialExpenses,
   provisions,
+  suppliers,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validation";
 
-import { normalizeMoneyInput, toDateKey } from "./rules";
+import {
+  buildFinancialExpenseUpdateValues,
+  normalizeMoneyInput,
+  toDateKey,
+  type FinancialExpenseMasterDataUpdate,
+} from "./rules";
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
-const competenceSchema = z.string().trim().regex(/^\d{4}-\d{2}$/);
+const dateSchema = isoDateSchema;
+const competenceSchema = isoMonthSchema;
 const optionalTextSchema = (maxLength: number) =>
   z
     .string()
@@ -37,7 +50,7 @@ const optionalIdSchema = () =>
       message: "Invalid id.",
     });
 
-const createEntrySchema = z.object({
+const createEntrySchema = z.strictObject({
   clientId: optionalIdSchema(),
   description: z.string().trim().min(1).max(180),
   amount: z.string().trim().min(1).transform(normalizeMoneyInput),
@@ -55,15 +68,15 @@ const updateEntrySchema = createEntrySchema.extend({
   id: z.string().uuid(),
 });
 
-const createExpenseSchema = z.object({
-  supplier: z.string().trim().min(1).max(160),
-  category: z.string().trim().min(1).max(80),
+const createExpenseSchema = z.strictObject({
+  supplierId: z.string().uuid(),
+  categoryId: z.string().uuid(),
+  costCenterId: optionalIdSchema(),
   subcategory: optionalTextSchema(80),
   description: z.string().trim().min(1).max(180),
   amount: z.string().trim().min(1).transform(normalizeMoneyInput),
   dueDate: dateSchema,
   competence: competenceSchema,
-  costCenter: optionalTextSchema(100),
   recurring: z
     .string()
     .optional()
@@ -73,9 +86,11 @@ const createExpenseSchema = z.object({
 
 const updateExpenseSchema = createExpenseSchema.extend({
   id: z.string().uuid(),
+  supplierId: optionalIdSchema(),
+  categoryId: optionalIdSchema(),
 });
 
-const createProvisionSchema = z.object({
+const createProvisionSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(80),
   estimatedMonthlyAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
@@ -94,11 +109,11 @@ const createProvisionSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function createFinancialEntryAction(formData: FormData) {
+async function createFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createEntrySchema.parse(formDataToObject(formData));
   const clientId = await resolveClientId(input.clientId, organizationId);
@@ -129,7 +144,7 @@ export async function createFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function updateFinancialEntryAction(formData: FormData) {
+async function updateFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = updateEntrySchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
@@ -168,8 +183,9 @@ export async function updateFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function markFinancialEntryReceivedAction(formData: FormData) {
+async function markFinancialEntryReceivedAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -212,8 +228,9 @@ export async function markFinancialEntryReceivedAction(formData: FormData) {
   }
 }
 
-export async function cancelFinancialEntryAction(formData: FormData) {
+async function cancelFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
 
@@ -246,22 +263,26 @@ export async function cancelFinancialEntryAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function createFinancialExpenseAction(formData: FormData) {
+async function createFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createExpenseSchema.parse(formDataToObject(formData));
+  const masterData = await resolveExpenseMasterData(input, organizationId);
 
   const [expense] = await db
     .insert(financialExpenses)
     .values({
       organizationId,
-      supplier: input.supplier,
-      category: input.category,
+      supplierId: masterData.supplier!.id,
+      supplier: masterData.supplier!.name,
+      categoryId: masterData.category!.id,
+      category: masterData.category!.name,
+      costCenterId: masterData.costCenter?.id ?? null,
       subcategory: input.subcategory,
       description: input.description,
       amount: input.amount,
       dueDate: input.dueDate,
       competence: input.competence,
-      costCenter: input.costCenter,
+      costCenter: masterData.costCenter?.name ?? null,
       recurring: input.recurring,
       notes: input.notes,
       responsibleUserId: context.userId,
@@ -278,26 +299,15 @@ export async function createFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function updateFinancialExpenseAction(formData: FormData) {
+async function updateFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = updateExpenseSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
+  const masterData = await resolveExpenseMasterData(input, organizationId, before);
 
   const [after] = await db
     .update(financialExpenses)
-    .set({
-      supplier: input.supplier,
-      category: input.category,
-      subcategory: input.subcategory,
-      description: input.description,
-      amount: input.amount,
-      dueDate: input.dueDate,
-      competence: input.competence,
-      costCenter: input.costCenter,
-      recurring: input.recurring,
-      notes: input.notes,
-      updatedAt: new Date(),
-    })
+    .set(buildFinancialExpenseUpdateValues(input, masterData))
     .where(
       and(
         eq(financialExpenses.id, input.id),
@@ -318,8 +328,9 @@ export async function updateFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function markFinancialExpensePaidAction(formData: FormData) {
+async function markFinancialExpensePaidAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 
@@ -330,6 +341,7 @@ export async function markFinancialExpensePaidAction(formData: FormData) {
   const [after] = await db
     .update(financialExpenses)
     .set({
+      paidAmount: before.amount,
       paidDate: toDateKey(new Date()),
       status: "paid",
       updatedAt: new Date(),
@@ -357,8 +369,9 @@ export async function markFinancialExpensePaidAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function cancelFinancialExpenseAction(formData: FormData) {
+async function cancelFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
 
@@ -391,7 +404,7 @@ export async function cancelFinancialExpenseAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function createProvisionAction(formData: FormData) {
+async function createProvisionAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = createProvisionSchema.parse(formDataToObject(formData));
 
@@ -418,7 +431,7 @@ export async function createProvisionAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function deactivateProvisionAction(formData: FormData) {
+async function deactivateProvisionAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getProvisionForWrite(input.id, organizationId);
@@ -529,6 +542,76 @@ async function getExpenseForWrite(id: string, organizationId: string) {
   return expense;
 }
 
+type ResolvedExpenseMasterData = {
+  supplier: { id: string; name: string };
+  category: { id: string; name: string };
+  costCenter: { id: string; name: string } | null;
+};
+
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+): Promise<ResolvedExpenseMasterData>;
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+  legacy: typeof financialExpenses.$inferSelect,
+): Promise<FinancialExpenseMasterDataUpdate>;
+async function resolveExpenseMasterData(
+  input: { supplierId: string | null; categoryId: string | null; costCenterId: string | null },
+  organizationId: string,
+  legacy?: typeof financialExpenses.$inferSelect,
+): Promise<ResolvedExpenseMasterData | FinancialExpenseMasterDataUpdate> {
+  const [supplier, category, costCenter] = await Promise.all([
+    input.supplierId
+      ? getMasterDataRow(suppliers, input.supplierId, organizationId, legacy?.supplierId)
+      : null,
+    input.categoryId
+      ? getMasterDataRow(financialCategories, input.categoryId, organizationId, legacy?.categoryId)
+      : null,
+    input.costCenterId
+      ? getMasterDataRow(costCenters, input.costCenterId, organizationId, legacy?.costCenterId)
+      : null,
+  ]);
+
+  if (!legacy) {
+    if (!supplier || !category) throw new AccessDeniedError();
+    return { supplier, category, costCenter };
+  }
+
+  if ((!supplier && !legacy.supplier) || (!category && !legacy.category)) {
+    throw new AccessDeniedError();
+  }
+
+  return {
+    supplierId: supplier?.id ?? legacy.supplierId,
+    categoryId: category?.id ?? legacy.categoryId,
+    costCenterId: input.costCenterId ? costCenter?.id ?? null : null,
+  };
+}
+
+async function getMasterDataRow(
+  table: typeof suppliers | typeof financialCategories | typeof costCenters,
+  id: string,
+  organizationId: string,
+  currentlyLinkedId?: string | null,
+) {
+  const [row] = await db
+    .select({ id: table.id, name: table.name })
+    .from(table)
+    .where(
+      and(
+        eq(table.id, id),
+        eq(table.organizationId, organizationId),
+        currentlyLinkedId === id ? undefined : eq(table.isActive, true),
+      ),
+    )
+    .limit(1);
+
+  if (!row) throw new AccessDeniedError();
+  return row;
+}
+
 async function getProvisionForWrite(id: string, organizationId: string) {
   const [provision] = await db
     .select()
@@ -549,6 +632,44 @@ async function getProvisionForWrite(id: string, organizationId: string) {
   return provision;
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
+export {
+  tenantCreateFinancialEntryAction as createFinancialEntryAction,
+  tenantUpdateFinancialEntryAction as updateFinancialEntryAction,
+  tenantMarkFinancialEntryReceivedAction as markFinancialEntryReceivedAction,
+  tenantCancelFinancialEntryAction as cancelFinancialEntryAction,
+  tenantCreateFinancialExpenseAction as createFinancialExpenseAction,
+  tenantUpdateFinancialExpenseAction as updateFinancialExpenseAction,
+  tenantMarkFinancialExpensePaidAction as markFinancialExpensePaidAction,
+  tenantCancelFinancialExpenseAction as cancelFinancialExpenseAction,
+  tenantCreateProvisionAction as createProvisionAction,
+  tenantDeactivateProvisionAction as deactivateProvisionAction,
+};
+
+const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
+  createFinancialEntryAction,
+);
+const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
+  updateFinancialEntryAction,
+);
+const tenantMarkFinancialEntryReceivedAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markFinancialEntryReceivedAction),
+);
+const tenantCancelFinancialEntryAction = withRateLimitActionResult(
+  bindCurrentTenantContext(cancelFinancialEntryAction),
+);
+const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
+  createFinancialExpenseAction,
+);
+const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
+  updateFinancialExpenseAction,
+);
+const tenantMarkFinancialExpensePaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markFinancialExpensePaidAction),
+);
+const tenantCancelFinancialExpenseAction = withRateLimitActionResult(
+  bindCurrentTenantContext(cancelFinancialExpenseAction),
+);
+const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);
+const tenantDeactivateProvisionAction = bindCurrentTenantContext(
+  deactivateProvisionAction,
+);

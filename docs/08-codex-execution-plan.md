@@ -2,15 +2,18 @@
 
 ## 1. Papel deste arquivo
 
-Este é o **roteador de implementação**. PRDs dizem o que o produto deve fazer; este arquivo define ordem, dependências e branches.
+Este é o **roteador humano de implementação**. PRDs dizem o que o produto deve fazer; este arquivo define ordem e dependências.
 
-O integrador é responsável por atualizar estados depois de revisão/merge. Agentes em feature branches não devem marcar a própria task como `done`.
+Para execução automatizada, `docs/codex/tasks.json` é a representação machine-readable deste plano. No modo orquestrado, `feature/codex-integration` funciona como branch-base temporária e recebe as branches de task. Isso **não altera** o workflow de release: `development` continua sendo a branch oficial de integração e só recebe a candidata após review humano.
+
+Agentes em feature branches não devem marcar a própria task como `done`.
 
 ## 2. Estados
 
 - `blocked`
 - `ready`
 - `in_review`
+- `candidate_done` — implementada e integrada em `feature/codex-integration`, mas ainda **não** mergeada em `development`
 - `done`
 - `deferred`
 - `cancelled`
@@ -19,16 +22,22 @@ O integrador é responsável por atualizar estados depois de revisão/merge. Age
 
 Uma task está `ready` somente quando:
 
-1. todas dependências estão `done` em `development`;
+1. todas dependências estão disponíveis na branch-base da execução: `development` em sessões manuais ou `feature/codex-integration` no modo orquestrado;
 2. nenhuma branch paralela possui conflito de write scope conhecido;
 3. requisitos não possuem decisão aberta bloqueante;
 4. baseline de testes está verde ou falha preexistente está documentada.
+
+`candidate_done` satisfaz dependências somente quando a branch-base ativa é
+`feature/codex-integration`. Em modo manual baseado em `development`, não repetir
+essa implementação: aguardar a promoção humana da candidata ou continuar pelo
+orquestrador. Uma task só vira `done` depois do merge e da revalidação em
+`development`.
 
 ## 4. Wave 0 — adoção da documentação
 
 | ID | Task | Status | Branch |
 |---|---|---|---|
-| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `done` | `chore/docs-v2` |
+| DOCS-001 | Aplicar pacote v2, arquivar docs antigas e atualizar AGENTS | `candidate_done` | `chore/docs-v2` |
 
 ### DOCS-001 — Adotar documentação v2
 
@@ -36,23 +45,27 @@ Uma task está `ready` somente quando:
 
 **Validação:** `git diff --check`, `npm run typecheck`, `npm run lint`, `npm run test`.
 
-**Aceite:** documentação v2 está em `development`, links internos resolvem, nenhum documento histórico foi apagado e `AGENTS.md` aponta para a nova fonte de verdade.
+**Aceite final (ainda pendente de promoção humana):** documentação v2 está em
+`development`, links internos resolvem, nenhum documento histórico foi apagado e
+`AGENTS.md` aponta para a nova fonte de verdade.
 
-Após merge de DOCS-001 em `development`, iniciar código.
+DOCS-001 está apenas na candidata. Não repetir a task em modo manual; código
+dependente pode continuar na candidata, enquanto sessões baseadas em
+`development` aguardam a promoção humana.
 
 ## 5. Wave 1 — fundação de segurança e acesso
 
 Ordem majoritariamente serial.
 
-| Ordem | ID | Documento | Dependências | Branch | Status inicial |
+| Ordem | ID | Documento | Dependências | Branch | Status atual |
 |---:|---|---|---|---|---|
-| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | done |
-| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | ready |
-| 3 | SEC-003 | 06 | SEC-002 | `feature/security-rls-baseline` | blocked |
-| 4 | SEC-004 | 06 | SEC-003 | `test/security-rls-cross-tenant` | blocked |
+| 1 | SEC-001 | 06 | DOCS-001 | `feature/security-db-runtime` | candidate_done |
+| 2 | SEC-002 | 06 | SEC-001 | `feature/security-tenant-db-context` | candidate_done |
+| 3 | SEC-003 | 06 | SEC-002 | `feature/security-rls-baseline` | candidate_done |
+| 4 | SEC-004 | 06 | SEC-003 | `test/security-rls-cross-tenant` | ready |
 | 5 | SEC-005 | 06 | SEC-002 | `feature/security-rate-limit` | blocked |
 | 6 | SEC-006 | 06 | SEC-005 | `feature/security-rate-limit-critical-actions` | blocked |
-| 7 | CORE-001 | 01 | SEC-001/SEC-002 | `feature/core-transaction-contract` | blocked |
+| 7 | CORE-001 | 01 | SEC-001 | `feature/core-transaction-contract` | blocked |
 | 8 | ACC-001 | 04 | SEC-003/SEC-005 | `feature/access-invitations` | blocked |
 | 9 | ACC-002 | 04 | ACC-001 | `fix/access-user-status-enforcement` | blocked |
 | 10 | ACC-003 | 04 | ACC-002 | `feature/user-employee-link` | blocked |
@@ -178,7 +191,7 @@ Branch: `chore/release-v2-hardening`
 
 Executar:
 
-```bash
+```powershell
 npm run typecheck
 npm run lint
 npm run test
@@ -221,7 +234,7 @@ GRF-001...
 
 O integrador preenche esta seção antes de iniciar automação noturna.
 
-**Regra:** somente tasks cujas dependências já estejam `done` na `development` no início da noite.
+**Regra manual:** somente tasks cujas dependências já estejam integradas na branch-base escolhida. No modo orquestrado, use `docs/codex/tasks.json` e `scripts/codex-orchestrator.ps1` em vez desta fila textual.
 
 ```text
 # Exemplo — NÃO executar automaticamente
@@ -229,7 +242,7 @@ O integrador preenche esta seção antes de iniciar automação noturna.
 # SEC-005
 ```
 
-Uma execução noturna não deve fazer merge. Se várias tasks forem agendadas na mesma noite, elas precisam ser independentes a partir da mesma `development` e cada uma deve terminar commitada em sua própria branch.
+O modo legado `codex-night.ps1` não faz merge. O novo orquestrador é diferente: cada task nasce da candidata atual e, depois de gates + review automático, é mergeada **somente** em `feature/codex-integration`. Nunca há merge automático em `development` ou `main`.
 
 ## 15. Handoff padrão ao Codex
 
@@ -240,16 +253,23 @@ Execute a task <ID> seguindo AGENTS.md.
 Leia docs/08-codex-execution-plan.md, o PRD indicado pela task,
 docs/06-security-and-rls.md, docs/07-test-strategy.md e docs/git-workflow.md.
 Não implemente tasks futuras. Em sessão manual, use a branch indicada a partir de development.
-Quando chamado pelos scripts, a branch já foi criada pelo wrapper e o agente não deve executar Git de escrita.
-Implemente, teste e pare. O wrapper executará os gates finais e o commit. Não faça merge.
+Quando chamado pelo orquestrador, a branch já foi criada a partir de `feature/codex-integration`; o agente não deve executar Git de escrita.
+Implemente, teste e pare. O wrapper executará gates finais, commit, review e integração na candidata. Nunca faça merge em development/main.
 ```
 
 ## 16. Atualização de status
 
-Depois que o integrador revisar e mergear:
+No fluxo manual tradicional:
 
 - branch concluída antes do merge → `in_review`;
-- merge + testes de integração verdes → `done`;
-- dependências satisfeitas → próxima task pode virar `ready`.
+- merge + testes verdes em `development` → `done`.
 
-Não usar o estado de uma branch não mergeada para desbloquear outra task.
+No fluxo orquestrado:
+
+- o estado real é inferido por `docs/codex/tasks.json` + histórico Git;
+- branch de task contida em `feature/codex-integration` satisfaz dependências para a próxima task da mesma candidata;
+- essa task é `candidate_done` no roteador humano e não deve ser reimplementada por uma sessão manual;
+- isso não significa `done` de release;
+- somente após review humano e eventual merge da candidata em `development` o lote é aceito oficialmente.
+
+Nunca usar uma branch de task não integrada na branch-base ativa para desbloquear dependentes.

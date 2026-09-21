@@ -1,7 +1,6 @@
 import { Download, File as FileIcon, Lock } from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
-import { redirect } from "next/navigation";
 
 import { Card, EmptyState, StatusBadge } from "@/components/fg";
 import { listDocuments, type DocumentListItem } from "@/features/documents/dal";
@@ -10,17 +9,18 @@ import {
   fileSensitivityLabels,
 } from "@/features/documents/rules";
 import { formatDate } from "@/features/finance/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalDocumentsPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const documents = await listDocuments(context, { ownOnly: true });
+  const documents = await listDocuments(access.context, { ownOnly: true });
 
   return (
     <>

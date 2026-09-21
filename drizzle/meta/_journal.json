@@ -57,6 +57,132 @@
       "when": 1779237129617,
       "tag": "0007_narrow_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787083200000,
+      "tag": "0008_rls_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787086800000,
+      "tag": "0009_rate_limit_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787580334507,
+      "tag": "0010_aberrant_jocasta",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787583600000,
+      "tag": "0011_invitation_select_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787589704289,
+      "tag": "0012_windy_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787596523257,
+      "tag": "0013_youthful_ma_gnuci",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787620350938,
+      "tag": "0014_sudden_major_mapleleaf",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787622223096,
+      "tag": "0015_purple_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787626627636,
+      "tag": "0016_clear_calypso",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788377627143,
+      "tag": "0017_glorious_ultimatum",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788399344420,
+      "tag": "0018_pretty_madame_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788401428934,
+      "tag": "0019_grf_jobs_ui_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788405356990,
+      "tag": "0020_black_earthquake",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788408410611,
+      "tag": "0021_abnormal_luckman",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788409184203,
+      "tag": "0022_guard_allocated_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788409626856,
+      "tag": "0023_immutable_financial_allocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788439136634,
+      "tag": "0024_secret_alex_wilder",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788441770207,
+      "tag": "0025_graphics_supplier_quote_approval",
+      "breakpoints": true
     }
   ]
 }

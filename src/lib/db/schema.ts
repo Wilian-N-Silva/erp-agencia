@@ -1,6 +1,9 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -103,6 +106,64 @@ export const alertStatusEnum = pgEnum("alert_status", [
   "dismissed",
 ]);
 
+export const workItemPriorityEnum = pgEnum("work_item_priority", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+export const workItemStatusEnum = pgEnum("work_item_status", [
+  "open",
+  "in_progress",
+  "resolved",
+  "dismissed",
+]);
+
+export const userAccessStatusEnum = pgEnum("user_access_status", [
+  "pending",
+  "active",
+  "suspended",
+  "revoked",
+]);
+
+export const graphicProjectKindEnum = pgEnum("graphic_project_kind", [
+  "project",
+  "event",
+]);
+
+export const graphicJobOperationalStatusEnum = pgEnum(
+  "graphic_job_operational_status",
+  [
+    "supplier_sourcing",
+    "supplier_approval_pending",
+    "os_pending",
+    "client_approval_pending",
+    "client_revision",
+    "client_rejected",
+    "approved",
+    "in_production",
+    "waiting",
+    "ready",
+    "delivered",
+    "closed",
+    "cancelled",
+  ],
+);
+
+export const graphicJobFinancialStatusEnum = pgEnum(
+  "graphic_job_financial_status",
+  ["not_started", "pending", "partial", "settled", "overdue"],
+);
+
+export const graphicSupplierQuoteStatusEnum = pgEnum(
+  "graphic_supplier_quote_status",
+  ["pending", "approved", "rejected", "cancelled"],
+);
+
+export type UserAccessStatus =
+  (typeof userAccessStatusEnum.enumValues)[number];
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -120,6 +181,8 @@ export const users = pgTable(
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
+    // Expand-phase defaults preserve compatibility; the current auth writer sets pending/false explicitly.
+    accessStatus: userAccessStatusEnum("access_status").notNull().default("active"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -127,6 +190,10 @@ export const users = pgTable(
   (table) => ({
     emailIdx: uniqueIndex("users_email_idx").on(table.email),
     organizationIdx: index("users_organization_idx").on(table.organizationId),
+    organizationIdIdx: uniqueIndex("users_organization_id_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
   }),
 );
 
@@ -236,6 +303,31 @@ export const userRoles = pgTable(
   }),
 );
 
+export const accessInvitations = pgTable(
+  "access_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    email: text("email").notNull(),
+    roleKeys: jsonb("role_keys").$type<string[]>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    usedByUserId: text("used_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    emailIdx: uniqueIndex("access_invitations_email_idx").on(table.email),
+    organizationIdx: index("access_invitations_organization_idx").on(table.organizationId),
+    expiresAtIdx: index("access_invitations_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {
@@ -258,6 +350,24 @@ export const auditLogs = pgTable(
     organizationIdx: index("audit_logs_organization_idx").on(table.organizationId),
     actorIdx: index("audit_logs_actor_idx").on(table.actorUserId),
     entityIdx: index("audit_logs_entity_idx").on(table.entityType, table.entityId),
+  }),
+);
+
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    keyHash: text("key_hash").notNull(),
+    action: text("action").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(1),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: "rate_limit_buckets_pk",
+      columns: [table.keyHash, table.action, table.windowStart],
+    }),
+    expiresAtIdx: index("rate_limit_buckets_expires_at_idx").on(table.expiresAt),
   }),
 );
 
@@ -351,8 +461,13 @@ export const employees = pgTable(
       table.organizationId,
       table.corporateEmail,
     ),
+    // ACC-003 remains in expand/cleanup rollout until legacy duplicate links are resolved.
     userIdx: index("employees_user_idx").on(table.userId),
     statusIdx: index("employees_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("employees_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
   }),
 );
 
@@ -430,8 +545,8 @@ export const clients = pgTable(
     name: text("name").notNull(),
     code: text("code").notNull(),
     status: clientStatusEnum("status").notNull().default("active"),
-    monthlyFee: numeric("monthly_fee", { precision: 12, scale: 2 }).notNull(),
-    billingDay: integer("billing_day").notNull(),
+    monthlyFee: numeric("monthly_fee", { precision: 12, scale: 2 }),
+    billingDay: integer("billing_day"),
     internalOwnerEmployeeId: uuid("internal_owner_employee_id").references(() => employees.id),
     billingMethod: text("billing_method"),
     notes: text("notes"),
@@ -444,6 +559,117 @@ export const clients = pgTable(
   (table) => ({
     codeIdx: uniqueIndex("clients_code_idx").on(table.organizationId, table.code),
     statusIdx: index("clients_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("clients_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
+export const graphicProjects = pgTable(
+  "graphic_projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code"),
+    name: text("name").notNull(),
+    description: text("description"),
+    kind: graphicProjectKindEnum("kind").notNull().default("project"),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationCodeIdx: uniqueIndex("graphic_projects_organization_code_idx").on(
+      table.organizationId,
+      table.code,
+    ),
+    organizationIdIdx: uniqueIndex("graphic_projects_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    activeIdx: index("graphic_projects_active_idx").on(
+      table.organizationId,
+      table.deletedAt,
+    ),
+    periodCheck: check(
+      "graphic_projects_period_check",
+      sql`${table.endsAt} is null or ${table.startsAt} is null or ${table.endsAt} >= ${table.startsAt}`,
+    ),
+  }),
+);
+
+export const graphicJobs = pgTable(
+  "graphic_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    internalCode: text("internal_code").notNull(),
+    clientId: uuid("client_id").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    responsibleEmployeeId: uuid("responsible_employee_id").notNull(),
+    projectId: uuid("project_id"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    desiredDeliveryAt: timestamp("desired_delivery_at", { withTimezone: true }),
+    operationalStatus: graphicJobOperationalStatusEnum("operational_status")
+      .notNull()
+      .default("supplier_sourcing"),
+    // Server-owned cacheable summary; detailed AR/AP remains authoritative.
+    financialStatus: graphicJobFinancialStatusEnum("financial_status")
+      .notNull()
+      .default("not_started"),
+    notes: text("notes"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    internalCodeIdx: uniqueIndex("graphic_jobs_internal_code_idx").on(
+      table.organizationId,
+      table.internalCode,
+    ),
+    organizationIdIdx: uniqueIndex("graphic_jobs_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    operationalStatusIdx: index("graphic_jobs_operational_status_idx").on(
+      table.organizationId,
+      table.operationalStatus,
+    ),
+    clientIdx: index("graphic_jobs_client_idx").on(
+      table.organizationId,
+      table.clientId,
+    ),
+    responsibleIdx: index("graphic_jobs_responsible_idx").on(
+      table.organizationId,
+      table.responsibleEmployeeId,
+    ),
+    projectIdx: index("graphic_jobs_project_idx").on(
+      table.organizationId,
+      table.projectId,
+    ),
+    clientTenantFk: foreignKey({
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+      name: "graphic_jobs_client_tenant_fk",
+    }),
+    responsibleTenantFk: foreignKey({
+      columns: [table.organizationId, table.responsibleEmployeeId],
+      foreignColumns: [employees.organizationId, employees.id],
+      name: "graphic_jobs_responsible_tenant_fk",
+    }),
+    projectTenantFk: foreignKey({
+      columns: [table.organizationId, table.projectId],
+      foreignColumns: [graphicProjects.organizationId, graphicProjects.id],
+      name: "graphic_jobs_project_tenant_fk",
+    }),
   }),
 );
 
@@ -480,6 +706,279 @@ export const clientBillingProfiles = pgTable(
   }),
 );
 
+export const financialAccounts = pgTable(
+  "financial_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("active"),
+    maskedIdentifier: text("masked_identifier"),
+    openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("financial_accounts_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    statusIdx: index("financial_accounts_status_idx").on(table.organizationId, table.status),
+    organizationIdIdx: uniqueIndex("financial_accounts_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    typeCheck: check(
+      "financial_accounts_type_check",
+      sql`${table.type} in ('bank', 'cash', 'card', 'clearing')`,
+    ),
+    statusCheck: check(
+      "financial_accounts_status_check",
+      sql`${table.status} in ('active', 'inactive')`,
+    ),
+  }),
+);
+
+export const financialCategories = pgTable(
+  "financial_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    nature: text("nature").notNull().default("both"),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("financial_categories_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationIdIdx: uniqueIndex("financial_categories_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    natureCheck: check(
+      "financial_categories_nature_check",
+      sql`${table.nature} in ('income', 'expense', 'both')`,
+    ),
+  }),
+);
+
+export const costCenters = pgTable(
+  "cost_centers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    code: text("code"),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("cost_centers_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationCodeIdx: uniqueIndex("cost_centers_organization_code_idx").on(
+      table.organizationId,
+      table.code,
+    ),
+    organizationIdIdx: uniqueIndex("cost_centers_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    taxId: text("tax_id"),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationNameIdx: uniqueIndex("suppliers_organization_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+    organizationTaxIdIdx: uniqueIndex("suppliers_organization_tax_id_idx").on(
+      table.organizationId,
+      table.taxId,
+    ),
+    organizationIdIdx: uniqueIndex("suppliers_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+  }),
+);
+
+export const graphicSupplierQuotes = pgTable(
+  "graphic_supplier_quotes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    jobId: uuid("job_id").notNull(),
+    supplierId: uuid("supplier_id").notNull(),
+    description: text("description").notNull(),
+    quotedAmount: numeric("quoted_amount", { precision: 14, scale: 2 }).notNull(),
+    quotedAt: timestamp("quoted_at", { withTimezone: true }).notNull(),
+    estimatedDeliveryAt: timestamp("estimated_delivery_at", { withTimezone: true }),
+    conditions: text("conditions"),
+    status: graphicSupplierQuoteStatusEnum("status").notNull().default("pending"),
+    reviewerUserId: text("reviewer_user_id"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationIdIdx: uniqueIndex("graphic_supplier_quotes_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    jobIdx: index("graphic_supplier_quotes_job_idx").on(
+      table.organizationId,
+      table.jobId,
+      table.createdAt,
+    ),
+    supplierIdx: index("graphic_supplier_quotes_supplier_idx").on(
+      table.organizationId,
+      table.supplierId,
+    ),
+    statusIdx: index("graphic_supplier_quotes_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+    amountCheck: check(
+      "graphic_supplier_quotes_positive_amount_check",
+      sql`${table.quotedAmount} > 0`,
+    ),
+    jobTenantFk: foreignKey({
+      columns: [table.organizationId, table.jobId],
+      foreignColumns: [graphicJobs.organizationId, graphicJobs.id],
+      name: "graphic_supplier_quotes_job_tenant_fk",
+    }),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "graphic_supplier_quotes_supplier_tenant_fk",
+    }),
+    reviewerTenantFk: foreignKey({
+      columns: [table.organizationId, table.reviewerUserId],
+      foreignColumns: [users.organizationId, users.id],
+      name: "graphic_supplier_quotes_reviewer_tenant_fk",
+    }),
+  }),
+);
+
+export const financialTransactions = pgTable(
+  "financial_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    accountId: uuid("account_id").notNull(),
+    direction: text("direction").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    method: text("method"),
+    reference: text("reference"),
+    counterpartyName: text("counterparty_name"),
+    clientId: uuid("client_id"),
+    supplierId: uuid("supplier_id"),
+    status: text("status").notNull().default("pending_reconciliation"),
+    origin: text("origin").notNull().default("manual"),
+    importMetadata: jsonb("import_metadata"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountTenantFk: foreignKey({
+      columns: [table.organizationId, table.accountId],
+      foreignColumns: [financialAccounts.organizationId, financialAccounts.id],
+      name: "financial_transactions_account_tenant_fk",
+    }),
+    clientTenantFk: foreignKey({
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+      name: "financial_transactions_client_tenant_fk",
+    }),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "financial_transactions_supplier_tenant_fk",
+    }),
+    organizationIdIdx: uniqueIndex("financial_transactions_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
+    occurredAtIdx: index("financial_transactions_occurred_at_idx").on(
+      table.organizationId,
+      table.occurredAt,
+    ),
+    statusIdx: index("financial_transactions_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+    accountIdx: index("financial_transactions_account_idx").on(
+      table.organizationId,
+      table.accountId,
+    ),
+    directionCheck: check(
+      "financial_transactions_direction_check",
+      sql`${table.direction} in ('in', 'out')`,
+    ),
+    positiveAmountCheck: check(
+      "financial_transactions_positive_amount_check",
+      sql`${table.amount} > 0`,
+    ),
+    statusCheck: check(
+      "financial_transactions_status_check",
+      sql`${table.status} in ('pending_reconciliation', 'partially_reconciled', 'reconciled', 'reversed')`,
+    ),
+    originCheck: check(
+      "financial_transactions_origin_check",
+      sql`${table.origin} in ('manual', 'import', 'legacy_backfill')`,
+    ),
+    counterpartyCheck: check(
+      "financial_transactions_counterparty_check",
+      sql`not (${table.clientId} is not null and ${table.supplierId} is not null)`,
+    ),
+    directionCounterpartyCheck: check(
+      "financial_transactions_direction_counterparty_check",
+      sql`(${table.direction} = 'in' and ${table.supplierId} is null) or (${table.direction} = 'out' and ${table.clientId} is null)`,
+    ),
+  }),
+);
+
 export const financialEntries = pgTable(
   "financial_entries",
   {
@@ -506,6 +1005,10 @@ export const financialEntries = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    organizationIdIdx: uniqueIndex("financial_entries_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     dueDateIdx: index("financial_entries_due_date_idx").on(table.organizationId, table.dueDate),
     statusIdx: index("financial_entries_status_idx").on(table.organizationId, table.status),
     competenceIdx: index("financial_entries_competence_idx").on(
@@ -557,11 +1060,18 @@ export const financialExpenses = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    supplierId: uuid("supplier_id"),
+    categoryId: uuid("category_id"),
+    costCenterId: uuid("cost_center_id"),
+    // Legacy snapshots intentionally remain populated when master data names change.
     supplier: text("supplier").notNull(),
     category: text("category").notNull(),
     subcategory: text("subcategory"),
     description: text("description").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    paidAmount: numeric("paid_amount", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     dueDate: date("due_date").notNull(),
     paidDate: date("paid_date"),
     competence: text("competence").notNull(),
@@ -577,11 +1087,92 @@ export const financialExpenses = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    organizationIdIdx: uniqueIndex("financial_expenses_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     dueDateIdx: index("financial_expenses_due_date_idx").on(table.organizationId, table.dueDate),
     statusIdx: index("financial_expenses_status_idx").on(table.organizationId, table.status),
     competenceIdx: index("financial_expenses_competence_idx").on(
       table.organizationId,
       table.competence,
+    ),
+    supplierIdx: index("financial_expenses_supplier_idx").on(table.organizationId, table.supplierId),
+    categoryIdx: index("financial_expenses_category_idx").on(table.organizationId, table.categoryId),
+    costCenterIdx: index("financial_expenses_cost_center_idx").on(
+      table.organizationId,
+      table.costCenterId,
+    ),
+    supplierTenantFk: foreignKey({
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: "financial_expenses_supplier_tenant_fk",
+    }),
+    categoryTenantFk: foreignKey({
+      columns: [table.organizationId, table.categoryId],
+      foreignColumns: [financialCategories.organizationId, financialCategories.id],
+      name: "financial_expenses_category_tenant_fk",
+    }),
+    costCenterTenantFk: foreignKey({
+      columns: [table.organizationId, table.costCenterId],
+      foreignColumns: [costCenters.organizationId, costCenters.id],
+      name: "financial_expenses_cost_center_tenant_fk",
+    }),
+  }),
+);
+
+export const financialAllocations = pgTable(
+  "financial_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    transactionId: uuid("transaction_id").notNull(),
+    financialEntryId: uuid("financial_entry_id"),
+    financialExpenseId: uuid("financial_expense_id"),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    metadata: jsonb("metadata"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    transactionTenantFk: foreignKey({
+      columns: [table.organizationId, table.transactionId],
+      foreignColumns: [financialTransactions.organizationId, financialTransactions.id],
+      name: "financial_allocations_transaction_tenant_fk",
+    }),
+    entryTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialEntryId],
+      foreignColumns: [financialEntries.organizationId, financialEntries.id],
+      name: "financial_allocations_entry_tenant_fk",
+    }),
+    expenseTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialExpenseId],
+      foreignColumns: [financialExpenses.organizationId, financialExpenses.id],
+      name: "financial_allocations_expense_tenant_fk",
+    }),
+    transactionIdx: index("financial_allocations_transaction_idx").on(
+      table.organizationId,
+      table.transactionId,
+    ),
+    entryIdx: index("financial_allocations_entry_idx").on(
+      table.organizationId,
+      table.financialEntryId,
+    ),
+    expenseIdx: index("financial_allocations_expense_idx").on(
+      table.organizationId,
+      table.financialExpenseId,
+    ),
+    positiveAmountCheck: check(
+      "financial_allocations_positive_amount_check",
+      sql`${table.amount} > 0`,
+    ),
+    singleTargetCheck: check(
+      "financial_allocations_single_target_check",
+      sql`(${table.financialEntryId} is not null) <> (${table.financialExpenseId} is not null)`,
     ),
   }),
 );
@@ -637,7 +1228,43 @@ export const files = pgTable(
   },
   (table) => ({
     ownerIdx: index("files_owner_idx").on(table.ownerEmployeeId),
+    organizationIdIdx: uniqueIndex("files_organization_id_idx").on(
+      table.organizationId,
+      table.id,
+    ),
     storageIdx: uniqueIndex("files_storage_idx").on(table.storageProvider, table.storageKey),
+  }),
+);
+
+export const graphicSupplierQuoteAttachments = pgTable(
+  "graphic_supplier_quote_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    quoteId: uuid("quote_id").notNull(),
+    fileId: uuid("file_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    quoteFileIdx: uniqueIndex("graphic_supplier_quote_attachments_quote_file_idx").on(
+      table.quoteId,
+      table.fileId,
+    ),
+    organizationIdIdx: uniqueIndex(
+      "graphic_supplier_quote_attachments_organization_id_idx",
+    ).on(table.organizationId, table.id),
+    quoteTenantFk: foreignKey({
+      columns: [table.organizationId, table.quoteId],
+      foreignColumns: [graphicSupplierQuotes.organizationId, graphicSupplierQuotes.id],
+      name: "graphic_supplier_quote_attachments_quote_tenant_fk",
+    }),
+    fileTenantFk: foreignKey({
+      columns: [table.organizationId, table.fileId],
+      foreignColumns: [files.organizationId, files.id],
+      name: "graphic_supplier_quote_attachments_file_tenant_fk",
+    }),
   }),
 );
 
@@ -863,6 +1490,9 @@ export const accessRecords = pgTable(
     accessLevel: text("access_level").notNull(),
     critical: boolean("critical").notNull().default(false),
     status: text("status").notNull().default("active"),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     reviewDueDate: date("review_due_date"),
     removedAt: timestamp("removed_at", { withTimezone: true }),
     responsibleUserId: text("responsible_user_id").references(() => users.id),
@@ -1006,6 +1636,75 @@ export const alerts = pgTable(
   }),
 );
 
+export const workItems = pgTable(
+  "work_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    kind: text("kind").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    occurrenceKey: text("occurrence_key").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    assignedUserId: text("assigned_user_id").references(() => users.id),
+    assignedEmployeeId: uuid("assigned_employee_id").references(() => employees.id),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    priority: workItemPriorityEnum("priority").notNull().default("medium"),
+    status: workItemStatusEnum("status").notNull().default("open"),
+    resolution: text("resolution"),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    occurrenceIdx: uniqueIndex("work_items_occurrence_idx").on(
+      table.organizationId,
+      table.kind,
+      table.sourceType,
+      table.sourceId,
+      table.occurrenceKey,
+    ),
+    statusIdx: index("work_items_status_idx").on(
+      table.organizationId,
+      table.status,
+      table.priority,
+      table.dueAt,
+    ),
+    assignedUserIdx: index("work_items_assigned_user_idx").on(
+      table.organizationId,
+      table.assignedUserId,
+      table.status,
+    ),
+    assignedEmployeeIdx: index("work_items_assigned_employee_idx").on(
+      table.organizationId,
+      table.assignedEmployeeId,
+      table.status,
+    ),
+    singleOwner: check(
+      "work_items_single_owner_check",
+      sql`${table.assignedUserId} is null or ${table.assignedEmployeeId} is null`,
+    ),
+    resolutionState: check(
+      "work_items_resolution_state_check",
+      sql`(
+        ${table.status} in ('open', 'in_progress')
+        and ${table.resolution} is null
+        and ${table.resolvedByUserId} is null
+        and ${table.resolvedAt} is null
+      ) or (
+        ${table.status} in ('resolved', 'dismissed')
+        and ${table.resolution} is not null
+        and ${table.resolvedByUserId} is not null
+        and ${table.resolvedAt} is not null
+      )`,
+    ),
+  }),
+);
+
 export const appSettings = pgTable(
   "app_settings",
   {
@@ -1030,4 +1729,14 @@ export type User = typeof users.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type Permission = typeof permissions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type FinancialAccount = typeof financialAccounts.$inferSelect;
+export type FinancialTransaction = typeof financialTransactions.$inferSelect;
+export type FinancialAllocation = typeof financialAllocations.$inferSelect;
+export type FinancialCategory = typeof financialCategories.$inferSelect;
+export type CostCenter = typeof costCenters.$inferSelect;
+export type Supplier = typeof suppliers.$inferSelect;
+export type GraphicProject = typeof graphicProjects.$inferSelect;
+export type GraphicJob = typeof graphicJobs.$inferSelect;
+export type GraphicSupplierQuote = typeof graphicSupplierQuotes.$inferSelect;
+export type WorkItem = typeof workItems.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;

@@ -1,14 +1,20 @@
 import { CheckCircle2, FileText, Upload } from "lucide-react";
-import { redirect } from "next/navigation";
 
-import { Button, Card, EmptyState, StatusBadge } from "@/components/fg";
-import { MoneyInput } from "@/components/fg";
-import { submitInvoiceRequestAction } from "@/features/portal/actions";
 import {
-  getPortalEmployeeSummary,
+  Button,
+  Card,
+  EmptyState,
+  MoneyInput,
+  RateLimitedActionForm,
+  StatusBadge,
+} from "@/components/fg";
+import { submitInvoiceRequestAction } from "@/features/portal/actions";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
+import {
   listInvoiceRequests,
   type InvoiceRequestListItem,
 } from "@/features/portal/dal";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import {
   canSubmitInvoice,
   invoiceItemKindLabels,
@@ -16,18 +22,17 @@ import {
   type InvoiceRequestStatus,
 } from "@/features/portal/rules";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalNFsPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const employee = await getPortalEmployeeSummary(context);
-  const isPJ = employee?.employmentType === "pj";
+  const { context, employee } = access;
+  const isPJ = employee.employmentType === "pj";
 
   if (!isPJ) {
     return (
@@ -151,9 +156,8 @@ function DescriptionCard({ invoice }: { invoice: InvoiceRequestListItem }) {
 function SubmitCard({ invoice }: { invoice: InvoiceRequestListItem }) {
   return (
     <Card title="Enviar NF emitida" description="Faça upload do PDF e informe os dados da nota emitida.">
-      <form
+      <RateLimitedActionForm
         action={submitInvoiceRequestAction}
-        encType="multipart/form-data"
         style={{ display: "flex", flexDirection: "column", gap: 14 }}
       >
         <input type="hidden" name="id" value={invoice.id} />
@@ -188,7 +192,7 @@ function SubmitCard({ invoice }: { invoice: InvoiceRequestListItem }) {
             Enviar NF para aprovação
           </Button>
         </div>
-      </form>
+      </RateLimitedActionForm>
     </Card>
   );
 }

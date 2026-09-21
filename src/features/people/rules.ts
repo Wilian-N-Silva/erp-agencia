@@ -143,6 +143,33 @@ export function getCompensationDifference(previousAmount: string, newAmount: str
   return centsToMoney(moneyToCents(newAmount) - moneyToCents(previousAmount));
 }
 
+export function formatCpfInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  const part1 = digits.slice(0, 3);
+  const part2 = digits.slice(3, 6);
+  const part3 = digits.slice(6, 9);
+  const part4 = digits.slice(9, 11);
+
+  return [part1, part2, part3].filter(Boolean).join(".").concat(part4 ? `-${part4}` : "");
+}
+
+export function formatPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  const area = digits.slice(0, 2);
+  const first = digits.length > 10 ? digits.slice(2, 7) : digits.slice(2, 6);
+  const second = digits.length > 10 ? digits.slice(7, 11) : digits.slice(6, 10);
+
+  if (!area) {
+    return "";
+  }
+
+  if (!first) {
+    return `(${area}`;
+  }
+
+  return `(${area}) ${first}${second ? `-${second}` : ""}`;
+}
+
 export function isBenefitActive(benefit: {
   recurring: boolean;
   status: string;

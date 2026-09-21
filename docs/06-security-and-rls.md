@@ -46,8 +46,8 @@ Se um bug omitir `organizationId` em um DAL, Postgres ainda deve impedir leitura
 
 Produção deve usar:
 
-- `DATABASE_URL`: credencial **runtime/app**, sem `BYPASSRLS`, sem superuser e preferencialmente não proprietária das tabelas;
-- `DATABASE_DIRECT_URL`: credencial de migration/admin, usada por drizzle-kit e tarefas administrativas controladas.
+- `DATABASE_URL`: credencial **runtime/app**, explicitamente `NOBYPASSRLS`, sem superuser e nunca proprietária das tabelas;
+- `DATABASE_DIRECT_URL`: credencial controlada de migration/admin, com `BYPASSRLS` para migrations e seed após `FORCE ROW LEVEL SECURITY`; `SUPERUSER` só é aceitável quando o provedor não permite uma role dedicada.
 
 `DATABASE_DIRECT_URL` nunca deve ser usada no runtime web.
 
@@ -88,6 +88,27 @@ Se contexto estiver ausente, a policy deve resultar em deny, nunca “ver tudo�
 
 ### 5.5 Tabelas cobertas
 
+O baseline da SEC-003 classifica todas as tabelas existentes. A fonte de verdade
+executável da matriz é **src/lib/db/rls-policy-matrix.ts**:
+
+- policy tenant direta: access_records, alerts, app_settings, areas, audit_logs,
+  client_billing_profiles, client_payment_reminders, clients, compensation_history,
+  documents, employee_benefits, employees, equipment, files, financial_entries,
+  financial_expenses, invoice_requests, lifecycle_checklists, positions, provisions,
+  reimbursement_requests, saas_subscriptions, time_off_requests e vacation_balances;
+- policy tenant herdada do pai: invoice_request_items via invoice_requests,
+  lifecycle_checklist_items via lifecycle_checklists e saas_subscription_users via
+  saas_subscriptions;
+- exceções explícitas: user, account, session e verification são bootstrap do Better
+  Auth; organizations é consultada durante o bootstrap da organização; roles,
+  permissions, role_permissions e user_roles formam o catálogo e o bootstrap RBAC
+  usados para construir o AccessContext.
+
+Todas as tabelas de negócio da matriz usam **ENABLE ROW LEVEL SECURITY**, **FORCE ROW
+LEVEL SECURITY** e policy **FOR ALL** com **USING** e **WITH CHECK**. Uma tabela pública
+nova deve ser adicionada à matriz como protegida ou como exceção justificada; o teste
+de integração falha quando existe uma tabela sem classificação.
+
 Regra: toda tabela de negócio com `organizationId` entra na matriz RLS, incluindo novas tabelas de Financeiro, Gráfica, Pessoas/Governança, documentos, audit e work items.
 
 ### 5.6 Tabelas de bootstrap/auth
@@ -110,7 +131,11 @@ Postgres normalmente permite ao table owner ignorar RLS. Por isso:
 
 ### 5.8 Seed e migrations
 
-Migrations/seed administrativo usam credencial direta controlada. Seed de dados de demo nunca deve rodar em prod.
+Migrations/seed administrativo usam a credencial direta controlada com `BYPASSRLS`
+(preferencial) ou `SUPERUSER` apenas quando inevitável. O seed valida esse contrato antes
+de escrever, porque `FORCE ROW LEVEL SECURITY` nega writes administrativos sem bypass.
+A role runtime é `NOBYPASSRLS`, não é table owner e nunca substitui essa credencial.
+Seed de dados de demo nunca deve rodar em prod.
 
 ### 5.9 Teste de bypass
 

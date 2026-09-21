@@ -42,7 +42,9 @@ O fluxo oficial está em `docs/git-workflow.md`:
 
 Em sessão manual, confirme a branch/worktree antes de alterar arquivos.
 
-Quando a execução vier de `scripts/codex-task.ps1` ou `scripts/codex-night.ps1`, **o wrapper é o dono das operações Git**: ele volta para `development`, cria a branch, roda gates finais e faz o commit. Nesse modo, não faça checkout, merge, commit, reset, rebase ou qualquer escrita em `.git`; apenas implemente a task na branch já preparada.
+Quando a execução vier de `scripts/codex-task.ps1` ou `scripts/codex-night.ps1`, **o wrapper é o dono das operações Git**. Nesse modo, não faça checkout, merge, commit, reset, rebase ou qualquer escrita em `.git`; apenas implemente a task na branch já preparada.
+
+Quando a execução vier de `scripts/codex-orchestrator.ps1` / `scripts/codex-worker.ps1`, a branch-base operacional passa a ser `feature/codex-integration`. Cada task nasce dela, o wrapper executa gates/review/commit e depois absorve a task de volta em `feature/codex-integration`. **O agente nunca deve mergear ou escrever em `development`/`main`.** A branch de integração é apenas um release candidate para revisão humana posterior.
 
 Em execução manual sem wrapper, siga o workflow normal e não faça merge em `development` ou `main` sem instrução explícita do integrador.
 
@@ -133,7 +135,7 @@ Toda mudança de comportamento adiciona ou ajusta teste.
 
 Gates mínimos por task:
 
-```bash
+```powershell
 npm run typecheck
 npm run lint
 npm run test
@@ -141,7 +143,7 @@ npm run test
 
 Quando aplicável:
 
-```bash
+```powershell
 npm run build
 npm run test:e2e
 ```
@@ -165,4 +167,4 @@ Ao finalizar uma task, responder com:
 9. riscos, débitos ou bloqueios encontrados;
 10. se o wrapper estiver gerenciando Git, deixar claro que o commit será feito pelo wrapper.
 
-Não marcar uma task como `done` no execution plan durante uma feature branch. O integrador marca `done` somente após revisão e merge em `development`.
+Não marcar uma task como `done` no execution plan durante uma feature branch. No modo orquestrado, uma task é considerada integrada apenas quando sua branch está contida em `feature/codex-integration`; isso não significa release nem merge em `development`. A promoção para `development` continua sendo uma decisão humana posterior.

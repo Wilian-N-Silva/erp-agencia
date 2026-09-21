@@ -444,7 +444,7 @@ function getClientSortValue(
     case "monthlyFee":
       return moneyToCents(client.monthlyFee);
     case "billingDay":
-      return client.billingDay;
+      return client.billingDay ?? 0;
     case "nextDue":
       return monthlyByClient[client.id]?.nextDueDate ?? "9999-12-31";
     case "monthStatus":

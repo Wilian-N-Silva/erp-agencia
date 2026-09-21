@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
   clients,
   financialEntries,
@@ -16,7 +16,9 @@ import {
   applyProvisionFilters,
   computeFinanceDashboard,
   getFinancialEntryEffectiveStatus,
+  getFinancialEntrySettledAmount,
   getFinancialExpenseEffectiveStatus,
+  getFinancialExpenseSettledAmount,
   type FinanceDashboardTotals,
   type FinanceFilters,
   type FinancialEntryStatus,
@@ -29,8 +31,10 @@ export type FinanceEntryListItem = {
   clientName: string | null;
   description: string;
   amount: string;
+  settledAmount: string;
   receivedAmount: string | null;
   dueDate: string;
+  settlementDate: string | null;
   receivedDate: string | null;
   paymentMethod: string | null;
   competence: string;
@@ -41,12 +45,17 @@ export type FinanceEntryListItem = {
 
 export type FinanceExpenseListItem = {
   id: string;
+  supplierId: string | null;
+  categoryId: string | null;
+  costCenterId: string | null;
   supplier: string;
   category: string;
   subcategory: string | null;
   description: string;
   amount: string;
+  settledAmount: string;
   dueDate: string;
+  settlementDate: string | null;
   paidDate: string | null;
   competence: string;
   status: FinancialExpenseStatus;
@@ -74,7 +83,7 @@ export type FinanceDashboard = {
   provisions: ProvisionListItem[];
 };
 
-export async function getFinanceDashboard(
+async function getFinanceDashboard(
   context: AccessContext,
   options: { asOf?: Date; filters?: FinanceFilters } = {},
 ): Promise<FinanceDashboard> {
@@ -112,11 +121,15 @@ export async function getFinanceDashboard(
     db
       .select({
         id: financialExpenses.id,
+        supplierId: financialExpenses.supplierId,
+        categoryId: financialExpenses.categoryId,
+        costCenterId: financialExpenses.costCenterId,
         supplier: financialExpenses.supplier,
         category: financialExpenses.category,
         subcategory: financialExpenses.subcategory,
         description: financialExpenses.description,
         amount: financialExpenses.amount,
+        paidAmount: financialExpenses.paidAmount,
         dueDate: financialExpenses.dueDate,
         paidDate: financialExpenses.paidDate,
         competence: financialExpenses.competence,
@@ -163,12 +176,41 @@ export async function getFinanceDashboard(
     ...computed,
     filters,
     entries: filteredEntryRows.map((entry) => ({
-      ...entry,
+      id: entry.id,
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      description: entry.description,
+      amount: entry.amount,
+      settledAmount: getFinancialEntrySettledAmount(entry),
+      receivedAmount: entry.receivedAmount,
+      dueDate: entry.dueDate,
+      settlementDate: entry.receivedDate,
+      receivedDate: entry.receivedDate,
+      paymentMethod: entry.paymentMethod,
+      competence: entry.competence,
       status: getFinancialEntryEffectiveStatus(entry, asOf),
+      recurring: entry.recurring,
+      notes: entry.notes,
     })),
     expenses: filteredExpenseRows.map((expense) => ({
-      ...expense,
+      id: expense.id,
+      supplierId: expense.supplierId,
+      categoryId: expense.categoryId,
+      costCenterId: expense.costCenterId,
+      supplier: expense.supplier,
+      category: expense.category,
+      subcategory: expense.subcategory,
+      description: expense.description,
+      amount: expense.amount,
+      settledAmount: getFinancialExpenseSettledAmount(expense),
+      dueDate: expense.dueDate,
+      settlementDate: expense.paidDate,
+      paidDate: expense.paidDate,
+      competence: expense.competence,
       status: getFinancialExpenseEffectiveStatus(expense, asOf),
+      costCenter: expense.costCenter,
+      recurring: expense.recurring,
+      notes: expense.notes,
     })),
     provisions: filteredProvisionRows,
   };
@@ -181,3 +223,9 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantGetFinanceDashboard as getFinanceDashboard,
+};
+
+const tenantGetFinanceDashboard = bindTenantContext(getFinanceDashboard);

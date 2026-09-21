@@ -1,8 +1,6 @@
 "use server";
 
-import { hashPassword } from "better-auth/crypto";
-import { and, eq, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -10,162 +8,143 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
-  accounts,
   appSettings,
   areas,
   employees,
   positions,
-  roles,
-  userRoles,
   users,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCan, isRoleKey, type RoleKey } from "@/lib/rbac";
+import { bindCurrentTenantContext, getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
+import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject } from "@/lib/validation";
 
-import { normalizeRoleSelection, parseSettingValue } from "./rules";
+import { replaceUserRoles, updateUserAccessStatus } from "./access";
+import { parseSettingValue } from "./rules";
+import {
+  updateUserAccessStatusSchema,
+  updateUserEmployeeLinkSchema,
+  updateUserRolesSchema,
+} from "./schemas";
 
-const createUserSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(180),
-  name: z.string().trim().min(1).max(180),
-  password: z.string().min(8).max(200),
-});
-
-const updateRolesSchema = z.object({
-  userId: z.string().min(1).max(200),
-});
-
-const updateStatusSchema = z.object({
-  isActive: z.enum(["false", "true"]).transform((value) => value === "true"),
-  userId: z.string().min(1).max(200),
-});
-
-const updateSettingSchema = z.object({
+const updateSettingSchema = z.strictObject({
   description: z.string().trim().max(500).optional(),
   key: z.string().trim().min(1).max(120).regex(/^[a-z0-9_.-]+$/),
   value: z.string().max(5000),
 });
 
-const createOrgUnitSchema = z.object({
+const createOrgUnitSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),
 });
 
-const deleteOrgUnitSchema = z.object({
+const deleteOrgUnitSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function createSettingsUserAction(formData: FormData) {
+async function updateSettingsUserRolesAction(formData: FormData) {
+  const { context } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
+  const input = updateUserRolesSchema.parse({
+    roleKeys: formData.getAll("roleKeys"),
+    userId: formData.get("userId"),
+  });
+  await replaceUserRoles(context, input);
+
+  revalidatePath("/app/configuracoes");
+}
+
+async function updateSettingsUserStatusAction(formData: FormData) {
+  const { context } = await requireSettingsManagerContext();
+  await enforceAuthenticatedRateLimit("invitation", context);
+  const input = updateUserAccessStatusSchema.parse(formDataToObject(formData));
+  await updateUserAccessStatus(context, input);
+
+  revalidatePath("/app/configuracoes");
+}
+
+async function updateSettingsUserEmployeeLinkAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
-  const input = createUserSchema.parse(formDataToObject(formData));
-  const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
+  await enforceAuthenticatedRateLimit("invitation", context);
+  const input = updateUserEmployeeLinkSchema.parse(formDataToObject(formData));
+  const user = await getUserForSettings(input.userId, organizationId);
+  await db.execute(sql`
+    select pg_advisory_xact_lock(
+      hashtextextended(${`acc-003:user:${input.userId}`}, 0)
+    )
+  `);
+  const currentLinks = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.organizationId, organizationId),
+        eq(employees.userId, input.userId),
+      ),
+    );
+  const targetEmployee = input.employeeId
+    ? await getEmployeeLinkTarget(input.employeeId, organizationId)
+    : null;
 
-  if (roleKeys.length === 0) {
-    throw new Error("At least one role is required.");
+  if (targetEmployee?.userId && targetEmployee.userId !== input.userId) {
+    throw new Error("Colaborador já está vinculado a outro usuário.");
   }
 
-  const [user] = await db
-    .insert(users)
-    .values({
-      id: `user-${randomUUID()}`,
-      organizationId,
-      name: input.name,
-      email: input.email,
-      emailVerified: true,
-      isActive: true,
-    })
-    .onConflictDoNothing({
-      target: users.email,
-    })
-    .returning();
-
-  if (!user) {
-    throw new Error("User email already exists.");
-  }
-
-  const passwordHash = await hashPassword(input.password);
-
-  await db.insert(accounts).values({
-    id: `credential:${user.id}`,
+  const before = {
+    employeeIds: currentLinks.map((employee) => employee.id),
     userId: user.id,
-    accountId: user.id,
-    providerId: "credential",
-    password: passwordHash,
-  });
-  await replaceUserRoles(user.id, roleKeys, context.userId);
+  };
 
-  await writeAuditLog(context, {
-    action: "create",
-    entityType: "user",
-    entityId: user.id,
-    after: {
-      email: user.email,
-      isActive: user.isActive,
-      name: user.name,
-      roleKeys,
-    },
-  });
+  await db
+    .update(employees)
+    .set({ userId: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(employees.organizationId, organizationId),
+        eq(employees.userId, input.userId),
+      ),
+    );
 
-  revalidatePath("/app/configuracoes");
-}
+  if (targetEmployee) {
+    const [linkedEmployee] = await db
+      .update(employees)
+      .set({ userId: input.userId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(employees.id, targetEmployee.id),
+          eq(employees.organizationId, organizationId),
+          isNull(employees.deletedAt),
+          isNull(employees.userId),
+        ),
+      )
+      .returning({ id: employees.id });
 
-export async function updateSettingsUserRolesAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
-  const input = updateRolesSchema.parse(formDataToObject(formData));
-  const roleKeys = normalizeRoleSelection(formData.getAll("roleKeys").map(String));
-
-  if (roleKeys.length === 0) {
-    throw new Error("At least one role is required.");
+    if (!linkedEmployee) {
+      throw new Error("Não foi possível vincular o colaborador.");
+    }
   }
 
-  const before = await getUserForSettings(input.userId, organizationId);
-  await replaceUserRoles(input.userId, roleKeys, context.userId);
-
   await writeAuditLog(context, {
-    action: "permission_change",
-    entityType: "user",
+    action: "update",
+    entityType: "user_employee_link",
     entityId: input.userId,
     before,
     after: {
-      ...before,
-      roleKeys,
+      employeeIds: targetEmployee ? [targetEmployee.id] : [],
+      userId: user.id,
     },
-  });
-
-  revalidatePath("/app/configuracoes");
-}
-
-export async function updateSettingsUserStatusAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
-  const input = updateStatusSchema.parse(formDataToObject(formData));
-
-  if (input.userId === context.userId && !input.isActive) {
-    throw new Error("User cannot deactivate themselves.");
-  }
-
-  const before = await getUserForSettings(input.userId, organizationId);
-  const [after] = await db
-    .update(users)
-    .set({
-      isActive: input.isActive,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, input.userId))
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "user",
-    entityId: input.userId,
-    before,
-    after,
     metadata: {
-      isActive: input.isActive,
+      employeeId: targetEmployee?.id ?? null,
     },
   });
 
   revalidatePath("/app/configuracoes");
+  revalidatePath("/portal");
 }
 
-export async function updateAppSettingAction(formData: FormData) {
+async function updateAppSettingAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = updateSettingSchema.parse(formDataToObject(formData));
   const before = await db
@@ -204,7 +183,7 @@ export async function updateAppSettingAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function createAreaAction(formData: FormData) {
+async function createAreaAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = createOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -228,7 +207,7 @@ export async function createAreaAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function deleteAreaAction(formData: FormData) {
+async function deleteAreaAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -264,7 +243,7 @@ export async function deleteAreaAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function createPositionAction(formData: FormData) {
+async function createPositionAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = createOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -288,7 +267,7 @@ export async function createPositionAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-export async function deletePositionAction(formData: FormData) {
+async function deletePositionAction(formData: FormData) {
   const { context, organizationId } = await requireSettingsManagerContext();
   const input = deleteOrgUnitSchema.parse(formDataToObject(formData));
 
@@ -324,37 +303,10 @@ export async function deletePositionAction(formData: FormData) {
   revalidatePath("/app/configuracoes");
 }
 
-async function replaceUserRoles(
-  userId: string,
-  roleKeys: readonly RoleKey[],
-  assignedByUserId: string,
-) {
-  const roleRows = await db.select().from(roles);
-  const roleIds = roleRows.flatMap((role) => {
-    if (!isRoleKey(role.key) || !roleKeys.includes(role.key)) {
-      return [];
-    }
-
-    return [role.id];
-  });
-
-  if (roleIds.length !== roleKeys.length) {
-    throw new Error("Invalid role selection.");
-  }
-
-  await db.delete(userRoles).where(eq(userRoles.userId, userId));
-  await db.insert(userRoles).values(
-    roleIds.map((roleId) => ({
-      userId,
-      roleId,
-      assignedByUserId,
-    })),
-  );
-}
-
 async function getUserForSettings(userId: string, organizationId: string) {
   const [user] = await db
     .select({
+      accessStatus: users.accessStatus,
       id: users.id,
       email: users.email,
       isActive: users.isActive,
@@ -369,6 +321,29 @@ async function getUserForSettings(userId: string, organizationId: string) {
   }
 
   return user;
+}
+
+async function getEmployeeLinkTarget(id: string, organizationId: string) {
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.id, id),
+        eq(employees.organizationId, organizationId),
+        isNull(employees.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!employee) {
+    throw new AccessDeniedError();
+  }
+
+  return employee;
 }
 
 async function requireSettingsManagerContext() {
@@ -390,6 +365,28 @@ async function requireSettingsManagerContext() {
   };
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
+export {
+  tenantUpdateSettingsUserRolesAction as updateSettingsUserRolesAction,
+  tenantUpdateSettingsUserStatusAction as updateSettingsUserStatusAction,
+  tenantUpdateSettingsUserEmployeeLinkAction as updateSettingsUserEmployeeLinkAction,
+  tenantUpdateAppSettingAction as updateAppSettingAction,
+  tenantCreateAreaAction as createAreaAction,
+  tenantDeleteAreaAction as deleteAreaAction,
+  tenantCreatePositionAction as createPositionAction,
+  tenantDeletePositionAction as deletePositionAction,
+};
+
+const tenantUpdateSettingsUserRolesAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserRolesAction),
+);
+const tenantUpdateSettingsUserStatusAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserStatusAction),
+);
+const tenantUpdateSettingsUserEmployeeLinkAction = withRateLimitActionResult(
+  bindCurrentTenantContext(updateSettingsUserEmployeeLinkAction),
+);
+const tenantUpdateAppSettingAction = bindCurrentTenantContext(updateAppSettingAction);
+const tenantCreateAreaAction = bindCurrentTenantContext(createAreaAction);
+const tenantDeleteAreaAction = bindCurrentTenantContext(deleteAreaAction);
+const tenantCreatePositionAction = bindCurrentTenantContext(createPositionAction);
+const tenantDeletePositionAction = bindCurrentTenantContext(deletePositionAction);

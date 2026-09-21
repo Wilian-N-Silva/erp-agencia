@@ -11,7 +11,7 @@ import {
   canApproveTimeOff,
   getTimeOffDisplayType,
 } from "@/features/timeoff/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("document metadata rules", () => {
   it("accepts allowed upload metadata", () => {

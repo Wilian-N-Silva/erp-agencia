@@ -10,7 +10,7 @@ import {
   sortAlertCandidates,
   type AlertCandidate,
 } from "@/features/alerts/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 const baseAlert: AlertCandidate = {
   kind: "access_review",
