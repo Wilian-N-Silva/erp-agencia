@@ -46,6 +46,7 @@ import {
 } from "./rules";
 import { transitionPendingGraphicSupplierQuote } from "./quote-decision";
 import { lockGraphicJobForQuoteSubmission } from "./quote-submission";
+import { registerGraphicOs } from "./os-registration";
 
 async function createGraphicJobEntryPoint(formData: FormData) {
   const destination = await runWithCurrentTenantDb(() => createGraphicJob(formData));
@@ -636,3 +637,19 @@ export const updateGraphicSupplierQuoteAction = withRateLimitActionResult(update
 export const cancelGraphicSupplierQuoteAction = withRateLimitActionResult(cancelGraphicSupplierQuoteEntryPoint);
 export const approveGraphicSupplierQuoteAction = withRateLimitActionResult(approveGraphicSupplierQuoteEntryPoint);
 export const rejectGraphicSupplierQuoteAction = withRateLimitActionResult(rejectGraphicSupplierQuoteEntryPoint);
+
+export async function registerGraphicOsAction(formData: FormData) {
+  const context = await getCurrentAccessContext();
+  if (!context) return { ok: false as const, message: "Entre novamente para registrar a OS." };
+  try {
+    assertCan("graphics.write", context);
+    await enforceAuthenticatedRateLimit("upload", context);
+    const uploads = formData.getAll("document");
+    if (uploads.length !== 1 || !(uploads[0] instanceof File)) throw new Error("Anexe um PDF.");
+    await registerGraphicOs(context, formDataToObject(formData, ["document"]), uploads[0]);
+  } catch {
+    return { ok: false as const, message: "Não foi possível registrar a OS. Confira os campos, o PDF e sua permissão. Se outra versão foi registrada, atualize a página; se atingiu o limite de uploads, aguarde antes de tentar novamente." };
+  }
+  refresh(String(formData.get("jobId")));
+  return { ok: true as const, message: "OS registrada. O trabalho aguarda a aprovação do cliente." };
+}

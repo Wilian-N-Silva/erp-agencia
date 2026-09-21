@@ -21,6 +21,9 @@ import {
 import { getCurrentAccessContext } from "@/lib/dal";
 
 import { GraphicJobFormFields } from "../job-form";
+import { getGraphicOsVersions, findDuplicateOsJobs } from "@/features/graphics/os-dal";
+import { canRegisterOs } from "@/features/graphics/os-rules";
+import { GraphicOsForm } from "../os-form";
 import { GraphicSupplierQuoteFormFields } from "../supplier-quote-form";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +47,9 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     canWriteQuotes ? getGraphicSupplierOptions(context) : Promise.resolve([]),
   ]);
   if (!job) notFound();
+  const osVersions = await getGraphicOsVersions(context, id);
+  const currentOs = osVersions[0];
+  const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
   const query = await searchParams;
   const editing = canWrite && query?.edit === "1";
   const editedQuote = canWriteQuotes
@@ -59,6 +65,17 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
       <Card title="Resumo"><dl className="grid gap-4 sm:grid-cols-2"><Item label="Status operacional"><StatusBadge label={graphicJobOperationalStatusLabels[job.operationalStatus]} /></Item><Item label="Status financeiro">{graphicJobFinancialStatusLabels[job.financialStatus]}</Item><Item label="Responsável">{job.responsibleName}</Item><Item label="Projeto/evento">{job.projectName ?? "Sem projeto"}</Item><Item label="Solicitado em">{formatDate(job.requestedAt)}</Item><Item label="Entrega desejada">{formatDate(job.desiredDeliveryAt)}</Item></dl></Card>
       <Card title="Descrição"><p className="whitespace-pre-wrap text-sm">{job.description}</p>{job.notes ? <><h3 className="mt-5 text-sm font-semibold">Observações internas</h3><p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{job.notes}</p></> : null}</Card>
     </div>
+    <Card title="OS externa">
+      {duplicateJobs.length ? <div role="alert" className="mb-4 rounded-md border border-amber-500 p-3 text-sm">Atenção: o número desta OS também está registrado em outro trabalho da organização. Confira o documento; o registro foi mantido.</div> : null}
+      {canWrite && canRegisterOs(job.operationalStatus) ? <GraphicOsForm key={currentOs?.id ?? "first"} jobId={id} current={currentOs} /> : !currentOs ? <p className="text-sm text-muted-foreground">Aprove uma cotação de fornecedor para registrar a OS externa.</p> : null}
+      {osVersions.length ? <ol className="mt-5 grid gap-3">{osVersions.map(os => <li key={os.id} className="rounded-md border p-3 text-sm">
+        <p className="font-semibold">OS {os.externalNumber} · Versão {os.version}{os.id === currentOs.id ? " · Atual" : ""}</p>
+        <p>Data: {os.issuedAt.split("-").reverse().join("/")} · Valor apresentado: {formatMoney(os.presentedAmount)}</p>
+        <p>Registrada por {os.creatorName} em {formatDateTime(os.createdAt)}</p>
+        {os.revisionReason ? <p>Motivo: {os.revisionReason}</p> : null}
+        <a className="text-primary underline" href={`/app/grafica/${id}/os/${os.id}/download`}>Baixar PDF da versão {os.version}</a>
+      </li>)}</ol> : null}
+    </Card>
     <Card title="Cotações de fornecedores">
       {canWriteQuotes ? <div className="mb-6 rounded-md border p-4"><h3 className="mb-4 text-sm font-semibold">{editedQuote ? "Editar cotação pendente" : "Nova cotação"}</h3><RateLimitedActionForm action={editedQuote ? updateGraphicSupplierQuoteAction : createGraphicSupplierQuoteAction}><GraphicSupplierQuoteFormFields jobId={id} quote={editedQuote} suppliers={supplierOptions} /><div className="mt-4 flex justify-end gap-2">{editedQuote ? <Link className={secondaryButtonClassName} href={`/app/grafica/${id}`}>Cancelar edição</Link> : null}<button className={primaryButtonClassName} type="submit">{editedQuote ? "Salvar cotação" : "Adicionar cotação"}</button></div></RateLimitedActionForm></div> : null}
       {quotes.length ? <div className="grid gap-4">{quotes.map((quote) => <article className="rounded-md border p-4" key={quote.id}>

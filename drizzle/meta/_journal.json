@@ -183,6 +183,27 @@
       "when": 1788441770207,
       "tag": "0025_graphics_supplier_quote_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789995785000,
+      "tag": "0026_graphics_os_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789995790778,
+      "tag": "0027_graphics_os_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789996198998,
+      "tag": "0028_graphics_os_policy_name",
+      "breakpoints": true
     }
   ]
 }
