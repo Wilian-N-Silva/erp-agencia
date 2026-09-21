@@ -498,6 +498,7 @@ async function seedInitialEmployee(organizationId: string, userId: string) {
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00001"),
       organizationId,
       userId,
       registrationNumber: "FG-00001",
@@ -564,6 +565,7 @@ async function seedLeadershipDemoEmployee(
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00003"),
       organizationId,
       userId,
       registrationNumber: "FG-00003",
@@ -652,6 +654,19 @@ async function seedFinanceClientDemoData(
     reminderBeforeDays: 5,
     reminderAfterDays: 2,
   });
+
+  for (const client of [
+    { code: "CLI-00003", name: "Aurora Cafe - Projeto Avulso" },
+    { code: "CLI-00004", name: "Horizonte Eventos - Grafica" },
+    { code: "CLI-00005", name: "Jardim Studio - Sem Mensalidade" },
+  ]) {
+    await upsertClient({
+      ...client,
+      organizationId,
+      internalOwnerEmployeeId: ownerEmployeeId ?? null,
+      notes: "Cliente ficticio para validacao manual, sem cobranca recorrente.",
+    });
+  }
 
   await ensureFinancialEntry("Fee maio - Cliente Exemplo Ativo", {
     organizationId,
@@ -758,6 +773,7 @@ async function seedPeopleDemoData(
   const [employee] = await db
     .insert(employees)
     .values({
+      id: await findSeedEmployeeId(organizationId, "FG-00002"),
       organizationId,
       userId: employeeUserId ?? null,
       registrationNumber: "FG-00002",
@@ -907,7 +923,7 @@ async function seedCltVacationDemoData(
     .insert(employees)
     .values({
       organizationId,
-      registrationNumber: "FG-00003",
+      registrationNumber: "FG-00004",
       fullName: "Colaborador CLT Exemplo",
       corporateEmail: "clt.exemplo@formula.local",
       positionId: position.id,
@@ -1636,6 +1652,21 @@ function typedEntries<T extends Record<string, unknown>>(value: T) {
   return Object.entries(value) as {
     [K in keyof T]: [K, T[K]];
   }[keyof T][];
+}
+
+async function findSeedEmployeeId(organizationId: string, registrationNumber: string) {
+  const [employee] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(
+      eq(employees.organizationId, organizationId),
+      eq(employees.registrationNumber, registrationNumber),
+    ))
+    .limit(1);
+
+  // BEFORE INSERT validates the user link before ON CONFLICT runs. Reusing the
+  // existing identity makes repeated seeds compatible with that protection.
+  return employee?.id;
 }
 
 function getDemoUserPassword() {
