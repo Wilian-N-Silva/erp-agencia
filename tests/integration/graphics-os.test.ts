@@ -8,6 +8,7 @@ import { findDuplicateOsJobs, getGraphicOsDownload, getGraphicOsVersions } from 
 import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/features/graphics/client-decision";
 import { advanceGraphicProduction, getGraphicProduction } from "@/features/graphics/production";
 import { contractGraphicSupplier } from "@/features/graphics/commitment";
+import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -54,8 +55,10 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_client_decisions disable trigger graphic_client_decisions_immutable`);
     await tx.execute(sql`alter table graphic_production_events disable trigger graphic_production_events_immutable`);
     await tx.execute(sql`alter table graphic_supplier_commitments disable trigger graphic_supplier_commitments_immutable`);
+    await tx.execute(sql`alter table graphic_sales disable trigger graphic_sales_immutable`);
+    await tx.execute(sql`alter table graphic_sale_installments disable trigger graphic_sale_installments_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "work_items", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "work_items", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
@@ -64,6 +67,8 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_client_decisions enable trigger graphic_client_decisions_immutable`);
     await tx.execute(sql`alter table graphic_production_events enable trigger graphic_production_events_immutable`);
     await tx.execute(sql`alter table graphic_supplier_commitments enable trigger graphic_supplier_commitments_immutable`);
+    await tx.execute(sql`alter table graphic_sales enable trigger graphic_sales_immutable`);
+    await tx.execute(sql`alter table graphic_sale_installments enable trigger graphic_sale_installments_immutable`);
   });
   await admin.$client.end();
   await getDb().$client.end();
@@ -209,6 +214,37 @@ it("contracts once with AP, protects tenant references and rolls back financial 
     expect((await tx.execute(sql`delete from graphic_supplier_commitments where id=${first.id} returning id`)).rows).toHaveLength(0);
   });
   await expect(withTenantDb(contexts[1], tx => tx.execute(sql`insert into graphic_supplier_commitments (organization_id,job_id,quote_id,expense_id,contracted_at,created_by_user_id) values (${orgs[0]},${jobs[2]},${quoteId},${first.expenseId},'2026-09-21',${userIds[0]})`))).rejects.toThrow();
+});
+
+it("creates signal and balance receivables once, without cash, with rollback and tenant protection", async () => {
+  const [os] = await getGraphicOsVersions(contexts[0], jobs[2]);
+  const payload = { jobId: jobs[2], osVersionId: os.id, amount: "1500,00", competence: "2026-09", confirmed: "on", installments: [{ label: "Sinal", amount: "500,00", dueDate: "2026-09-21" }, { label: "Saldo", amount: "1000,00", dueDate: "2026-10-01" }] };
+  await expect(registerGraphicSale({ ...contexts[0], permissions: ["graphics.write"] }, payload)).rejects.toThrow();
+  await expect(registerGraphicSale(contexts[1], payload)).rejects.toThrow();
+  await expect(registerGraphicSale(contexts[0], { ...payload, osVersionId: versionId })).rejects.toThrow();
+  await expect(registerGraphicSale(contexts[0], { ...payload, amount: "2000" })).rejects.toThrow();
+  audit.fail = true;
+  try { await expect(registerGraphicSale(contexts[0], payload)).rejects.toThrow("Simulated audit failure"); }
+  finally { audit.fail = false; }
+  expect((await admin.execute(sql`select count(*)::int n from financial_entries where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
+  const [first, second] = await Promise.all([registerGraphicSale(contexts[0], payload), registerGraphicSale(contexts[0], payload)]);
+  expect(first.id).toBe(second.id);
+  const result = await getGraphicSale(contexts[0], jobs[2]);
+  expect(result?.installments.map(item => item.amount)).toEqual(["500.00", "1000.00"]);
+  expect((await admin.execute(sql`select received_amount from financial_entries where organization_id=${orgs[0]}`)).rows).toEqual([{ received_amount: "0.00" }, { received_amount: "0.00" }]);
+  expect((await admin.execute(sql`select count(*)::int n from financial_transactions where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
+  expect(await getGraphicSale(contexts[1], jobs[2])).toBeNull();
+  for (const table of ["graphic_sales", "graphic_sale_installments"]) {
+    expect((await getDb().execute(sql`select id from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rows).toHaveLength(0);
+    await withTenantDb(contexts[1], async tx => {
+      expect((await tx.execute(sql`select id from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rows).toHaveLength(0);
+      expect((await tx.execute(sql`update ${sql.identifier(table)} set organization_id=${orgs[1]} where organization_id=${orgs[0]} returning id`)).rows).toHaveLength(0);
+      expect((await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${orgs[0]} returning id`)).rows).toHaveLength(0);
+    });
+    await expect(admin.execute(sql`delete from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rejects.toThrow();
+  }
+  await expect(withTenantDb(contexts[1], tx => tx.execute(sql`insert into graphic_sale_installments (organization_id,sale_id,entry_id,ordinal,label) values (${orgs[0]},${first.id},${result!.installments[0].entryId},3,'Tampered')`))).rejects.toThrow();
+  await expect(admin.execute(sql`insert into graphic_sale_installments (organization_id,sale_id,entry_id,ordinal,label) values (${orgs[1]},${first.id},${result!.installments[0].entryId},3,'Tampered')`)).rejects.toThrow();
 });
 
 it("runs production through a blocking work item, resume, delivery and closure with protected history", async () => {

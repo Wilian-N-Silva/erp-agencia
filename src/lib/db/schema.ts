@@ -13,6 +13,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -1351,6 +1352,39 @@ export const graphicSupplierCommitments = pgTable("graphic_supplier_commitments"
   quoteFk: foreignKey({ columns: [table.organizationId, table.quoteId], foreignColumns: [graphicSupplierQuotes.organizationId, graphicSupplierQuotes.id], name: "graphic_supplier_commitments_quote_tenant_fk" }),
   expenseFk: foreignKey({ columns: [table.organizationId, table.expenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "graphic_supplier_commitments_expense_tenant_fk" }),
   userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_supplier_commitments_user_tenant_fk" }),
+}));
+
+export const graphicSales = pgTable("graphic_sales", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  osVersionId: uuid("os_version_id").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  competence: text("competence").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  tenantKey: unique("graphic_sales_tenant_id_key").on(table.organizationId, table.id),
+  jobIdx: uniqueIndex("graphic_sales_job_idx").on(table.organizationId, table.jobId),
+  amountCheck: check("graphic_sales_positive_amount", sql`${table.amount} > 0`),
+  osFk: foreignKey({ columns: [table.organizationId, table.jobId, table.osVersionId], foreignColumns: [graphicOsVersions.organizationId, graphicOsVersions.jobId, graphicOsVersions.id], name: "graphic_sales_os_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_sales_user_tenant_fk" }),
+}));
+
+export const graphicSaleInstallments = pgTable("graphic_sale_installments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  saleId: uuid("sale_id").notNull(),
+  entryId: uuid("entry_id").notNull(),
+  ordinal: integer("ordinal").notNull(),
+  label: text("label").notNull(),
+}, table => ({
+  installmentIdx: uniqueIndex("graphic_sale_installments_ordinal_idx").on(table.organizationId, table.saleId, table.ordinal),
+  entryIdx: uniqueIndex("graphic_sale_installments_entry_idx").on(table.organizationId, table.entryId),
+  ordinalCheck: check("graphic_sale_installments_ordinal_check", sql`${table.ordinal} > 0`),
+  saleFk: foreignKey({ columns: [table.organizationId, table.saleId], foreignColumns: [graphicSales.organizationId, graphicSales.id], name: "graphic_sale_installments_sale_tenant_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_sale_installments_entry_tenant_fk" }),
 }));
 
 export const documents = pgTable(

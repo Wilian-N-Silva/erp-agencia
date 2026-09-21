@@ -27,6 +27,8 @@ import { GraphicOsForm } from "../os-form";
 import { ClientDecisionForm } from "../client-decision-form";
 import { ProductionForm } from "../production-form";
 import { CommitmentForm } from "../commitment-form";
+import { GraphicSaleForm } from "../sale-form";
+import { getGraphicSale } from "@/features/graphics/sale";
 import { getGraphicCommitments, getGraphicCommitmentOptions } from "@/features/graphics/commitment";
 import { getGraphicProduction } from "@/features/graphics/production";
 import { productionNextStatuses, waitingReasonLabels } from "@/features/graphics/production-rules";
@@ -62,6 +64,7 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const production = await getGraphicProduction(context, id);
   const lastStage = production[0];
   const commitments = await getGraphicCommitments(context, id);
+  const sale = await getGraphicSale(context, id);
   const commitmentOptions = canProduce ? await getGraphicCommitmentOptions(context) : null;
   const uncontractedQuotes = quotes.filter(quote => quote.status === "approved" && !commitments.some(row => row.commitment.quoteId === quote.id));
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
@@ -94,6 +97,9 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     <Card title="Resposta do cliente">
       {!currentOs ? <p className="text-sm text-muted-foreground">Registre a OS para acompanhar a resposta do cliente.</p> : canRecordClientDecision(job.operationalStatus) && context.permissions.includes("graphics.client_approval_write") ? <ClientDecisionForm key={`${currentOs.id}-${clientDecisions[0]?.decision.id ?? "first"}`} jobId={id} osVersionId={currentOs.id} osVersion={currentOs.version} previousId={clientDecisions[0]?.decision.id} rejected={job.operationalStatus === "client_rejected"} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "approved" ? "Cliente aprovou a OS. O próximo passo é liberar a produção." : "Acompanhe abaixo o histórico de respostas. O registro exige permissão e uma OS aguardando decisão."}</p>}
       {clientDecisions.length ? <ol className="mt-4 grid gap-3">{clientDecisions.map(({ decision, osVersion, actor }) => <li key={decision.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{clientDecisionLabels[decision.decision as keyof typeof clientDecisionLabels]} · OS versão {osVersion}</p><p>{decision.contact} · {clientChannelLabels[decision.channel as keyof typeof clientChannelLabels]} · {decision.decidedAt.split("-").reverse().join("/")}</p><p className="whitespace-pre-wrap">{decision.notes}</p><p className="text-muted-foreground">Registrado por {actor} em {formatDateTime(decision.createdAt)}</p>{decision.fileId ? <a className="text-primary underline" href={`/app/grafica/${id}/cliente/${decision.id}/download`}>Baixar evidência da resposta</a> : null}</li>)}</ol> : null}
+    </Card>
+    <Card title="Venda e contas a receber">
+      {sale ? <div className="grid gap-3 text-sm"><p className="font-semibold">Valor contratado: {formatMoney(sale.sale.amount)}</p><p>Contas a receber criadas. Recebimento acompanhado pelo Financeiro.</p><ol className="grid gap-2">{sale.installments.map(item => <li key={item.id} className="rounded-md border p-3">{item.label} · {formatMoney(item.amount)} · Vencimento: {item.dueDate.split("-").reverse().join("/")}</li>)}</ol></div> : currentOs && context.permissions.includes("graphics.client_approval_write") && ["approved", "in_production", "waiting", "ready", "delivered"].includes(job.operationalStatus) ? <GraphicSaleForm jobId={id} osVersionId={currentOs.id} presentedAmount={currentOs.presentedAmount} /> : <p className="text-sm text-muted-foreground">Após a aprovação do cliente, registre as condições comerciais para criar as contas a receber.</p>}
     </Card>
     <Card title="Contratação do fornecedor">
       {canProduce && commitmentOptions && ["approved", "waiting"].includes(job.operationalStatus) && uncontractedQuotes.length ? <CommitmentForm jobId={id} quotes={uncontractedQuotes.map(quote => ({ id: quote.id, name: `${quote.supplierName} · ${formatMoney(quote.quotedAmount)}` }))} categories={commitmentOptions.categories} centers={commitmentOptions.centers} /> : !commitments.length ? <p className="text-sm text-muted-foreground">A contratação fica disponível após a aprovação do cliente. Uma cotação aprovada ainda não é uma conta a pagar.</p> : null}

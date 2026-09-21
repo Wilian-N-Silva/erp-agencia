@@ -10,7 +10,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-006: implementada e validada nesta branch; decisão vinculada à versão atual, histórico imutável, evidência privada e permissão específica.
 - GRF-007: implementada e validada nesta branch — produção, bloqueios, responsável, entrega e encerramento.
 - GRF-008: implementada e validada nesta branch — contratação explícita e AP idempotente/transacional.
-- GRF-009: pendente — condição comercial, sinal/parcelas e AR sem caixa automático.
+- GRF-009: implementada e validada nesta branch — condição comercial, sinal/parcelas e AR sem caixa automático.
 - GRF-010: pendente — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: pendente — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: pendente — dashboard operacional/financeiro com filtros.
@@ -48,3 +48,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Produção exige compromisso com AP ativa. Aprovação de cotação/cliente continua sem criar AP ou caixa automaticamente.
 - Typecheck, lint, build e diff-check aprovados; 346 testes unitários, 152 de banco e 4 E2E passaram. Cobertos concorrência idempotente, rollback financeiro, autorização, mass assignment, RLS e upgrade.
 - O primeiro E2E encontrou a ausência de categoria de despesa nos dados demo; o cenário agora prepara uma categoria de teste pelo cadastro financeiro antes de contratar. O estado vazio orienta a solicitar categoria ao Financeiro.
+
+## Evidência GRF-009 — 21/09/2026
+
+- Venda vinculada à versão aprovada da OS, parcelas com soma exata em centavos, criação transacional e idempotente de AR, sem movimentação automática.
+- Migrações 0035/0036 aplicadas nos bancos local e de testes; tabelas imutáveis, RLS forçada e FKs por organização.
+- Typecheck, lint, build e diff-check aprovados; 348 testes unitários, 153 testes de banco e 4 E2E aprovados. Cobertura inclui concorrência, rollback, acesso cross-tenant, upgrade e preservação do formulário após soma inválida.
+
