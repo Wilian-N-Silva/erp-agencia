@@ -6,6 +6,7 @@ import type { AccessContext } from "@/lib/dal";
 import { registerGraphicOs } from "@/features/graphics/os-registration";
 import { findDuplicateOsJobs, getGraphicOsDownload, getGraphicOsVersions } from "@/features/graphics/os-dal";
 import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/features/graphics/client-decision";
+import { advanceGraphicProduction, getGraphicProduction } from "@/features/graphics/production";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -50,14 +51,16 @@ afterAll(async () => {
   await admin.transaction(async tx => {
     await tx.execute(sql`alter table graphic_os_versions disable trigger graphic_os_versions_immutable`);
     await tx.execute(sql`alter table graphic_client_decisions disable trigger graphic_client_decisions_immutable`);
+    await tx.execute(sql`alter table graphic_production_events disable trigger graphic_production_events_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "work_items", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
     }
     await tx.execute(sql`alter table graphic_os_versions enable trigger graphic_os_versions_immutable`);
     await tx.execute(sql`alter table graphic_client_decisions enable trigger graphic_client_decisions_immutable`);
+    await tx.execute(sql`alter table graphic_production_events enable trigger graphic_production_events_immutable`);
   });
   await admin.$client.end();
   await getDb().$client.end();
@@ -174,4 +177,46 @@ it("preserves refusals and requires explicit revision to resume a rejected OS", 
   await expect(recordClientDecision(contexts[1], responseInput(jobs[1], os.id, { expectedDecisionId: refused.id }))).rejects.toThrow("retomar");
   await recordClientDecision(contexts[1], responseInput(jobs[1], os.id, { expectedDecisionId: refused.id, decision: "revision_requested", notes: "Cliente retomou com nova arte" }));
   expect((await getClientDecisions(contexts[1], jobs[1])).map(row => row.decision.decision)).toEqual(["revision_requested", "rejected"]);
+});
+
+it("runs production through a blocking work item, resume, delivery and closure with protected history", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "graphics.production_write"] };
+  const owner = (await admin.execute(sql`select responsible_employee_id from graphic_jobs where id=${jobs[2]}`)).rows[0].responsible_employee_id as string;
+  const base = { jobId: jobs[2], expectedStatus: "approved", toStatus: "in_production", responsibleEmployeeId: owner };
+  await expect(advanceGraphicProduction(contexts[0], base)).rejects.toThrow();
+  await expect(advanceGraphicProduction({ ...context, organizationId: orgs[1], userId: userIds[1] }, base)).rejects.toThrow();
+  await expect(advanceGraphicProduction(context, { ...base, toStatus: "closed" })).rejects.toThrow();
+  const start = await advanceGraphicProduction(context, base);
+  const waiting = await advanceGraphicProduction(context, { ...base, expectedStatus: "in_production", expectedEventId: start.id, toStatus: "waiting", waitingReason: "material", notes: "Papel em reposição", dueAt: "2026-09-25" });
+  expect((await admin.execute(sql`select status,assigned_employee_id from work_items where organization_id=${orgs[0]} and source_id=${jobs[2]}`)).rows).toEqual([{ status: "open", assigned_employee_id: owner }]);
+  await expect(advanceGraphicProduction(context, { ...base, expectedStatus: "waiting", expectedEventId: waiting.id, toStatus: "ready" })).rejects.toThrow();
+  const resumed = await advanceGraphicProduction(context, { ...base, expectedStatus: "waiting", expectedEventId: waiting.id });
+  expect((await admin.execute(sql`select status from work_items where organization_id=${orgs[0]} and source_id=${jobs[2]}`)).rows).toEqual([{ status: "resolved" }]);
+  const ready = await advanceGraphicProduction(context, { ...base, expectedStatus: "in_production", expectedEventId: resumed.id, toStatus: "ready" });
+  const delivered = await advanceGraphicProduction(context, { ...base, expectedStatus: "ready", expectedEventId: ready.id, toStatus: "delivered", notes: "Recebido pelo cliente" });
+  await advanceGraphicProduction(context, { ...base, expectedStatus: "delivered", expectedEventId: delivered.id, toStatus: "closed" });
+  expect(await getGraphicProduction(context, jobs[2])).toHaveLength(6);
+  expect(await getGraphicProduction(contexts[1], jobs[2])).toHaveLength(0);
+  expect((await getDb().execute(sql`select id from graphic_production_events where id=${start.id}`)).rows).toHaveLength(0);
+  await expect(admin.execute(sql`update graphic_production_events set notes='changed' where id=${start.id}`)).rejects.toThrow();
+  await expect(admin.execute(sql`delete from graphic_production_events where id=${start.id}`)).rejects.toThrow();
+  await withTenantDb(contexts[1], async tx => {
+    expect((await tx.execute(sql`update graphic_production_events set notes='tampered' where id=${start.id} returning id`)).rows).toHaveLength(0);
+    expect((await tx.execute(sql`delete from graphic_production_events where id=${start.id} returning id`)).rows).toHaveLength(0);
+  });
+  await expect(withTenantDb(contexts[1], tx => tx.execute(sql`insert into graphic_production_events (organization_id,job_id,from_status,to_status,responsible_employee_id,created_by_user_id) values (${orgs[0]},${jobs[2]},'approved','in_production',${owner},${userIds[0]})`))).rejects.toThrow();
+  await expect(admin.execute(sql`insert into graphic_production_events (organization_id,job_id,from_status,to_status,responsible_employee_id,created_by_user_id) values (${orgs[1]},${jobs[1]},'approved','in_production',${owner},${userIds[1]})`)).rejects.toThrow();
+});
+
+it("rolls back a blocking stage when audit fails and rejects duplicate production submissions", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "graphics.production_write"] };
+  const owner = (await admin.execute(sql`select responsible_employee_id from graphic_jobs where id=${jobs[0]}`)).rows[0].responsible_employee_id as string;
+  const payload = { jobId: jobs[0], expectedStatus: "approved", toStatus: "waiting", waitingReason: "art", responsibleEmployeeId: owner };
+  audit.fail = true;
+  try { await expect(advanceGraphicProduction(context, payload)).rejects.toThrow("Simulated audit failure"); }
+  finally { audit.fail = false; }
+  expect(await getGraphicProduction(context, jobs[0])).toHaveLength(0);
+  expect((await admin.execute(sql`select count(*)::int n from work_items where organization_id=${orgs[0]} and source_id=${jobs[0]}`)).rows).toEqual([{ n: 0 }]);
+  const results = await Promise.allSettled([advanceGraphicProduction(context, payload), advanceGraphicProduction(context, payload)]);
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
 });

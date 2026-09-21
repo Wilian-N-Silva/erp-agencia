@@ -8,7 +8,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 
 - GRF-005: implementada no commit 267b563, incorporada nesta branch.
 - GRF-006: implementada e validada nesta branch; decisão vinculada à versão atual, histórico imutável, evidência privada e permissão específica.
-- GRF-007: pendente — produção, bloqueios, responsável, entrega e encerramento.
+- GRF-007: implementada e validada nesta branch — produção, bloqueios, responsável, entrega e encerramento.
 - GRF-008: pendente — contratação explícita e AP idempotente/transacional.
 - GRF-009: pendente — condição comercial, sinal/parcelas e AR sem caixa automático.
 - GRF-010: pendente — resumo financeiro derivado de obrigações e alocações.
@@ -33,3 +33,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Primeiro E2E falhou no seletor de um select com label implícito; corrigido para localizar o papel acessível `combobox`. Reexecução completa aprovada.
 - Campos de texto preservados após erro; orientação explícita para selecionar novamente o arquivo. Recusa pode ser retomada por uma solicitação de alteração. Aprovação não gera AR/AP nem caixa.
 - Novas permissões concedidas via migration aos perfis Diretoria e Admin Técnico, seguindo o padrão das aprovações internas; demais concessões continuam pelo RBAC persistido.
+
+## Evidência GRF-007 — 21/09/2026
+
+- Migrações 0031/0032: eventos de produção imutáveis, RLS forçada, FKs por organização e permissão de produção.
+- Typecheck, lint, build e diff-check aprovados; 345 testes unitários, 151 de banco e 4 E2E sequenciais passaram.
+- Testado: aprovação atual obrigatória; rejeição de salto de etapas; espera com motivo/responsável/work item; retomada somente à etapa bloqueada; resolução da pendência; pronto/entregue/encerrado; concorrência; rollback; RLS e FKs cross-tenant; upgrade preservando OS existente.
+- O próximo incremento vinculará a liberação à contratação financeira, conforme GRF-008. Encerramento operacional é separado de liquidação financeira.

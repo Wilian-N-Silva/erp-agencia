@@ -1313,6 +1313,26 @@ export const graphicClientDecisions = pgTable("graphic_client_decisions", {
   userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_client_decisions_user_tenant_fk" }),
 }));
 
+export const graphicProductionEvents = pgTable("graphic_production_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  fromStatus: graphicJobOperationalStatusEnum("from_status").notNull(),
+  toStatus: graphicJobOperationalStatusEnum("to_status").notNull(),
+  waitingReason: text("waiting_reason"),
+  responsibleEmployeeId: uuid("responsible_employee_id").notNull(),
+  dueAt: date("due_at"),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  jobIdx: index("graphic_production_events_job_idx").on(table.organizationId, table.jobId, table.createdAt),
+  waitingCheck: check("graphic_production_events_waiting_check", sql`(${table.toStatus} = 'waiting' and ${table.waitingReason} in ('client','art','internal','supplier','material','payment','other')) or (${table.toStatus} <> 'waiting' and ${table.waitingReason} is null)`),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_production_events_job_tenant_fk" }),
+  employeeFk: foreignKey({ columns: [table.organizationId, table.responsibleEmployeeId], foreignColumns: [employees.organizationId, employees.id], name: "graphic_production_events_employee_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_production_events_user_tenant_fk" }),
+}));
+
 export const documents = pgTable(
   "documents",
   {

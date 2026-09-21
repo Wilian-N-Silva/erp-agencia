@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
-  it("upgrades 0028 to client decisions without modifying an existing OS or document", async () => {
+  it("upgrades 0028 to client decisions and production without modifying an existing OS or document", async () => {
     await dropUpgradeSchema();
     try {
       await adminDb.transaction(async transaction => {
@@ -47,9 +47,10 @@ describe("OS migration upgrade 0025 -> 0028", () => {
         await transaction.execute(sql.raw(`insert into graphic_os_versions (organization_id,job_id,version,external_number,issued_at,presented_amount,file_id,created_by_user_id)
           values ('${ids.orgA}','${ids.jobA}',1,'OS-UPGRADE','2026-09-21',1500,'73600000-0000-4000-8000-000000000010','${userA}')`));
         const before = (await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows;
-        for (let i = 29; i <= 30; i++) await applyMigration(transaction, i);
+        for (let i = 29; i <= 32; i++) await applyMigration(transaction, i);
         expect((await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows).toEqual(before);
         expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_client_decisions"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_production_events"))).rows).toEqual([{ n: 0 }]);
         expect((await transaction.execute(sql.raw("select relrowsecurity, relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='" + schemaName + "' and c.relname='graphic_client_decisions'"))).rows).toEqual([{relrowsecurity:true,relforcerowsecurity:true}]);
       });
     } finally { await dropUpgradeSchema(); }

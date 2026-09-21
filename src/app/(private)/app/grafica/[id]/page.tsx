@@ -25,6 +25,9 @@ import { getGraphicOsVersions, findDuplicateOsJobs } from "@/features/graphics/o
 import { canRegisterOs } from "@/features/graphics/os-rules";
 import { GraphicOsForm } from "../os-form";
 import { ClientDecisionForm } from "../client-decision-form";
+import { ProductionForm } from "../production-form";
+import { getGraphicProduction } from "@/features/graphics/production";
+import { productionNextStatuses, waitingReasonLabels } from "@/features/graphics/production-rules";
 import { getClientDecisions } from "@/features/graphics/client-decision";
 import { canRecordClientDecision, clientDecisionLabels, clientChannelLabels } from "@/features/graphics/client-decision-rules";
 import { GraphicSupplierQuoteFormFields } from "../supplier-quote-form";
@@ -43,9 +46,10 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const canWrite = canWriteGraphicJobs(context);
+  const canProduce = context.permissions.includes("graphics.production_write");
   const [job, auditLogs, options, quotes, supplierOptions] = await Promise.all([
     getGraphicJob(context, id), getGraphicJobAuditLogs(context, id),
-    canWrite ? getGraphicJobFormOptions(context) : Promise.resolve(null),
+    canWrite || canProduce ? getGraphicJobFormOptions(context) : Promise.resolve(null),
     getGraphicSupplierQuotes(context, id),
     canWriteQuotes ? getGraphicSupplierOptions(context) : Promise.resolve([]),
   ]);
@@ -53,6 +57,8 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const osVersions = await getGraphicOsVersions(context, id);
   const currentOs = osVersions[0];
   const clientDecisions = await getClientDecisions(context, id);
+  const production = await getGraphicProduction(context, id);
+  const lastStage = production[0];
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
   const query = await searchParams;
   const editing = canWrite && query?.edit === "1";
@@ -83,6 +89,11 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     <Card title="Resposta do cliente">
       {!currentOs ? <p className="text-sm text-muted-foreground">Registre a OS para acompanhar a resposta do cliente.</p> : canRecordClientDecision(job.operationalStatus) && context.permissions.includes("graphics.client_approval_write") ? <ClientDecisionForm key={`${currentOs.id}-${clientDecisions[0]?.decision.id ?? "first"}`} jobId={id} osVersionId={currentOs.id} osVersion={currentOs.version} previousId={clientDecisions[0]?.decision.id} rejected={job.operationalStatus === "client_rejected"} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "approved" ? "Cliente aprovou a OS. O próximo passo é liberar a produção." : "Acompanhe abaixo o histórico de respostas. O registro exige permissão e uma OS aguardando decisão."}</p>}
       {clientDecisions.length ? <ol className="mt-4 grid gap-3">{clientDecisions.map(({ decision, osVersion, actor }) => <li key={decision.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{clientDecisionLabels[decision.decision as keyof typeof clientDecisionLabels]} · OS versão {osVersion}</p><p>{decision.contact} · {clientChannelLabels[decision.channel as keyof typeof clientChannelLabels]} · {decision.decidedAt.split("-").reverse().join("/")}</p><p className="whitespace-pre-wrap">{decision.notes}</p><p className="text-muted-foreground">Registrado por {actor} em {formatDateTime(decision.createdAt)}</p>{decision.fileId ? <a className="text-primary underline" href={`/app/grafica/${id}/cliente/${decision.id}/download`}>Baixar evidência da resposta</a> : null}</li>)}</ol> : null}
+    </Card>
+    <Card title="Produção e entrega">
+      {job.operationalStatus === "waiting" && lastStage ? <div role="status" className="mb-4 rounded-md border border-amber-500 p-3 text-sm">Aguardando {waitingReasonLabels[lastStage.event.waitingReason as keyof typeof waitingReasonLabels]} · Responsável: {lastStage.owner}{lastStage.event.dueAt ? ` · Prazo: ${lastStage.event.dueAt.split("-").reverse().join("/")}` : ""}<p>{lastStage.event.notes}</p></div> : null}
+      {canProduce && options && productionNextStatuses(job.operationalStatus, lastStage?.event.fromStatus).length ? <ProductionForm key={lastStage?.event.id ?? job.operationalStatus} jobId={id} status={job.operationalStatus} previousId={lastStage?.event.id} resumeStatus={lastStage?.event.fromStatus} ownerId={job.responsibleEmployeeId} employees={options.employees} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "closed" ? "Trabalho encerrado. O histórico permanece disponível." : "As etapas de produção ficam disponíveis após a aprovação do cliente, para usuários autorizados."}</p>}
+      {production.length ? <ol className="mt-4 grid gap-3">{production.map(({ event, owner }) => <li key={event.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{graphicJobOperationalStatusLabels[event.fromStatus]} → {graphicJobOperationalStatusLabels[event.toStatus]}</p><p>{owner} · {formatDateTime(event.createdAt)}{event.dueAt ? ` · Prazo: ${event.dueAt.split("-").reverse().join("/")}` : ""}</p>{event.waitingReason ? <p>Espera: {waitingReasonLabels[event.waitingReason as keyof typeof waitingReasonLabels]}</p> : null}<p className="whitespace-pre-wrap">{event.notes}</p></li>)}</ol> : null}
     </Card>
     <Card title="Cotações de fornecedores">
       {canWriteQuotes ? <div className="mb-6 rounded-md border p-4"><h3 className="mb-4 text-sm font-semibold">{editedQuote ? "Editar cotação pendente" : "Nova cotação"}</h3><RateLimitedActionForm action={editedQuote ? updateGraphicSupplierQuoteAction : createGraphicSupplierQuoteAction}><GraphicSupplierQuoteFormFields jobId={id} quote={editedQuote} suppliers={supplierOptions} /><div className="mt-4 flex justify-end gap-2">{editedQuote ? <Link className={secondaryButtonClassName} href={`/app/grafica/${id}`}>Cancelar edição</Link> : null}<button className={primaryButtonClassName} type="submit">{editedQuote ? "Salvar cotação" : "Adicionar cotação"}</button></div></RateLimitedActionForm></div> : null}
