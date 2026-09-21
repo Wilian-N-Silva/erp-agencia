@@ -8,6 +8,8 @@ export { Dialog } from "./dialog";
 export { Dropdown } from "./dropdown";
 export type { DropdownItem } from "./dropdown";
 export { FilterPopover } from "./filter-popover";
+export { MaskedInput, formatMaskedValue } from "./masked-input";
+export type { MaskedInputProps } from "./masked-input";
 export { MoneyInput } from "./money-input";
 export type { MoneyInputProps } from "./money-input";
 export { NavIcon, navIconMap } from "./icon-map";

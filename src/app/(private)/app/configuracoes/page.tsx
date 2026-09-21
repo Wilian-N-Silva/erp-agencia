@@ -153,7 +153,7 @@ function CreateInvitationForm({ roles }: { roles: SettingsRoleItem[] }) {
           ))}
         </select>
       </label>
-      <RoleCheckboxGrid roles={roles} selected={[]} />
+      <RoleCheckboxGrid roles={roles} selected={["employee"]} />
       <div className="flex justify-end">
         <button className={`${primaryButtonClassName} sm:w-auto`} type="submit">
           <Send className="size-4" aria-hidden="true" />
