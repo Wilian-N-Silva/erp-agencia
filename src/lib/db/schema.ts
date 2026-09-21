@@ -1333,6 +1333,26 @@ export const graphicProductionEvents = pgTable("graphic_production_events", {
   userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_production_events_user_tenant_fk" }),
 }));
 
+export const graphicSupplierCommitments = pgTable("graphic_supplier_commitments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  quoteId: uuid("quote_id").notNull(),
+  expenseId: uuid("expense_id").notNull(),
+  contractedAt: date("contracted_at").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  quoteIdx: uniqueIndex("graphic_supplier_commitments_quote_idx").on(table.organizationId, table.quoteId),
+  expenseIdx: uniqueIndex("graphic_supplier_commitments_expense_idx").on(table.organizationId, table.expenseId),
+  jobIdx: index("graphic_supplier_commitments_job_idx").on(table.organizationId, table.jobId),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_supplier_commitments_job_tenant_fk" }),
+  quoteFk: foreignKey({ columns: [table.organizationId, table.quoteId], foreignColumns: [graphicSupplierQuotes.organizationId, graphicSupplierQuotes.id], name: "graphic_supplier_commitments_quote_tenant_fk" }),
+  expenseFk: foreignKey({ columns: [table.organizationId, table.expenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "graphic_supplier_commitments_expense_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_supplier_commitments_user_tenant_fk" }),
+}));
+
 export const documents = pgTable(
   "documents",
   {

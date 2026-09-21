@@ -9,7 +9,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-005: implementada no commit 267b563, incorporada nesta branch.
 - GRF-006: implementada e validada nesta branch; decisão vinculada à versão atual, histórico imutável, evidência privada e permissão específica.
 - GRF-007: implementada e validada nesta branch — produção, bloqueios, responsável, entrega e encerramento.
-- GRF-008: pendente — contratação explícita e AP idempotente/transacional.
+- GRF-008: implementada e validada nesta branch — contratação explícita e AP idempotente/transacional.
 - GRF-009: pendente — condição comercial, sinal/parcelas e AR sem caixa automático.
 - GRF-010: pendente — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: pendente — sugestões de conciliação, confirmação pelo Financeiro.
@@ -40,3 +40,11 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Typecheck, lint, build e diff-check aprovados; 345 testes unitários, 151 de banco e 4 E2E sequenciais passaram.
 - Testado: aprovação atual obrigatória; rejeição de salto de etapas; espera com motivo/responsável/work item; retomada somente à etapa bloqueada; resolução da pendência; pronto/entregue/encerrado; concorrência; rollback; RLS e FKs cross-tenant; upgrade preservando OS existente.
 - O próximo incremento vinculará a liberação à contratação financeira, conforme GRF-008. Encerramento operacional é separado de liquidação financeira.
+
+## Evidência GRF-008 — 21/09/2026
+
+- Migrações 0033/0034 aplicadas: compromisso imutável, unicidade por cotação/AP, RLS e FKs tenant.
+- Contratação explícita com data, vencimento, competência, categoria e centro de custo opcional. Valor/fornecedor são obtidos da cotação aprovada no servidor. A AP mantém os snapshots usados pelo Financeiro existente e a origem é ligada pelo compromisso e auditoria.
+- Produção exige compromisso com AP ativa. Aprovação de cotação/cliente continua sem criar AP ou caixa automaticamente.
+- Typecheck, lint, build e diff-check aprovados; 346 testes unitários, 152 de banco e 4 E2E passaram. Cobertos concorrência idempotente, rollback financeiro, autorização, mass assignment, RLS e upgrade.
+- O primeiro E2E encontrou a ausência de categoria de despesa nos dados demo; o cenário agora prepara uma categoria de teste pelo cadastro financeiro antes de contratar. O estado vazio orienta a solicitar categoria ao Financeiro.

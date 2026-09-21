@@ -26,6 +26,8 @@ import { canRegisterOs } from "@/features/graphics/os-rules";
 import { GraphicOsForm } from "../os-form";
 import { ClientDecisionForm } from "../client-decision-form";
 import { ProductionForm } from "../production-form";
+import { CommitmentForm } from "../commitment-form";
+import { getGraphicCommitments, getGraphicCommitmentOptions } from "@/features/graphics/commitment";
 import { getGraphicProduction } from "@/features/graphics/production";
 import { productionNextStatuses, waitingReasonLabels } from "@/features/graphics/production-rules";
 import { getClientDecisions } from "@/features/graphics/client-decision";
@@ -59,6 +61,9 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const clientDecisions = await getClientDecisions(context, id);
   const production = await getGraphicProduction(context, id);
   const lastStage = production[0];
+  const commitments = await getGraphicCommitments(context, id);
+  const commitmentOptions = canProduce ? await getGraphicCommitmentOptions(context) : null;
+  const uncontractedQuotes = quotes.filter(quote => quote.status === "approved" && !commitments.some(row => row.commitment.quoteId === quote.id));
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
   const query = await searchParams;
   const editing = canWrite && query?.edit === "1";
@@ -89,6 +94,10 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     <Card title="Resposta do cliente">
       {!currentOs ? <p className="text-sm text-muted-foreground">Registre a OS para acompanhar a resposta do cliente.</p> : canRecordClientDecision(job.operationalStatus) && context.permissions.includes("graphics.client_approval_write") ? <ClientDecisionForm key={`${currentOs.id}-${clientDecisions[0]?.decision.id ?? "first"}`} jobId={id} osVersionId={currentOs.id} osVersion={currentOs.version} previousId={clientDecisions[0]?.decision.id} rejected={job.operationalStatus === "client_rejected"} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "approved" ? "Cliente aprovou a OS. O próximo passo é liberar a produção." : "Acompanhe abaixo o histórico de respostas. O registro exige permissão e uma OS aguardando decisão."}</p>}
       {clientDecisions.length ? <ol className="mt-4 grid gap-3">{clientDecisions.map(({ decision, osVersion, actor }) => <li key={decision.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{clientDecisionLabels[decision.decision as keyof typeof clientDecisionLabels]} · OS versão {osVersion}</p><p>{decision.contact} · {clientChannelLabels[decision.channel as keyof typeof clientChannelLabels]} · {decision.decidedAt.split("-").reverse().join("/")}</p><p className="whitespace-pre-wrap">{decision.notes}</p><p className="text-muted-foreground">Registrado por {actor} em {formatDateTime(decision.createdAt)}</p>{decision.fileId ? <a className="text-primary underline" href={`/app/grafica/${id}/cliente/${decision.id}/download`}>Baixar evidência da resposta</a> : null}</li>)}</ol> : null}
+    </Card>
+    <Card title="Contratação do fornecedor">
+      {canProduce && commitmentOptions && ["approved", "waiting"].includes(job.operationalStatus) && uncontractedQuotes.length ? <CommitmentForm jobId={id} quotes={uncontractedQuotes.map(quote => ({ id: quote.id, name: `${quote.supplierName} · ${formatMoney(quote.quotedAmount)}` }))} categories={commitmentOptions.categories} centers={commitmentOptions.centers} /> : !commitments.length ? <p className="text-sm text-muted-foreground">A contratação fica disponível após a aprovação do cliente. Uma cotação aprovada ainda não é uma conta a pagar.</p> : null}
+      {commitments.map(row => <div className="mt-3 rounded-md border p-3 text-sm" key={row.commitment.id}><p className="font-semibold">{row.supplier} · {formatMoney(row.amount)}</p><p>Contratado em {row.commitment.contractedAt.split("-").reverse().join("/")} · Vencimento: {row.dueDate.split("-").reverse().join("/")}</p><p>Conta a pagar criada. Pagamento acompanhado pelo Financeiro.</p></div>)}
     </Card>
     <Card title="Produção e entrega">
       {job.operationalStatus === "waiting" && lastStage ? <div role="status" className="mb-4 rounded-md border border-amber-500 p-3 text-sm">Aguardando {waitingReasonLabels[lastStage.event.waitingReason as keyof typeof waitingReasonLabels]} · Responsável: {lastStage.owner}{lastStage.event.dueAt ? ` · Prazo: ${lastStage.event.dueAt.split("-").reverse().join("/")}` : ""}<p>{lastStage.event.notes}</p></div> : null}

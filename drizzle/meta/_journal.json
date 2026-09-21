@@ -232,6 +232,20 @@
       "when": 1790015776070,
       "tag": "0032_graphics_production_security",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790032899672,
+      "tag": "0033_graphics_supplier_commitments",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790032900848,
+      "tag": "0034_graphics_supplier_commitments_security",
+      "breakpoints": true
     }
   ]
 }

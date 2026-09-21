@@ -13,6 +13,15 @@ test("OS external PDF registration, version history and download", async ({ page
     login = await signIn();
   }
   expect(login.ok()).toBe(true);
+  await page.goto("/app/financeiro/cadastros");
+  const categories = page.locator(".fg-card").filter({ has: page.getByText("Categorias financeiras", { exact: true }) });
+  if (!(await categories.getByText("Custos Gráfica QA", { exact: true }).count())) {
+    await categories.getByText("Novo cadastro", { exact: true }).click();
+    await categories.locator('form').filter({ has: page.getByRole("button", { name: "Adicionar categoria", exact: true }) }).locator('input[name="name"]').fill("Custos Gráfica QA");
+    await categories.locator('form').filter({ has: page.getByRole("button", { name: "Adicionar categoria", exact: true }) }).locator('select[name="nature"]').selectOption("expense");
+    await categories.getByRole("button", { name: "Adicionar categoria", exact: true }).click();
+    await expect(categories.getByText("Custos Gráfica QA", { exact: true })).toBeVisible();
+  }
   const code = `OS-E2E-${Date.now()}`;
   await page.goto("/app/grafica/novo");
   await page.getByRole("textbox", { name: "Código interno", exact: true }).fill(code);
@@ -69,6 +78,13 @@ test("OS external PDF registration, version history and download", async ({ page
   await expect(page.getByText("Aprovado · OS versão 2", { exact: true })).toBeVisible();
   await expect(page.getByText("Alteração solicitada · OS versão 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Registrar nova versão da OS", exact: true })).toHaveCount(0);
+  await page.getByLabel("Data da contratação", { exact: true }).fill("2026-09-21");
+  await page.getByLabel("Vencimento do fornecedor", { exact: true }).fill("2026-10-01");
+  await page.getByLabel("Competência do custo", { exact: true }).fill("2026-09");
+  await page.getByRole("combobox", { name: "Categoria do custo", exact: true }).selectOption({ label: "Custos Gráfica QA" });
+  await page.getByRole("checkbox", { name: "Confirmo a contratação e a criação da conta a pagar.", exact: true }).check();
+  await page.getByRole("button", { name: "Contratar fornecedor e criar conta a pagar", exact: true }).click();
+  await expect(page.getByText("Conta a pagar criada. Pagamento acompanhado pelo Financeiro.", { exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "Próxima etapa", exact: true }).selectOption("in_production");
   await page.getByRole("button", { name: "Registrar etapa", exact: true }).click();
   await expect(page.getByText("Em produção", { exact: true })).toBeVisible();

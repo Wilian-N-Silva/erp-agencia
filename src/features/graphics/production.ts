@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
 import { db, withTenantDb } from "@/lib/db";
-import { employees, graphicClientDecisions, graphicJobs, graphicOsVersions, graphicProductionEvents, workItems } from "@/lib/db/schema";
+import { employees, financialExpenses, graphicClientDecisions, graphicJobs, graphicOsVersions, graphicProductionEvents, graphicSupplierCommitments, workItems } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { generateWorkItem, resolveWorkItem } from "@/features/work-items/dal";
@@ -25,6 +25,12 @@ export async function advanceGraphicProduction(context: AccessContext, raw: unkn
     const [os] = await db.select({ id: graphicOsVersions.id }).from(graphicOsVersions).where(and(eq(graphicOsVersions.jobId, job.id), eq(graphicOsVersions.organizationId, organizationId))).orderBy(desc(graphicOsVersions.version)).limit(1);
     const [decision] = await db.select().from(graphicClientDecisions).where(and(eq(graphicClientDecisions.jobId, job.id), eq(graphicClientDecisions.organizationId, organizationId))).orderBy(desc(graphicClientDecisions.createdAt), desc(graphicClientDecisions.id)).limit(1);
     if (!os || decision?.osVersionId !== os.id || decision.decision !== "approved") throw new GraphicFlowError("A produção exige aprovação do cliente sobre a versão atual da OS.");
+    if (input.toStatus === "in_production") {
+      const [commitment] = await db.select({ id: graphicSupplierCommitments.id }).from(graphicSupplierCommitments)
+        .innerJoin(financialExpenses, and(eq(financialExpenses.id, graphicSupplierCommitments.expenseId), eq(financialExpenses.organizationId, organizationId)))
+        .where(and(eq(graphicSupplierCommitments.organizationId, organizationId), eq(graphicSupplierCommitments.jobId, job.id), isNull(financialExpenses.deletedAt), inArray(financialExpenses.status, ["overdue", "planned", "paid"]))).limit(1);
+      if (!commitment) throw new GraphicFlowError("Registre a contratação do fornecedor antes de liberar a produção.");
+    }
     const [event] = await db.insert(graphicProductionEvents).values({ organizationId, jobId: job.id, fromStatus: job.operationalStatus, toStatus: input.toStatus,
       waitingReason: input.toStatus === "waiting" ? input.waitingReason : null, responsibleEmployeeId: owner.id, dueAt: input.dueAt || null, notes: input.notes, createdByUserId: context.userId }).returning();
     const [after] = await db.update(graphicJobs).set({ operationalStatus: input.toStatus, responsibleEmployeeId: owner.id, updatedAt: new Date() }).where(and(eq(graphicJobs.id, job.id), eq(graphicJobs.organizationId, organizationId))).returning();
