@@ -1283,11 +1283,34 @@ export const graphicOsVersions = pgTable("graphic_os_versions", {
 }, (table) => ({
   versionIdx: uniqueIndex("graphic_os_versions_job_version_idx").on(table.organizationId, table.jobId, table.version),
   numberIdx: index("graphic_os_versions_number_idx").on(table.organizationId, table.externalNumber),
+  tenantJobIdx: uniqueIndex("graphic_os_versions_tenant_job_id_idx").on(table.organizationId, table.jobId, table.id),
   versionCheck: check("graphic_os_versions_version_check", sql`${table.version} > 0`),
   amountCheck: check("graphic_os_versions_amount_check", sql`${table.presentedAmount} > 0`),
   jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_os_versions_job_tenant_fk" }),
   fileFk: foreignKey({ columns: [table.organizationId, table.fileId], foreignColumns: [files.organizationId, files.id], name: "graphic_os_versions_file_tenant_fk" }),
   userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_os_versions_user_tenant_fk" }),
+}));
+
+export const graphicClientDecisions = pgTable("graphic_client_decisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  osVersionId: uuid("os_version_id").notNull(),
+  decision: text("decision").notNull(),
+  contact: text("contact").notNull(),
+  channel: text("channel").notNull(),
+  decidedAt: date("decided_at").notNull(),
+  notes: text("notes").notNull().default(""),
+  fileId: uuid("file_id"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  jobIdx: index("graphic_client_decisions_job_idx").on(table.organizationId, table.jobId, table.createdAt),
+  decisionCheck: check("graphic_client_decisions_decision_check", sql`${table.decision} in ('approved','rejected','revision_requested')`),
+  channelCheck: check("graphic_client_decisions_channel_check", sql`${table.channel} in ('whatsapp','email','signed','phone','in_person','other')`),
+  osFk: foreignKey({ columns: [table.organizationId, table.jobId, table.osVersionId], foreignColumns: [graphicOsVersions.organizationId, graphicOsVersions.jobId, graphicOsVersions.id], name: "graphic_client_decisions_os_tenant_fk" }),
+  fileFk: foreignKey({ columns: [table.organizationId, table.fileId], foreignColumns: [files.organizationId, files.id], name: "graphic_client_decisions_file_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_client_decisions_user_tenant_fk" }),
 }));
 
 export const documents = pgTable(

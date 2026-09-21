@@ -21,6 +21,7 @@ export const defaultRolePermissions: Record<
     "graphics.write",
     "graphics.supplier_quote_write",
     "graphics.supplier_quote_approve",
+    "graphics.client_approval_write",
     "people.configure",
     "equipment.configure",
     "access_records.configure",

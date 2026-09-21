@@ -24,6 +24,9 @@ import { GraphicJobFormFields } from "../job-form";
 import { getGraphicOsVersions, findDuplicateOsJobs } from "@/features/graphics/os-dal";
 import { canRegisterOs } from "@/features/graphics/os-rules";
 import { GraphicOsForm } from "../os-form";
+import { ClientDecisionForm } from "../client-decision-form";
+import { getClientDecisions } from "@/features/graphics/client-decision";
+import { canRecordClientDecision, clientDecisionLabels, clientChannelLabels } from "@/features/graphics/client-decision-rules";
 import { GraphicSupplierQuoteFormFields } from "../supplier-quote-form";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +52,7 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   if (!job) notFound();
   const osVersions = await getGraphicOsVersions(context, id);
   const currentOs = osVersions[0];
+  const clientDecisions = await getClientDecisions(context, id);
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
   const query = await searchParams;
   const editing = canWrite && query?.edit === "1";
@@ -75,6 +79,10 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
         {os.revisionReason ? <p>Motivo: {os.revisionReason}</p> : null}
         <a className="text-primary underline" href={`/app/grafica/${id}/os/${os.id}/download`}>Baixar PDF da versão {os.version}</a>
       </li>)}</ol> : null}
+    </Card>
+    <Card title="Resposta do cliente">
+      {!currentOs ? <p className="text-sm text-muted-foreground">Registre a OS para acompanhar a resposta do cliente.</p> : canRecordClientDecision(job.operationalStatus) && context.permissions.includes("graphics.client_approval_write") ? <ClientDecisionForm key={`${currentOs.id}-${clientDecisions[0]?.decision.id ?? "first"}`} jobId={id} osVersionId={currentOs.id} osVersion={currentOs.version} previousId={clientDecisions[0]?.decision.id} rejected={job.operationalStatus === "client_rejected"} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "approved" ? "Cliente aprovou a OS. O próximo passo é liberar a produção." : "Acompanhe abaixo o histórico de respostas. O registro exige permissão e uma OS aguardando decisão."}</p>}
+      {clientDecisions.length ? <ol className="mt-4 grid gap-3">{clientDecisions.map(({ decision, osVersion, actor }) => <li key={decision.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{clientDecisionLabels[decision.decision as keyof typeof clientDecisionLabels]} · OS versão {osVersion}</p><p>{decision.contact} · {clientChannelLabels[decision.channel as keyof typeof clientChannelLabels]} · {decision.decidedAt.split("-").reverse().join("/")}</p><p className="whitespace-pre-wrap">{decision.notes}</p><p className="text-muted-foreground">Registrado por {actor} em {formatDateTime(decision.createdAt)}</p>{decision.fileId ? <a className="text-primary underline" href={`/app/grafica/${id}/cliente/${decision.id}/download`}>Baixar evidência da resposta</a> : null}</li>)}</ol> : null}
     </Card>
     <Card title="Cotações de fornecedores">
       {canWriteQuotes ? <div className="mb-6 rounded-md border p-4"><h3 className="mb-4 text-sm font-semibold">{editedQuote ? "Editar cotação pendente" : "Nova cotação"}</h3><RateLimitedActionForm action={editedQuote ? updateGraphicSupplierQuoteAction : createGraphicSupplierQuoteAction}><GraphicSupplierQuoteFormFields jobId={id} quote={editedQuote} suppliers={supplierOptions} /><div className="mt-4 flex justify-end gap-2">{editedQuote ? <Link className={secondaryButtonClassName} href={`/app/grafica/${id}`}>Cancelar edição</Link> : null}<button className={primaryButtonClassName} type="submit">{editedQuote ? "Salvar cotação" : "Adicionar cotação"}</button></div></RateLimitedActionForm></div> : null}

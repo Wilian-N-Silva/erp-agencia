@@ -5,6 +5,7 @@ import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { registerGraphicOs } from "@/features/graphics/os-registration";
 import { findDuplicateOsJobs, getGraphicOsDownload, getGraphicOsVersions } from "@/features/graphics/os-dal";
+import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/features/graphics/client-decision";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -22,7 +23,7 @@ const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOn
 const orgs = [randomUUID(), randomUUID()];
 const jobs = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
 const userIds = orgs.map(id => `os-${id}`);
-const contexts: AccessContext[] = orgs.map((organizationId, i) => ({ organizationId, userId: userIds[i], employeeId: null, roles: [], permissions: ["graphics.read", "graphics.write"] }));
+const contexts: AccessContext[] = orgs.map((organizationId, i) => ({ organizationId, userId: userIds[i], employeeId: null, roles: [], permissions: ["graphics.read", "graphics.write", "graphics.client_approval_write"] }));
 const pdf = () => new File(["%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"], "os.pdf", { type: "application/pdf" });
 const input = (jobId: string, expectedVersion = 0) => ({ jobId, expectedVersion, externalNumber: "OS-TEST", issuedAt: "2026-09-21", presentedAmount: "1500,00", revisionReason: expectedVersion ? "Nova arte" : "" });
 let versionId: string;
@@ -48,13 +49,15 @@ beforeAll(async () => {
 afterAll(async () => {
   await admin.transaction(async tx => {
     await tx.execute(sql`alter table graphic_os_versions disable trigger graphic_os_versions_immutable`);
+    await tx.execute(sql`alter table graphic_client_decisions disable trigger graphic_client_decisions_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
     }
     await tx.execute(sql`alter table graphic_os_versions enable trigger graphic_os_versions_immutable`);
+    await tx.execute(sql`alter table graphic_client_decisions enable trigger graphic_client_decisions_immutable`);
   });
   await admin.$client.end();
   await getDb().$client.end();
@@ -125,4 +128,50 @@ it("rejects invalid PDF and invalid operational state before storing any object"
   await admin.execute(sql`update graphic_supplier_quotes set status='pending' where job_id=${jobs[3]}`);
   await expect(registerGraphicOs(contexts[0], input(jobs[3]), pdf())).rejects.toThrow();
   expect(storage.put.mock.calls.length).toBe(calls);
+});
+
+const responseInput = (jobId: string, osVersionId: string, extra = {}) => ({ jobId, osVersionId, expectedDecisionId: "", decision: "approved", contact: "Cliente QA", channel: "email", decidedAt: "2026-09-21", notes: "", ...extra });
+
+it("records a revision request, requires the latest OS, then approves with immutable history and private evidence", async () => {
+  const [firstOs] = await getGraphicOsVersions(contexts[0], jobs[2]);
+  const revision = await recordClientDecision(contexts[0], responseInput(jobs[2], firstOs.id, { decision: "revision_requested", notes: "Alterar cores" }), pdf());
+  expect((await admin.execute(sql`select operational_status from graphic_jobs where id=${jobs[2]}`)).rows[0]).toMatchObject({ operational_status: "client_revision" });
+  const updatedOs = await registerGraphicOs(contexts[0], input(jobs[2], 1), pdf());
+  await expect(recordClientDecision(contexts[0], responseInput(jobs[2], firstOs.id, { expectedDecisionId: revision.id }))).rejects.toThrow("revisada");
+  const approval = await recordClientDecision(contexts[0], responseInput(jobs[2], updatedOs.id, { expectedDecisionId: revision.id }));
+  expect((await getClientDecisions(contexts[0], jobs[2])).map(row => row.decision.id)).toEqual([approval.id, revision.id]);
+  expect((await admin.execute(sql`select operational_status from graphic_jobs where id=${jobs[2]}`)).rows[0]).toMatchObject({ operational_status: "approved" });
+  expect(await getClientEvidence(contexts[0], jobs[2], revision.id)).not.toBeNull();
+  expect(await getClientEvidence(contexts[1], jobs[2], revision.id)).toBeNull();
+  expect(await getClientEvidence(contexts[0], jobs[0], revision.id)).toBeNull();
+  expect(await getClientDecisions(contexts[1], jobs[2])).toHaveLength(0);
+  await expect(admin.execute(sql`update graphic_client_decisions set contact='tampered' where id=${revision.id}`)).rejects.toThrow();
+  await expect(admin.execute(sql`delete from graphic_client_decisions where id=${revision.id}`)).rejects.toThrow();
+  expect((await getDb().execute(sql`select id from graphic_client_decisions where id=${revision.id}`)).rows).toHaveLength(0);
+  await expect(withTenantDb(contexts[1], tx => tx.execute(sql`insert into graphic_client_decisions (organization_id,job_id,os_version_id,decision,contact,channel,decided_at,created_by_user_id) values (${orgs[0]},${jobs[2]},${updatedOs.id},'approved','Test','email','2026-09-21',${userIds[0]})`))).rejects.toThrow();
+  await expect(admin.execute(sql`insert into graphic_client_decisions (organization_id,job_id,os_version_id,decision,contact,channel,decided_at,created_by_user_id) values (${orgs[1]},${jobs[1]},${updatedOs.id},'approved','Test','email','2026-09-21',${userIds[1]})`)).rejects.toThrow();
+});
+
+it("enforces client approval permission, rolls back audit failure and serializes competing responses", async () => {
+  const [os] = await getGraphicOsVersions(contexts[0], jobs[0]);
+  const payload = responseInput(jobs[0], os.id);
+  await expect(recordClientDecision({ ...contexts[0], permissions: ["graphics.write"] }, payload)).rejects.toThrow();
+  await expect(recordClientDecision(contexts[1], payload)).rejects.toThrow();
+  audit.fail = true;
+  try { await expect(recordClientDecision(contexts[0], payload, pdf())).rejects.toThrow("Simulated audit failure"); }
+  finally { audit.fail = false; }
+  expect(await getClientDecisions(contexts[0], jobs[0])).toHaveLength(0);
+  expect((await admin.execute(sql`select operational_status from graphic_jobs where id=${jobs[0]}`)).rows[0]).toMatchObject({ operational_status: "client_approval_pending" });
+  const results = await Promise.allSettled([recordClientDecision(contexts[0], payload), recordClientDecision(contexts[0], payload)]);
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(await getClientDecisions(contexts[0], jobs[0])).toHaveLength(1);
+  for (const table of ["financial_entries", "financial_expenses", "financial_transactions"]) expect((await admin.execute(sql`select count(*)::int n from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rows[0]).toMatchObject({ n: 0 });
+});
+
+it("preserves refusals and requires explicit revision to resume a rejected OS", async () => {
+  const [os] = await getGraphicOsVersions(contexts[1], jobs[1]);
+  const refused = await recordClientDecision(contexts[1], responseInput(jobs[1], os.id, { decision: "rejected", notes: "Cliente desistiu" }));
+  await expect(recordClientDecision(contexts[1], responseInput(jobs[1], os.id, { expectedDecisionId: refused.id }))).rejects.toThrow("retomar");
+  await recordClientDecision(contexts[1], responseInput(jobs[1], os.id, { expectedDecisionId: refused.id, decision: "revision_requested", notes: "Cliente retomou com nova arte" }));
+  expect((await getClientDecisions(contexts[1], jobs[1])).map(row => row.decision.decision)).toEqual(["revision_requested", "rejected"]);
 });

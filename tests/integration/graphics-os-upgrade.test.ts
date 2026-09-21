@@ -34,6 +34,26 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
+  it("upgrades 0028 to client decisions without modifying an existing OS or document", async () => {
+    await dropUpgradeSchema();
+    try {
+      await adminDb.transaction(async transaction => {
+        await transaction.execute(sql.raw("create schema " + schemaName));
+        await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
+        for (let i = 0; i <= 28; i++) await applyMigration(transaction, i);
+        await createPreMigrationFixtures(transaction);
+        await transaction.execute(sql.raw(`insert into files (id,organization_id,storage_provider,storage_key,original_name,mime_type,extension,byte_size,sensitivity,uploaded_by_user_id)
+          values ('73600000-0000-4000-8000-000000000010','${ids.orgA}','local','upgrade/os.pdf','os.pdf','application/pdf','pdf',100,'restricted','${userA}')`));
+        await transaction.execute(sql.raw(`insert into graphic_os_versions (organization_id,job_id,version,external_number,issued_at,presented_amount,file_id,created_by_user_id)
+          values ('${ids.orgA}','${ids.jobA}',1,'OS-UPGRADE','2026-09-21',1500,'73600000-0000-4000-8000-000000000010','${userA}')`));
+        const before = (await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows;
+        for (let i = 29; i <= 30; i++) await applyMigration(transaction, i);
+        expect((await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows).toEqual(before);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_client_decisions"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select relrowsecurity, relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='" + schemaName + "' and c.relname='graphic_client_decisions'"))).rows).toEqual([{relrowsecurity:true,relforcerowsecurity:true}]);
+      });
+    } finally { await dropUpgradeSchema(); }
+  }, 30_000);
   it("preserves existing jobs and quotes and creates forced tenant isolation", async () => {
     await dropUpgradeSchema();
     try {
