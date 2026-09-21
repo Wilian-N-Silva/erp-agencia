@@ -2,13 +2,21 @@ import { loadEnvFile } from "node:process";
 
 import { defineConfig } from "vitest/config";
 
-try {
-  loadEnvFile();
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
+function loadOptionalEnvFile(path?: string) {
+  try {
+    loadEnvFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
   }
 }
+
+// Node preserves variables already present in process.env. Loading the
+// test-specific file first gives it precedence over the local development
+// fallback while still allowing CI/shell variables to override both.
+loadOptionalEnvFile(".env.test.local");
+loadOptionalEnvFile();
 
 export default defineConfig({
   test: {
