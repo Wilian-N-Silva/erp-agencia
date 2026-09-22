@@ -1413,6 +1413,57 @@ export const graphicReconciliationSuggestions = pgTable("graphic_reconciliation_
   reviewerFk: foreignKey({ columns: [table.organizationId, table.reviewedByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_reconciliation_suggestions_reviewer_fk" }),
 }));
 
+export const graphicImportBatches = pgTable("graphic_import_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  checksum: text("checksum").notNull(),
+  fileName: text("file_name").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  mapping: jsonb("mapping").notNull().$type<import("@/features/graphics/import-rules").GraphicImportMapping>(),
+  status: text("status").notNull().default("preview"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  tenantKey: unique("graphic_import_batches_tenant_key").on(table.organizationId, table.id),
+  checksumIdx: uniqueIndex("graphic_import_batches_checksum_idx").on(table.organizationId, table.checksum),
+  checksumCheck: check("graphic_import_batches_checksum_check", sql`${table.checksum} ~ '^[a-f0-9]{64}$'`),
+  sizeCheck: check("graphic_import_batches_size_check", sql`${table.byteSize} > 0 and ${table.byteSize} <= 10485760`),
+  statusCheck: check("graphic_import_batches_status_check", sql`${table.status} in ('preview','partial','complete')`),
+  authorFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_import_batches_author_fk" }),
+}));
+
+export const graphicImportRows = pgTable("graphic_import_rows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  batchId: uuid("batch_id").notNull(),
+  kind: text("kind").notNull(),
+  sourceSheet: text("source_sheet").notNull(),
+  sourceRow: integer("source_row").notNull(),
+  raw: jsonb("raw").notNull().$type<Record<string, unknown>>(),
+  normalized: jsonb("normalized").notNull().$type<import("@/features/graphics/import-rules").GraphicImportRow["normalized"]>(),
+  classification: text("classification").notNull(),
+  issues: jsonb("issues").notNull().$type<string[]>(),
+  resolution: jsonb("resolution").$type<Record<string, unknown>>(),
+  status: text("status").notNull().default("pending"),
+  revision: integer("revision").notNull().default(0),
+  reviewedByUserId: text("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  importedAt: timestamp("imported_at", { withTimezone: true }),
+  jobId: uuid("job_id"), entryId: uuid("entry_id"), transactionId: uuid("transaction_id"),
+}, table => ({
+  tenantKey: unique("graphic_import_rows_tenant_key").on(table.organizationId, table.id),
+  sourceIdx: uniqueIndex("graphic_import_rows_source_idx").on(table.organizationId, table.batchId, table.kind, table.sourceSheet, table.sourceRow),
+  rowCheck: check("graphic_import_rows_row_check", sql`${table.sourceRow} > 0 and ${table.revision} >= 0`),
+  kindCheck: check("graphic_import_rows_kind_check", sql`${table.kind} in ('sales','outgoing','incoming')`),
+  classificationCheck: check("graphic_import_rows_classification_check", sql`${table.classification} in ('clear','ambiguous','invalid')`),
+  statusCheck: check("graphic_import_rows_status_check", sql`${table.status} in ('pending','ready','imported','ignored')`),
+  batchFk: foreignKey({ columns: [table.organizationId, table.batchId], foreignColumns: [graphicImportBatches.organizationId, graphicImportBatches.id], name: "graphic_import_rows_batch_fk" }),
+  reviewerFk: foreignKey({ columns: [table.organizationId, table.reviewedByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_import_rows_reviewer_fk" }),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_import_rows_job_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_import_rows_entry_fk" }),
+  transactionFk: foreignKey({ columns: [table.organizationId, table.transactionId], foreignColumns: [financialTransactions.organizationId, financialTransactions.id], name: "graphic_import_rows_transaction_fk" }),
+}));
+
 export const documents = pgTable(
   "documents",
   {

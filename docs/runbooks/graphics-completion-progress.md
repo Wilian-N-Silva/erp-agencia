@@ -14,7 +14,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
-- GRF-013: em andamento — parser XLSX implementado; staging, revisão, confirmação e relatório ainda pendentes.
+- GRF-013: em andamento — parser XLSX e staging persistente implementados; interface de revisão, confirmação e relatório ainda pendentes.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
 
 Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
@@ -94,3 +94,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Preserva checksum SHA-256, aba, número da linha, valores originais e campos normalizados, incluindo projeto. OS ausente/múltipla/duplicada gera classificação ambígua; datas inválidas, fórmulas e valores inválidos exigem revisão. Não infere vínculo de caixa com vendas pelo texto da OS.
 - Validação prévia do ZIP limita arquivo a 10 MB, expansão real a 40 MB e 500 entradas; rejeita criptografia, macros, links externos e estruturas inconsistentes. Não executa fórmulas ou usa seu resultado em cache como valor confirmado.
 - Esta etapa ainda não disponibiliza importação na interface nem escreve registros financeiros. Próximos passos obrigatórios: staging persistente, dry-run, resolução de referências, confirmação idempotente, work items, relatório e E2E.
+
+## Progresso GRF-013 — staging — 22/09/2026
+
+- Migrações 0040/0041 aplicadas nos bancos local e de testes: lotes/linhas com RLS forçada, FKs tenant, unicidade por checksum e origem, e triggers que preservam arquivo/mapeamento/valores originais. Permissão graphics.import adicionada ao catálogo e seed Admin Técnico/Diretoria.
+- DAL prepara a prévia em transação, com auditoria e inserts em lotes de 200 linhas. Reenvio do mesmo arquivo/mapeamento reutiliza a prévia, inclusive sob concorrência; mudança de mapeamento do mesmo arquivo é recusada para evitar duplicação. Nenhum trabalho, título ou movimentação é criado nesta fase.
+- Testes de banco provam rollback em falha de auditoria, concorrência idempotente, ausência de writes financeiros, RBAC, isolamento por organização e sem contexto, proteção dos valores originais, mesma planilha independente em outra organização e upgrade preservando registros antigos.
+- Interface, revisão de referências, confirmação dos dados finais, pendências/relatório e E2E da importação permanecem obrigatórios; GRF-013 não está concluída.

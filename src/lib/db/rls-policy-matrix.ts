@@ -22,6 +22,8 @@ export const directTenantPolicyTables = [
   "financial_categories",
   "financial_transactions",
   "graphic_jobs",
+  "graphic_import_batches",
+  "graphic_import_rows",
   "graphic_client_decisions",
   "graphic_production_events",
   "graphic_supplier_commitments",
