@@ -1,4 +1,13 @@
-# Patch v6 — npm nativo + dependencias por worktree
+# Sistema Interno FG
+
+Para instalar o MVP, siga o [guia de ambiente](docs/runbooks/environment-setup.md).
+Os templates `.env.example`, `.env.production.example` e `.env.test.example`
+explicam configuração local, runtime público e testes isolados. O Compose sobe
+PostgreSQL; a aplicação roda com Node.js. Consulte a [documentação oficial](docs/README.md).
+
+As instruções abaixo preservam o histórico do patch de orquestração.
+
+## Patch v6 — npm nativo + dependencias por worktree
 
 Este patch corrige dois problemas observados durante a SEC-004 no Windows PowerShell 5.1:
 
