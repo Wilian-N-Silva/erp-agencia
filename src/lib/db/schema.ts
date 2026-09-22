@@ -1328,7 +1328,7 @@ export const graphicProductionEvents = pgTable("graphic_production_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, table => ({
   jobIdx: index("graphic_production_events_job_idx").on(table.organizationId, table.jobId, table.createdAt),
-  waitingCheck: check("graphic_production_events_waiting_check", sql`(${table.toStatus} = 'waiting' and ${table.waitingReason} in ('client','art','internal','supplier','material','payment','other')) or (${table.toStatus} <> 'waiting' and ${table.waitingReason} is null)`),
+  waitingCheck: check("graphic_production_events_waiting_check", sql`(${table.toStatus} = 'waiting' and ${table.waitingReason} is not null and ${table.waitingReason} in ('client','art','internal','supplier','material','payment','other')) or (${table.toStatus} <> 'waiting' and ${table.waitingReason} is null)`),
   jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_production_events_job_tenant_fk" }),
   employeeFk: foreignKey({ columns: [table.organizationId, table.responsibleEmployeeId], foreignColumns: [employees.organizationId, employees.id], name: "graphic_production_events_employee_tenant_fk" }),
   userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_production_events_user_tenant_fk" }),

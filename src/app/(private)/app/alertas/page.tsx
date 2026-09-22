@@ -1,5 +1,6 @@
 import { Ban, CheckCircle2, RefreshCw } from "lucide-react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { RateLimitedActionForm } from "@/components/fg";
 
@@ -206,9 +207,9 @@ function ActionableWorkItemRow({
       <td className="px-4 py-3">
         <p className="font-medium">{item.title}</p>
         <p className="text-xs text-muted-foreground">{item.description}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
+        {item.sourceType === "graphic_import_row" ? <Link className="mt-2 inline-block text-sm text-primary underline" href={`/app/grafica/importar/linhas/${item.sourceId}`}>Revisar linha da importação</Link> : <p className="mt-1 text-xs text-muted-foreground">
           {item.sourceType}:{item.sourceId.slice(0, 8)}
-        </p>
+        </p>}
       </td>
       <td className="px-4 py-3">
         <WorkItemPriorityBadge priority={item.priority} />

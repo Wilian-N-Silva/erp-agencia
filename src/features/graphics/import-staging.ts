@@ -22,6 +22,19 @@ export async function getGraphicImportOptions(context: AccessContext) {
 }
 export type GraphicImportOptions = Awaited<ReturnType<typeof getGraphicImportOptions>>;
 
+export async function getGraphicImportRowLocation(context: AccessContext, rawId: unknown) {
+  assertCan("graphics.import", context);
+  if (!context.organizationId) throw new AccessDeniedError();
+  const organizationId = context.organizationId, id = z.string().uuid().parse(rawId);
+  return withTenantDb(context, async tx => {
+    const [row] = await tx.select({ batchId: graphicImportRows.batchId }).from(graphicImportRows).where(and(eq(graphicImportRows.organizationId, organizationId), eq(graphicImportRows.id, id))).limit(1);
+    if (!row) return null;
+    const data = await getGraphicImport(context, row.batchId);
+    const index = data?.rows.findIndex(item => item.id === id) ?? -1;
+    return index < 0 ? null : { batchId: row.batchId, rowId: id, page: Math.floor(index / 50) + 1 };
+  });
+}
+
 export async function stageGraphicImport(context: AccessContext, upload: File, mapping: unknown) {
   assertCan("graphics.import", context);
   if (!context.organizationId) throw new AccessDeniedError();

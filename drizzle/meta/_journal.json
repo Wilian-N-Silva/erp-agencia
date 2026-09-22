@@ -309,6 +309,13 @@
       "when": 1790081843836,
       "tag": "0043_graphics_supplier_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790082538396,
+      "tag": "0044_graphics_waiting_reason_required",
+      "breakpoints": true
     }
   ]
 }

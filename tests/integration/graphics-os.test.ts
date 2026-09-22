@@ -364,6 +364,7 @@ it("runs production through a blocking work item, resume, delivery and closure w
   expect(await getGraphicProduction(context, jobs[2])).toHaveLength(6);
   expect(await getGraphicProduction(contexts[1], jobs[2])).toHaveLength(0);
   expect((await getDb().execute(sql`select id from graphic_production_events where id=${start.id}`)).rows).toHaveLength(0);
+  await expect(withTenantDb(context, tx => tx.execute(sql`insert into graphic_production_events (organization_id,job_id,from_status,to_status,responsible_employee_id,created_by_user_id) values (${orgs[0]},${jobs[2]},'in_production','waiting',${owner},${userIds[0]})`))).rejects.toThrow();
   await expect(admin.execute(sql`update graphic_production_events set notes='changed' where id=${start.id}`)).rejects.toThrow();
   await expect(admin.execute(sql`delete from graphic_production_events where id=${start.id}`)).rejects.toThrow();
   await withTenantDb(contexts[1], async tx => {

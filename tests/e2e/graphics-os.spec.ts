@@ -62,6 +62,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("button", { name: "Adicionar cotação", exact: true }).click();
   await page.getByRole("button", { name: "Aprovar cotação", exact: true }).click();
   await expect(page.getByRole("button", { name: "Registrar OS", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Adicionar cotação", exact: true })).toHaveCount(0);
   // Minimal PDF fixture for transport and version-preservation assertions.
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
   await page.getByLabel("Número da OS", { exact: true }).fill("QA-OS-COMPARTILHADA");
@@ -165,6 +166,11 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await expect(financeSummary).toContainText("Recebido e conciliado");
   await expect(financeSummary.locator("dl")).toContainText("R$ 1.950,00");
   await expect(financeSummary).toContainText("R$ 750,00");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "QA - Registro de OS externa", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "storage-local/manual-validation/grf014-mobile-detail.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await expect(financeSummary).not.toContainText("Aguardando vínculos confiáveis");
   await page.getByRole("combobox", { name: "Próxima etapa", exact: true }).selectOption("in_production");
   await page.getByRole("button", { name: "Registrar etapa", exact: true }).click();
@@ -191,4 +197,24 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await expect(page.getByText("Nenhum trabalho encontrado", { exact: true })).toBeVisible();
   await expect(dashboardFinance).toContainText("R$ 0,00");
+  await page.goto("/app/financeiro/movimentacoes");
+  await page.getByRole("combobox", { name: /^Conta financeira/ }).selectOption({ label: "Conta Gráfica QA" });
+  await page.getByRole("combobox", { name: /^Direção/ }).selectOption("out");
+  await page.getByRole("textbox", { name: /^Valor/ }).fill("1200,00");
+  await page.getByRole("combobox", { name: "Fornecedor", exact: true }).selectOption({ label: "Fornecedor QA Grafica B" });
+  await page.getByLabel("Referência", { exact: true }).fill(`PAG-${code}`);
+  await page.getByRole("button", { name: "Registrar movimentação", exact: true }).click();
+  await page.getByRole("row").filter({ has: page.getByRole("cell", { name: `PAG-${code}`, exact: true }) }).getByRole("link", { name: "Conciliar", exact: true }).click();
+  await page.getByLabel("Buscar por descrição, código do trabalho ou contraparte", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Buscar títulos", exact: true }).click();
+  await page.getByLabel(`Valor para Gráfica ${code} · QA - Registro de OS externa`, { exact: true }).fill("1200,00");
+  await page.getByRole("checkbox", { name: "Conferi os títulos e valores e confirmo a conciliação.", exact: true }).check();
+  await page.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+  await expect(page.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+  await page.goto(jobUrl);
+  await expect(financeSummary).toContainText("Pago e conciliado");
+  await expect(financeSummary.locator("dl")).toContainText("R$ 1.200,00");
+  await expect(financeSummary).toContainText("R$ 750,00");
 });

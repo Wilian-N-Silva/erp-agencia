@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
-import { getGraphicImport, listGraphicImports, stageGraphicImport } from "@/features/graphics/import-staging";
+import { getGraphicImport, getGraphicImportRowLocation, listGraphicImports, stageGraphicImport } from "@/features/graphics/import-staging";
 import { commitGraphicImport, ignoreGraphicImportRow, reviewGraphicImportRow } from "@/features/graphics/import-commit";
 
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -51,14 +51,27 @@ it("rolls back staging when audit fails and makes concurrent dry runs idempotent
   const preview = await getGraphicImport(contexts[0], batchId);
   expect(preview?.rows).toHaveLength(2);
   rowId = preview!.rows[0].id;
+  expect(await getGraphicImportRowLocation(contexts[0], rowId)).toEqual({ batchId, rowId, page: 1 });
   expect(preview?.rows[0]).toMatchObject({ sourceSheet: "Vendas", sourceRow: 2, raw: { amount: "100,00" }, normalized: { amount: "100.00" }, status: "pending" });
   expect(preview?.rows[1].classification).toBe("invalid");
   for (const table of ["financial_transactions", "financial_entries", "financial_expenses", "graphic_jobs"]) expect((await admin.execute(sql`select count(*)::int n from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
   await expect(stageGraphicImport(contexts[0], file, { blocks: [{ ...mapping.blocks[0], lastRow: 2 }] })).rejects.toThrow("outro mapeamento");
 });
+it("locates review rows beyond the first preview page", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Vendas");
+  sheet.addRow(["OS", "Data", "Valor"]);
+  for (let index = 1; index <= 51; index++) sheet.addRow([`PAGE-${index}`, "2026-09-22", 100]);
+  const upload = new File([new Uint8Array(await workbook.xlsx.writeBuffer())], "paginacao.xlsx");
+  const result = await stageGraphicImport(contexts[0], upload, { blocks: [{ ...mapping.blocks[0], lastRow: 52 }] });
+  const preview = await getGraphicImport(contexts[0], result.batch.id);
+  expect(await getGraphicImportRowLocation(contexts[0], preview!.rows[50].id)).toEqual({ batchId: result.batch.id, rowId: preview!.rows[50].id, page: 2 });
+});
 it("protects staging permissions, provenance and cross-tenant reads and writes", async () => {
   await expect(stageGraphicImport({ ...contexts[0], permissions: ["graphics.write"] }, file, mapping)).rejects.toThrow();
   expect(await getGraphicImport(contexts[1], batchId)).toBeNull();
+  expect(await getGraphicImportRowLocation(contexts[1], rowId)).toBeNull();
+  await expect(getGraphicImportRowLocation({ ...contexts[0], permissions: ["graphics.write"] }, rowId)).rejects.toThrow();
   for (const table of ["graphic_import_batches", "graphic_import_rows"]) {
     expect((await getDb().execute(sql`select id from ${sql.identifier(table)} where organization_id=${orgs[0]}`)).rows).toEqual([]);
     await withTenantDb(contexts[1], async tx => {
