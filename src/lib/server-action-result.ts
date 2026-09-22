@@ -1,4 +1,4 @@
-export type ServerActionErrorCode = "RATE_LIMITED";
+export type ServerActionErrorCode = "RATE_LIMITED" | "CONFLICT";
 
 export type ServerActionResult<Data = undefined> =
   | {

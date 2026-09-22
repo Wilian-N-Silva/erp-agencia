@@ -71,6 +71,18 @@ const organizationId = "30000000-0000-4000-8000-000000000001";
 const jobId = "40000000-0000-4000-8000-000000000001";
 
 describe("graphic job Action security boundary", () => {
+  it.each([createGraphicJobAction, updateGraphicJobAction])("returns a safe conflict after a duplicate-code transaction fails", async action => {
+    mocks.runWithCurrentTenantDb.mockRejectedValueOnce(new Error("private SQL", { cause: { code: "23505", constraint: "graphic_jobs_internal_code_idx", detail: "private data" } }));
+    const result = await action(new FormData());
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toContain("private");
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+  it("does not misreport unrelated database errors as duplicate codes", async () => {
+    const error = new Error("unrelated", { cause: { code: "23505", constraint: "other_constraint" } });
+    mocks.runWithCurrentTenantDb.mockRejectedValueOnce(error);
+    await expect(createGraphicJobAction(new FormData())).rejects.toBe(error);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.enforceAuthenticatedRateLimit.mockReset();
