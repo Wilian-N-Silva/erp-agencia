@@ -34,6 +34,20 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
+  it("installs all migrations through 0044 on an empty schema and accepts minimum graphic fixtures", async () => {
+    await dropUpgradeSchema();
+    try {
+      await adminDb.transaction(async transaction => {
+        await transaction.execute(sql.raw("create schema " + schemaName));
+        await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
+        for (let i = 0; i <= 44; i++) await applyMigration(transaction, i);
+        await createPreMigrationFixtures(transaction);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+      });
+    } finally { await dropUpgradeSchema(); }
+  }, 30_000);
   it("upgrades 0028 to client decisions and production without modifying an existing OS or document", async () => {
     await dropUpgradeSchema();
     try {

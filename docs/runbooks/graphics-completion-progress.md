@@ -14,10 +14,10 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
-- GRF-013: parser, staging, revisão/confirmação, interface e relatório implementados; E2E de venda/entrada/linha inválida aprovado. Revisão final de pendências e demais blocos ainda necessária.
-- GRF-014: em andamento — E2E com duas cotações/rejeição e fluxo até encerramento aprovado; multi-OS, pagamentos e revisão final de usabilidade ainda pendentes.
+- GRF-013: implementada e validada — três blocos, revisão, pendências navegáveis, relatório e E2E.
+- GRF-014: implementada e validada — fluxo completo, fornecedores, multi-trabalho, pagamento e inspeção de usabilidade.
 
-Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
+Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato de anexos necessário à Gráfica verificado com files/storage compartilhados e vínculos tenant próprios; generalização global DOC-001/002 não declarada concluída. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
 
 ## Gate final
 
