@@ -1,0 +1,84 @@
+import { expect, test } from "@playwright/test";
+import ExcelJS from "exceljs";
+
+test("historical preview, explicit review, import and provenance report", async ({ page }) => {
+  test.setTimeout(120_000);
+  const password = process.env.DEMO_USER_PASSWORD;
+  expect(password).toBeTruthy();
+  const signIn = () => page.request.post("/api/auth/sign-in/email", { data: { email: "todos.perfis@formula.local", password } });
+  let login = await signIn();
+  if (login.status() === 429) {
+    const seconds = Number(login.headers()["retry-after"] ?? 10);
+    await new Promise(resolve => setTimeout(resolve, (Math.min(Math.max(seconds, 1), 30) + 1) * 1000));
+    login = await signIn();
+  }
+  expect(login.ok()).toBe(true);
+  await page.goto("/app/financeiro/cadastros");
+  const accounts = page.locator(".fg-card").filter({ has: page.getByText("Contas financeiras", { exact: true }) });
+  if (!(await accounts.getByText("Conta Gráfica QA", { exact: true }).count())) {
+    await accounts.getByText("Novo cadastro", { exact: true }).click();
+    await accounts.locator("form").filter({ has: page.getByRole("button", { name: "Adicionar conta", exact: true }) }).locator('input[name="name"]').fill("Conta Gráfica QA");
+    await accounts.getByRole("button", { name: "Adicionar conta", exact: true }).click();
+    await expect(accounts.getByText("Conta Gráfica QA", { exact: true })).toBeVisible();
+  }
+  const marker = `Histórico QA ${Date.now()}`;
+  const workbook = new ExcelJS.Workbook();
+  const sales = workbook.addWorksheet("Vendas");
+  sales.addRow(["OS", "Data", "Valor", "Descrição", "Cliente", "Projeto"]);
+  sales.addRow(["OS-HIST", "22/09/2026", 500, marker, "Horizonte Eventos - Grafica", ""]);
+  sales.addRow(["", "data incorreta", "valor incorreto", "Linha não aproveitável", "", ""]);
+  const incoming = workbook.addWorksheet("Entradas");
+  incoming.addRow(["Data", "Valor", "Referência"]);
+  incoming.addRow(["22/09/2026", 200, "OS-HIST"]);
+  await page.goto("/app/grafica");
+  await page.getByRole("link", { name: "Importar histórico da Gráfica" }).click();
+  await page.getByLabel("Planilha histórica XLSX").setInputFiles({ name: `${marker}.xlsx`, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await workbook.xlsx.writeBuffer()) });
+  await page.getByLabel("Última linha de dados", { exact: true }).fill("3");
+  await page.getByRole("button", { name: "Adicionar bloco", exact: true }).click();
+  const blocks = page.locator("fieldset");
+  await blocks.nth(1).getByLabel("Última linha de dados", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Preparar prévia", exact: true }).click();
+  await page.getByRole("link", { name: "Abrir prévia para revisão" }).click();
+  await expect(page).toHaveURL(/\/grafica\/importar\/[0-9a-f-]+$/);
+  const previewUrl = page.url();
+  const salesRow = page.locator(".fg-card").filter({ has: page.getByText("Vendas · linha 2 · OS / venda", { exact: true }) });
+  await expect(salesRow.getByRole("combobox", { name: "Cliente", exact: true })).toHaveValue("");
+  await salesRow.getByRole("combobox", { name: "Cliente", exact: true }).selectOption({ label: "Horizonte Eventos - Grafica" });
+  await salesRow.getByRole("combobox", { name: "Responsável", exact: true }).selectOption({ label: "Lideranca Demo" });
+  await salesRow.getByRole("combobox", { name: "Situação operacional", exact: true }).selectOption("delivered");
+  await salesRow.getByLabel("Justificativa da revisão").fill("Saldo histórico conferido no documento original");
+  await salesRow.getByRole("button", { name: "Salvar revisão da linha" }).click();
+  await expect(salesRow.getByText("Revisada", { exact: true })).toBeVisible();
+  const invalid = page.locator(".fg-card").filter({ has: page.getByText("Vendas · linha 3 · OS / venda", { exact: true }) });
+  await expect(invalid.getByText("Dados inválidos; correção necessária")).toBeVisible();
+  await invalid.getByLabel("Motivo para ignorar esta linha").fill("Linha de teste sem documentação para correção");
+  await invalid.getByRole("button", { name: "Ignorar linha com justificativa" }).click();
+  await expect(invalid.getByText("Ignorada", { exact: true })).toBeVisible();
+  const cash = page.locator(".fg-card").filter({ has: page.getByText("Entradas · linha 2 · Entrada de caixa", { exact: true }) });
+  await cash.getByLabel("Descrição confirmada").fill(`Recebimento ${marker}`);
+  await cash.getByRole("combobox", { name: "Conta do caixa", exact: true }).selectOption({ label: "Conta Gráfica QA" });
+  await cash.getByRole("combobox", { name: "Cliente identificado", exact: true }).selectOption({ label: "Horizonte Eventos - Grafica" });
+  await cash.getByLabel("Justificativa da revisão").fill("Extrato histórico conferido; conciliar separadamente");
+  await cash.getByRole("button", { name: "Salvar revisão da linha" }).click();
+  await expect(cash.getByText("Revisada", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Confirmar lote revisado" }).click();
+  await expect(page.getByText("Lote concluído. O histórico de todas as linhas foi preservado.")).toBeVisible();
+  const reportUrl = await page.getByRole("link", { name: "Baixar relatório completo (JSON)" }).getAttribute("href");
+  const response = await page.request.get(reportUrl!);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  const report = await response.json();
+  expect(report.summary).toEqual({ pending: 0, ready: 0, imported: 2, ignored: 1 });
+  expect(report.rows.find((row: { kind: string }) => row.kind === "incoming")).toMatchObject({ jobId: null, entryId: null, status: "imported", raw: { reference: "OS-HIST" } });
+  await page.getByRole("link", { name: "Abrir trabalho importado" }).click();
+  await expect(page.getByRole("heading", { name: marker, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Baixar PDF da versão/ })).toHaveCount(0);
+  await page.goto(previewUrl);
+  await page.getByRole("link", { name: "Abrir movimentação para conciliação" }).click();
+  await expect(page.getByText("Nenhum vínculo confirmado.", { exact: true })).toBeVisible();
+  await page.goto(previewUrl);
+  await expect(page.getByRole("button", { name: "Confirmar lote revisado" })).toHaveCount(0);
+  await page.screenshot({ path: "storage-local/manual-validation/grf013-import-complete.png", fullPage: true });
+});
+

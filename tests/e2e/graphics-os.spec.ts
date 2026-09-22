@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("OS external PDF registration, version history and download", async ({ page }) => {
+test("graphic flow from competing quotes and rejection to OS, production, reconciliation and closure", async ({ page }) => {
   test.setTimeout(120_000);
   const password = process.env.DEMO_USER_PASSWORD;
   expect(password, "Set DEMO_USER_PASSWORD for the local demo account").toBeTruthy();
@@ -39,6 +39,14 @@ test("OS external PDF registration, version history and download", async ({ page
   await page.getByRole("textbox", { name: "Descrição", exact: true }).fill("Trabalho fictício para validar GRF-005.");
   await page.getByRole("button", { name: "Criar trabalho", exact: true }).click();
   await expect(page.getByRole("heading", { name: "QA - Registro de OS externa" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Registrar OS", exact: true })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Fornecedor", exact: true }).selectOption({ label: "Fornecedor QA Grafica A" });
+  await page.getByRole("textbox", { name: "Valor cotado", exact: true }).fill("1500,00");
+  await page.getByRole("textbox", { name: "Descrição", exact: true }).fill("Primeira cotação acima do orçamento");
+  await page.getByRole("button", { name: "Adicionar cotação", exact: true }).click();
+  await page.getByLabel("Motivo da rejeição", { exact: true }).fill("Valor acima do orçamento; consultar alternativa");
+  await page.getByRole("button", { name: "Rejeitar cotação", exact: true }).click();
+  await expect(page.getByText("Valor acima do orçamento; consultar alternativa", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Registrar OS", exact: true })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Fornecedor", exact: true }).selectOption({ label: "Fornecedor QA Grafica B" });
   await page.getByRole("textbox", { name: "Valor cotado", exact: true }).fill("1200,00");

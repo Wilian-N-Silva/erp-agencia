@@ -14,8 +14,8 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
-- GRF-013: em andamento — parser, staging e DAL de revisão/confirmação implementados; interface, relatório e E2E ainda pendentes.
-- GRF-014: pendente — E2E completo e revisão de usabilidade.
+- GRF-013: parser, staging, revisão/confirmação, interface e relatório implementados; E2E de venda/entrada/linha inválida aprovado. Revisão final de pendências e demais blocos ainda necessária.
+- GRF-014: em andamento — E2E com duas cotações/rejeição e fluxo até encerramento aprovado; multi-OS, pagamentos e revisão final de usabilidade ainda pendentes.
 
 Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
 
@@ -116,3 +116,11 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Limite graphics_import aplicado à preparação de arquivos; revisão/ignorar/confirmação usam common_mutation, permitindo processar arquivos grandes em partes sem consumir a cota de novos arquivos.
 - Typecheck, lint, build, 366 testes unitários e 162 testes de banco aprovados. Novos testes de formulário verificam ausência de inferência por nome e separação das referências de entrada/saída. Ajuste final de seleção de rate limiter feito após o build; precisa entrar no próximo build para E2E.
 - Ainda falta validar a importação no navegador/E2E e revisar relatório/usabilidade com esse fluxo. GRF-013 permanece em andamento, GRF-014 e a auditoria final do módulo continuam pendentes. Nenhuma migration/backfill adicional. Worktree sec-002 preservada.
+
+
+## Evidência de interface GRF-013 / avanço GRF-014 — 22/09/2026
+
+- Novo E2E envia XLSX com venda, entrada e linha inválida, verifica ausência de cliente pré-selecionado por texto, revisa referências, ignora com motivo e confirma lote. Relatório comprova duas linhas importadas/uma ignorada e entrada sem jobId/entryId inferidos. Navegação abre o trabalho sem PDF fictício e caixa sem vínculo confirmado; recarga preserva lote concluído.
+- E2E operacional ampliado: primeira cotação de fornecedor A rejeitada com motivo preservado, segunda cotação de B aprovada; segue OS/versionamento, decisões do cliente, contratação/AP, venda/AR, sugestão e conciliação, produção/espera/entrega/encerramento.
+- Build atualizado, typecheck e lint aprovados. Suíte completa: 5 E2E aprovados em 23 segundos. Falhas iniciais eram seletores de select e URL capturada antes da navegação terminar, corrigidas no teste; os registros da tentativa intermediária ficaram preservados como dados QA.
+- Screenshot de lote concluído inspecionado: storage-local/manual-validation/grf013-import-complete.png. Ainda falta revisão de usabilidade para demais estados, saída histórica, acesso às pendências, cadastro de fornecedores e recebimento multi-trabalho. Nenhuma migration/backfill ou merge nesta etapa.
