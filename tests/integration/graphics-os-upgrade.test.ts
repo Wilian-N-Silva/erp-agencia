@@ -47,7 +47,7 @@ describe("OS migration upgrade 0025 -> 0028", () => {
         await transaction.execute(sql.raw(`insert into graphic_os_versions (organization_id,job_id,version,external_number,issued_at,presented_amount,file_id,created_by_user_id)
           values ('${ids.orgA}','${ids.jobA}',1,'OS-UPGRADE','2026-09-21',1500,'73600000-0000-4000-8000-000000000010','${userA}')`));
         const before = (await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows;
-        for (let i = 29; i <= 41; i++) await applyMigration(transaction, i);
+        for (let i = 29; i <= 42; i++) await applyMigration(transaction, i);
         expect((await transaction.execute(sql.raw("select * from graphic_os_versions"))).rows).toEqual(before);
         expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_client_decisions"))).rows).toEqual([{ n: 0 }]);
         expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_production_events"))).rows).toEqual([{ n: 0 }]);

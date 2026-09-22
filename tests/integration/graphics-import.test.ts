@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { getGraphicImport, listGraphicImports, stageGraphicImport } from "@/features/graphics/import-staging";
+import { commitGraphicImport, ignoreGraphicImportRow, reviewGraphicImportRow } from "@/features/graphics/import-commit";
 
 const audit = vi.hoisted(() => ({ fail: false }));
 vi.mock("@/lib/audit", async original => {
@@ -72,4 +73,60 @@ it("protects staging permissions, provenance and cross-tenant reads and writes",
   await expect(admin.execute(sql`delete from graphic_import_batches where id=${batchId}`)).rejects.toThrow();
   const independent = await stageGraphicImport(contexts[1], file, mapping);
   expect(independent.batch.id).not.toBe(batchId);
+});
+
+it("imports reviewed historical sales without fabricating OS approval or cash, rolls back failure and resolves review work", async () => {
+  const rollback = new Error("Rollback historical fixture");
+  await expect(withTenantDb(contexts[0], async tx => {
+    const area = randomUUID(), position = randomUUID(), employee = randomUUID(), client = randomUUID();
+    await tx.execute(sql`insert into areas (id,organization_id,name) values (${area},${orgs[0]},'Import')`);
+    await tx.execute(sql`insert into positions (id,organization_id,name) values (${position},${orgs[0]},'Import')`);
+    await tx.execute(sql`insert into employees (id,organization_id,registration_number,full_name,position_id,area_id,employment_type,start_date,current_compensation) values (${employee},${orgs[0]},'IMPORT','Import',${position},${area},'clt','2026-01-01',1000)`);
+    await tx.execute(sql`insert into clients (id,organization_id,name,code) values (${client},${orgs[0]},'Import client','IMPORT')`);
+    const resolution = { kind: "sales", clientId: client, responsibleEmployeeId: employee, projectId: null, osNumber: "100", dueDate: "2026-10-10", competence: "2026-09", operationalStatus: "closed", amount: "100.00", date: "2026-09-22", description: "Venda histórica confirmada", reason: "Conferência da planilha original" };
+    await reviewGraphicImportRow(contexts[0], { rowId, expectedRevision: 0, resolution });
+    await expect(reviewGraphicImportRow(contexts[0], { rowId, expectedRevision: 0, resolution })).rejects.toThrow("mudou");
+    await tx.execute(sql`savepoint import_failure`);
+    audit.fail = true;
+    try { await expect(commitGraphicImport(contexts[0], { batchId, confirmed: "on" })).rejects.toThrow("Import audit failure"); }
+    finally { audit.fail = false; await tx.execute(sql`rollback to savepoint import_failure`); }
+    expect((await tx.execute(sql`select count(*)::int n from graphic_jobs where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
+    expect(await commitGraphicImport(contexts[0], { batchId, confirmed: "on" })).toMatchObject({ imported: 1, remaining: 1, status: "partial" });
+    expect(await commitGraphicImport(contexts[0], { batchId, confirmed: "on" })).toMatchObject({ imported: 0, remaining: 1 });
+    const preview = await getGraphicImport(contexts[0], batchId);
+    const imported = preview!.rows.find(row => row.id === rowId)!;
+    expect(imported).toMatchObject({ status: "imported", raw: { amount: "100,00" } });
+    expect(imported.jobId).toBeTruthy();
+    expect((await tx.execute(sql`select os_version_id,historical_import_row_id from graphic_sales where job_id=${imported.jobId}`)).rows).toEqual([{ os_version_id: null, historical_import_row_id: rowId }]);
+    expect((await tx.execute(sql`select received_amount,due_date from financial_entries where id=${imported.entryId}`)).rows).toEqual([{ received_amount: "0.00", due_date: "2026-10-10" }]);
+    expect((await tx.execute(sql`select count(*)::int n from financial_transactions where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
+    const pending = preview!.rows.find(row => row.id !== rowId)!;
+    await ignoreGraphicImportRow(contexts[0], { rowId: pending.id, expectedRevision: 0, reason: "Linha inválida não representa venda confirmada" });
+    expect(await commitGraphicImport(contexts[0], { batchId, confirmed: "on" })).toMatchObject({ imported: 0, remaining: 0, status: "complete" });
+    expect((await tx.execute(sql`select status from work_items where organization_id=${orgs[0]} and source_id=${pending.id}`)).rows).toEqual([{ status: "resolved" }]);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+
+it("requires finance permission for importing cash and preserves unallocated imported movements", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: ["graphics.import", "finance.write"] };
+  const rollback = new Error("Rollback cash fixture");
+  await expect(withTenantDb(context, async tx => {
+    const accountId = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${accountId},${orgs[0]},'Import account','bank')`);
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("Caixa").addRows([["Data", "Valor"], ["2026-09-22", 200]]);
+    const upload = new File([new Uint8Array(await workbook.xlsx.writeBuffer())], "caixa.xlsx");
+    const staged = await stageGraphicImport(context, upload, { blocks: [{ kind: "incoming", sheet: "Caixa", firstRow: 2, lastRow: 2, columns: { date: 1, amount: 2 } }] });
+    const preview = await getGraphicImport(context, staged.batch.id);
+    const resolution = { kind: "incoming", amount: "200", date: "2026-09-22", description: "Recebimento histórico", reason: "Conferido extrato", accountId, clientId: null, supplierId: null, counterpartyName: "Origem não identificada", reference: "859 e 856" };
+    await expect(reviewGraphicImportRow(contexts[0], { rowId: preview!.rows[0].id, expectedRevision: 0, resolution })).rejects.toThrow();
+    await reviewGraphicImportRow(context, { rowId: preview!.rows[0].id, expectedRevision: 0, resolution });
+    expect(await commitGraphicImport(context, { batchId: staged.batch.id, confirmed: "on" })).toMatchObject({ imported: 1, status: "complete" });
+    const cash = await tx.execute(sql`select origin,status,import_metadata from financial_transactions where organization_id=${orgs[0]}`);
+    expect(cash.rows).toHaveLength(1);
+    expect(cash.rows[0]).toMatchObject({ origin: "import", status: "pending_reconciliation", import_metadata: { sourceSheet: "Caixa", sourceRow: 2 } });
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where organization_id=${orgs[0]}`)).rows).toEqual([{ n: 0 }]);
+    throw rollback;
+  })).rejects.toBe(rollback);
 });

@@ -1,0 +1,5 @@
+ALTER TABLE "graphic_sales" ALTER COLUMN "os_version_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "graphic_sales" ADD COLUMN "historical_import_row_id" uuid;--> statement-breakpoint
+ALTER TABLE "graphic_sales" ADD CONSTRAINT "graphic_sales_import_tenant_fk" FOREIGN KEY ("organization_id","historical_import_row_id") REFERENCES "public"."graphic_import_rows"("organization_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "graphic_sales_import_idx" ON "graphic_sales" USING btree ("organization_id","historical_import_row_id");--> statement-breakpoint
+ALTER TABLE "graphic_sales" ADD CONSTRAINT "graphic_sales_origin_check" CHECK (("graphic_sales"."os_version_id" is not null and "graphic_sales"."historical_import_row_id" is null) or ("graphic_sales"."os_version_id" is null and "graphic_sales"."historical_import_row_id" is not null));

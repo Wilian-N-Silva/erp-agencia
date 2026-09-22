@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { graphicSaleMoney } from "./sale-rules";
+import { isoDateSchema, isoMonthSchema } from "@/lib/validation";
 
 export const graphicImportKinds = ["sales", "outgoing", "incoming"] as const;
 export const graphicImportFields = ["osNumber", "date", "amount", "description", "client", "supplier", "project", "reference"] as const;
@@ -30,3 +32,20 @@ export type GraphicImportRow = {
   issues: string[];
 };
 export class GraphicImportError extends Error {}
+
+const nullableUuid = z.string().uuid().nullable();
+const commonResolution = {
+  amount: graphicSaleMoney, date: isoDateSchema, description: z.string().trim().min(3).max(180),
+  reason: z.string().trim().min(3).max(1000),
+};
+export const graphicImportResolutionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("sales"), ...commonResolution, clientId: z.string().uuid(), responsibleEmployeeId: z.string().uuid(), projectId: nullableUuid,
+    osNumber: z.string().trim().max(80), dueDate: isoDateSchema, competence: isoMonthSchema,
+    operationalStatus: z.enum(["supplier_sourcing", "delivered", "closed"]) }),
+  z.strictObject({ kind: z.enum(["incoming", "outgoing"]), ...commonResolution, accountId: z.string().uuid(), clientId: nullableUuid, supplierId: nullableUuid,
+    counterpartyName: z.string().trim().max(160), reference: z.string().trim().max(160) }),
+]);
+export const reviewGraphicImportRowSchema = z.strictObject({
+  rowId: z.string().uuid(), expectedRevision: z.number().int().min(0),
+  resolution: graphicImportResolutionSchema,
+});

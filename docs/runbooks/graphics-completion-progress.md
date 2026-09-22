@@ -14,7 +14,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
-- GRF-013: em andamento — parser XLSX e staging persistente implementados; interface de revisão, confirmação e relatório ainda pendentes.
+- GRF-013: em andamento — parser, staging e DAL de revisão/confirmação implementados; interface, relatório e E2E ainda pendentes.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
 
 Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
@@ -101,3 +101,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - DAL prepara a prévia em transação, com auditoria e inserts em lotes de 200 linhas. Reenvio do mesmo arquivo/mapeamento reutiliza a prévia, inclusive sob concorrência; mudança de mapeamento do mesmo arquivo é recusada para evitar duplicação. Nenhum trabalho, título ou movimentação é criado nesta fase.
 - Testes de banco provam rollback em falha de auditoria, concorrência idempotente, ausência de writes financeiros, RBAC, isolamento por organização e sem contexto, proteção dos valores originais, mesma planilha independente em outra organização e upgrade preservando registros antigos.
 - Interface, revisão de referências, confirmação dos dados finais, pendências/relatório e E2E da importação permanecem obrigatórios; GRF-013 não está concluída.
+
+## Progresso GRF-013 — revisão e confirmação no DAL — 22/09/2026
+
+- Revisão explícita com controle de versão por linha e validação de referências tenant. Vendas exigem cliente, responsável, vencimento, competência e situação operacional escolhidos pelo usuário. Caixa exige também finance.write e conta ativa; contraparte é opcional, sem vínculo inferido por OS.
+- Migração 0042 permite origem histórica explícita em graphic_sales por FK para a linha de importação. Uma venda deve ter exatamente uma origem: versão de OS ou linha histórica. Fluxo novo continua exigindo OS aprovada; histórico não fabrica documento, aprovação ou recebimento.
+- Confirmação transacional processa até 100 linhas revisadas por chamada. Vendas criam trabalho, venda e AR vinculada; entradas/saídas criam movimentações com proveniência e pendência de conciliação. Reenvio não recria registros. Linhas não revisadas geram work item; ignorar exige motivo e preserva os dados brutos.
+- Testes focados aprovados: rollback de auditoria, reenvio idempotente, saldo de AR sem caixa automático, histórico sem OS fictícia, caixa sem alocações inventadas, permissão financeira adicional, pendências/resolução e upgrade até 0042. Interface, relatório e E2E ainda necessários para concluir a task.
