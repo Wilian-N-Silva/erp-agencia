@@ -1,5 +1,11 @@
 # Runbook: production environment provisioning
 
+> Situação em 22/09/2026: uso da Vercel suspenso pelo responsável após remoção do
+> banco remoto. Este runbook preserva a arquitetura anterior; não prova recursos
+> ativos. Para reinstalar, comece por [environment-setup.md](environment-setup.md).
+> `.env.production.example` agora contém apenas runtime. As variáveis de
+> migration/seed dos passos abaixo pertencem ao ambiente administrativo separado.
+
 Target: `https://app.formulagroup.com.br` on Vercel + Neon + Cloudflare R2.
 
 Mirrors `staging-setup.md` but with prod-specific defaults (separate OAuth client, separate DB, separate R2 bucket, separate secrets, demo seed disabled). Run this only after staging is green (`docs/runbooks/staging-setup.md`).
