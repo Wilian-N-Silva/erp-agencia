@@ -1,27 +1,34 @@
 import { Paperclip, Plus, Receipt } from "lucide-react";
-import { redirect } from "next/navigation";
 
-import { ActionSheet, Button, Card, EmptyState, StatusBadge } from "@/components/fg";
-import { MoneyInput } from "@/components/fg";
+import {
+  ActionSheet,
+  Button,
+  Card,
+  EmptyState,
+  MoneyInput,
+  RateLimitedActionForm,
+  StatusBadge,
+} from "@/components/fg";
 import { createReimbursementAction } from "@/features/portal/actions";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
 import { listReimbursements, type ReimbursementListItem } from "@/features/portal/dal";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import {
   reimbursementCategories,
   reimbursementStatusLabels,
   type ReimbursementStatus,
 } from "@/features/portal/rules";
 import { formatDate, formatMoney } from "@/features/finance/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalReimbursementsPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const reimbursements = await listReimbursements(context, { ownOnly: true });
+  const reimbursements = await listReimbursements(access.context, { ownOnly: true });
 
   return (
     <>
@@ -95,9 +102,8 @@ function NewReimbursementSheet() {
         </Button>
       }
     >
-      <form
+      <RateLimitedActionForm
         action={createReimbursementAction}
-        encType="multipart/form-data"
         style={{ display: "flex", flexDirection: "column", gap: 14 }}
       >
         <div className="fg-field">
@@ -173,7 +179,7 @@ function NewReimbursementSheet() {
             Enviar para aprovação
           </Button>
         </div>
-      </form>
+      </RateLimitedActionForm>
     </ActionSheet>
   );
 }

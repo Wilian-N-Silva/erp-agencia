@@ -12,7 +12,7 @@ import {
   isVacationExpiring,
   validateSoldDays,
 } from "@/features/timeoff/rules";
-import { createAccessContext } from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
 describe("CLT vacation balance rules", () => {
   describe("computeVacationPeriod", () => {

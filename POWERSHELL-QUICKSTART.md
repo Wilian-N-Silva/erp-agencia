@@ -1,43 +1,37 @@
-# Codex Orchestrator - PowerShell Quick Start
+# PowerShell Quick Start - Codex Orchestrator v2
 
-Use **PowerShell only** for this orchestrator. Do not run the scripts from Bash/Git Bash.
+Use somente PowerShell neste projeto.
 
-## 1. Validate the scripts
+## 1. Preparar a sessao
 
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Get-ChildItem .\scripts\*.ps1 | Unblock-File
 .\scripts\codex-selfcheck.ps1
 ```
 
-Do not continue unless it prints `SELF-CHECK PASSED`.
-
-## 2. Check status
+## 2. Ver status
 
 ```powershell
 .\scripts\codex-status.ps1
 ```
 
-## 3. Run one task first
+## 3. Executar uma task
 
 ```powershell
 .\scripts\codex-orchestrator.ps1 -MaxTasks 1 -Push
 ```
 
-## 4. Check status again
+Tasks com gate `test:db` agora usam automaticamente o container `erp-agencia-postgres`, recriam `erp_agencia_test`, aplicam migrations e executam a suite.
 
-```powershell
-.\scripts\codex-status.ps1
-```
+## 4. Retomada automatica
 
-## 5. Run a larger batch after the first cycle succeeds
+Se uma execucao do Codex terminar com exit code diferente de zero, mas tiver produzido alteracoes, a worktree e preservada. Ao rodar o orquestrador novamente, o worker retoma as alteracoes existentes, roda os gates e nao chama o Codex de implementacao novamente.
 
-```powershell
-.\scripts\codex-orchestrator.ps1 -MaxTasks 3 -Push
-```
-
-## 6. Review the integration candidate
+## 5. Review agregado
 
 ```powershell
 .\scripts\codex-integration-review.ps1
 ```
 
-The orchestrator creates/reuses `feature/codex-integration`, integrates task branches into it, and never merges it into `development`.
+Nenhum script faz merge em `development`.

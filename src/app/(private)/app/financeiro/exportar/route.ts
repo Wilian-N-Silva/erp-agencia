@@ -1,10 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ZodError } from "zod";
 
 import { buildFinanceCsv } from "@/features/finance/export";
 import { getFinanceDashboard } from "@/features/finance/dal";
-import { normalizeFinanceFilters } from "@/features/finance/rules";
+import { parseFinanceExportFilters } from "@/features/finance/rules";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  reportRateLimitSecurityEvent,
+  toRateLimitResponse,
+} from "@/lib/rate-limit";
 import { can } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
@@ -20,9 +26,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/acesso-negado", request.url));
   }
 
-  const filters = normalizeFinanceFilters(
-    Object.fromEntries(request.nextUrl.searchParams.entries()),
-  );
+  try {
+    await enforceAuthenticatedRateLimit("export", context);
+  } catch (error) {
+    await reportRateLimitSecurityEvent(error);
+    const response = toRateLimitResponse(error);
+    if (response) return response;
+    throw error;
+  }
+
+  let filters;
+  try {
+    filters = parseFinanceExportFilters(request.nextUrl.searchParams);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return invalidFiltersResponse();
+    }
+    throw error;
+  }
   const dashboard = await getFinanceDashboard(context, { filters });
   const csv = buildFinanceCsv(dashboard);
   const auditMetadata = getRequestAuditMetadata(request.headers);
@@ -47,4 +68,16 @@ export async function GET(request: NextRequest) {
       "content-type": "text/csv; charset=utf-8",
     },
   });
+}
+
+function invalidFiltersResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        code: "INVALID_EXPORT_FILTERS",
+        message: "Filtros de exportacao invalidos.",
+      },
+    },
+    { status: 400 },
+  );
 }

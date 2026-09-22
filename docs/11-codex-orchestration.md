@@ -27,7 +27,7 @@ As branches de task são preservadas. O orquestrador nunca faz merge em `develop
 - `scripts/codex-orchestrator.ps1`: cria a integração, seleciona tasks e absorve branches aprovadas.
 - `scripts/codex-status.ps1`: mostra `integrated`, `ready`, `blocked`, `manual`.
 - `scripts/codex-integration-review.ps1`: review final contra `development`.
-- 
+
 
 ## Primeira execução
 
@@ -60,7 +60,8 @@ Na primeira execução o script:
 9. chama um segundo Codex em modo read-only para review;
 10. se bloqueado, permite até duas tentativas automáticas de correção;
 11. mergeia a branch da task em `feature/codex-integration`;
-12. executa os gates de integração;
+12. executa os gates de integração; se falharem, restaura a candidata ao SHA exato
+    anterior ao merge, removendo o marcador de integração da task;
 13. continua para a próxima task.
 
 Qualquer falha interrompe a cadeia por padrão. Isso evita que uma task quebrada desbloqueie dependentes.

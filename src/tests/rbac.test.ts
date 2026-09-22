@@ -3,14 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   AccessDeniedError,
   assertCan,
-  getPermissionsForRoles,
   type PermissionKey,
 } from "@/lib/rbac";
-import { canReadEmployeeTarget, createAccessContext } from "@/lib/dal";
+import { getSeedPermissionsForRoles } from "@/lib/db/seed-role-permissions";
+import {
+  canReadEmployeeTarget,
+  createAccessContext as createRuntimeAccessContext,
+} from "@/lib/dal";
+import { createAccessContext } from "@/tests/helpers/access-context";
 
-describe("RBAC policy", () => {
+describe("RBAC seed policy", () => {
   it("keeps technical admin away from sensitive compensation and documents by default", () => {
-    const permissions = getPermissionsForRoles(["technical_admin"]);
+    const permissions = getSeedPermissionsForRoles(["technical_admin"]);
 
     expect(permissions).toContain("settings.manage");
     expect(permissions).not.toContain("compensation.read");
@@ -19,7 +23,7 @@ describe("RBAC policy", () => {
   });
 
   it("grants finance access without personal document access", () => {
-    const permissions = getPermissionsForRoles(["finance"]);
+    const permissions = getSeedPermissionsForRoles(["finance"]);
 
     expect(permissions).toContain("finance.write");
     expect(permissions).toContain("invoices.approve");
@@ -27,7 +31,7 @@ describe("RBAC policy", () => {
   });
 
   it("limits employees to own-scope permissions", () => {
-    const permissions = getPermissionsForRoles(["employee"]);
+    const permissions = getSeedPermissionsForRoles(["employee"]);
 
     expect(permissions).toContain("people.read_own");
     expect(permissions).toContain("reimbursements.read_own");
@@ -41,6 +45,17 @@ describe("RBAC policy", () => {
     });
 
     expect(() => assertCan("finance.read", context)).toThrow(AccessDeniedError);
+  });
+
+  it("does not infer runtime permissions from role names", () => {
+    const context = createRuntimeAccessContext({
+      permissions: [],
+      roles: ["finance"],
+      userId: "user_1",
+    });
+
+    expect(context.roles).toEqual(["finance"]);
+    expect(context.permissions).toEqual([]);
   });
 });
 

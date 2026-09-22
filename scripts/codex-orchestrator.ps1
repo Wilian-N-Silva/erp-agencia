@@ -11,7 +11,8 @@ param(
     [switch]$NoSyncDevelopment
 )
 
-. "$PSScriptRoot/codex-common.ps1"
+$commonScript = Join-Path $PSScriptRoot "codex-common.ps1"
+. $commonScript
 $repoRoot = Get-ErpRepoRoot
 Set-Location $repoRoot
 Ensure-LocalExclude -RepoRoot $repoRoot
@@ -112,9 +113,7 @@ function Get-TaskRef {
 function Test-TaskIntegrated {
     param($TaskDef)
     if ($TaskDef.seeded) { return $true }
-    $ref = Get-TaskRef -TaskDef $TaskDef
-    if (-not $ref) { return $false }
-    return (Test-GitAncestor -RepoRoot $repoRoot -Ancestor $ref -Descendant $IntegrationBranch)
+    return (Test-TaskIntegrationMarker -RepoRoot $repoRoot -IntegrationBranch $IntegrationBranch -TaskId ([string]$TaskDef.id))
 }
 
 function Test-DependenciesIntegrated {
@@ -141,7 +140,9 @@ while ($true) {
     $taskId = [string]$next.id
     Write-Host ""; Write-Host "========== $taskId - $($next.title) ==========" -ForegroundColor Cyan
 
-    & "$PSScriptRoot/codex-worker.ps1" -Task $taskId -IntegrationBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model -MaxFixAttempts $MaxFixAttempts -SkipAutomatedReview:$SkipAutomatedReview
+    $workerScript = Join-Path $PSScriptRoot "codex-worker.ps1"
+    if (-not (Test-Path $workerScript)) { throw "Worker nao encontrado: $workerScript" }
+    & $workerScript -Task $taskId -IntegrationBranch $IntegrationBranch -CatalogPath $CatalogPath -Model $Model -MaxFixAttempts $MaxFixAttempts -SkipAutomatedReview:$SkipAutomatedReview
     $workerExit = $LASTEXITCODE
     if ($workerExit -ne 0) {
         $failedThisRun.Add($taskId)
@@ -153,22 +154,45 @@ while ($true) {
     Invoke-GitChecked -Path $repoRoot checkout $IntegrationBranch
     Assert-GitClean -Path $repoRoot
     $taskBranch = [string]$next.branch
+    $preMergeIntegrationSha = (& git -C $repoRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $preMergeIntegrationSha) {
+        throw "Nao foi possivel capturar o SHA de integracao antes do merge de $taskId."
+    }
     Write-Host "[$taskId] Merge automatico em $IntegrationBranch..." -ForegroundColor Green
     Push-Location $repoRoot
     try {
         & git merge --no-ff $taskBranch -m "merge(codex): integrate $taskId"
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Conflito ao integrar $taskId. A branch $taskBranch foi preservada; development nao foi alterada."
+            & git merge --abort 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                & git reset --hard $preMergeIntegrationSha
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao restaurar $IntegrationBranch apos merge falho de $taskId." }
+            }
+            $headAfterAbort = (& git rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0 -or $headAfterAbort -ne $preMergeIntegrationSha) {
+                & git reset --hard $preMergeIntegrationSha
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao restaurar o SHA pre-merge de $IntegrationBranch." }
+            }
+            Write-Host "Conflito ao integrar $taskId. Merge abortado; $IntegrationBranch voltou a $preMergeIntegrationSha e development nao foi alterada." -ForegroundColor Red
             exit 40
         }
     }
     finally { Pop-Location }
 
     $integrationGateLog = Join-Path $repoRoot ".codex-orchestrator/integration-$($taskId.ToLowerInvariant())-gates.log"
-    $integrationOk = Invoke-TaskGates -WorktreePath $repoRoot -Gates @("typecheck","lint","test") -LogPath $integrationGateLog
+    $integrationGates = @("typecheck","lint","test") + @($next.gates)
+    $integrationGates = @($integrationGates | Select-Object -Unique)
+    $integrationOk = Invoke-TaskGates -WorktreePath $repoRoot -Gates $integrationGates -LogPath $integrationGateLog -BaseRef $BaseBranch
     if (-not $integrationOk) {
+        Push-Location $repoRoot
+        try {
+            & git reset --hard $preMergeIntegrationSha
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao restaurar $IntegrationBranch para $preMergeIntegrationSha apos gates de integracao." }
+        }
+        finally { Pop-Location }
+        Assert-GitClean -Path $repoRoot
         Write-OrchestratorRunRecord -RepoRoot $repoRoot -TaskId $taskId -Data @{ status="integration_gates_failed"; branch=$taskBranch; integrationBranch=$IntegrationBranch; gateLog=$integrationGateLog } | Out-Null
-        Write-Error "Gates falharam depois do merge em $IntegrationBranch. Pare e revise o merge; development continua intacta."
+        Write-Host "Gates falharam depois do merge. $IntegrationBranch voltou ao SHA pre-merge; nenhum marcador integrou $taskId e development continua intacta." -ForegroundColor Red
         exit 41
     }
 

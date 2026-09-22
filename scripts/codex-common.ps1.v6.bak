@@ -1,0 +1,490 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Get-ErpRepoRoot {
+    $root = (& git rev-parse --show-toplevel 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $root) {
+        throw "Execute o script dentro do repositorio Git do ERP."
+    }
+    return $root.Trim()
+}
+
+function Assert-GitClean {
+    param([string]$Path)
+    Push-Location $Path
+    try {
+        $status = (& git status --porcelain)
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao ler git status." }
+        if ($status) {
+            throw "Worktree nao esta limpa em '$Path'. Commit/stash/reverta as alteracoes antes de orquestrar.`n$status"
+        }
+    }
+    finally { Pop-Location }
+}
+
+function Test-WorktreeHasChanges {
+    param([string]$Path)
+    Push-Location $Path
+    try {
+        $status = (& git status --porcelain)
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao ler git status em '$Path'." }
+        return [bool]$status
+    }
+    finally { Pop-Location }
+}
+
+function Get-CommitAheadCount {
+    param([string]$Path, [string]$BaseRef)
+    Push-Location $Path
+    try {
+        $raw = (& git rev-list --count "$BaseRef..HEAD")
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao comparar HEAD com '$BaseRef'." }
+        return [int]$raw.Trim()
+    }
+    finally { Pop-Location }
+}
+
+function Invoke-GitChecked {
+    param(
+        [string]$Path,
+        [Parameter(ValueFromRemainingArguments=$true)]
+        [string[]]$GitArgs
+    )
+    Push-Location $Path
+    try {
+        & git @GitArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "git $($GitArgs -join ' ') falhou com exit code $LASTEXITCODE."
+        }
+    }
+    finally { Pop-Location }
+}
+
+function Test-GitRef {
+    param([string]$RepoRoot, [string]$Ref)
+    Push-Location $RepoRoot
+    try {
+        & git show-ref --verify --quiet $Ref
+        return ($LASTEXITCODE -eq 0)
+    }
+    finally { Pop-Location }
+}
+
+function Test-GitAncestor {
+    param([string]$RepoRoot, [string]$Ancestor, [string]$Descendant)
+    Push-Location $RepoRoot
+    try {
+        & git merge-base --is-ancestor $Ancestor $Descendant 2>$null
+        return ($LASTEXITCODE -eq 0)
+    }
+    finally { Pop-Location }
+}
+
+function Test-TaskIntegrationMarker {
+    param(
+        [string]$RepoRoot,
+        [string]$IntegrationBranch,
+        [string]$TaskId
+    )
+    if (-not (Test-GitRef -RepoRoot $RepoRoot -Ref "refs/heads/$IntegrationBranch")) { return $false }
+    Push-Location $RepoRoot
+    try {
+        $subject = "merge(codex): integrate $TaskId"
+        $matches = @(& git log $IntegrationBranch --fixed-strings --grep=$subject --format=%s 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        return ($matches -contains $subject)
+    }
+    finally { Pop-Location }
+}
+
+function Get-TaskCatalog {
+    param([string]$RepoRoot, [string]$CatalogPath = "docs/codex/tasks.json")
+    $full = Join-Path $RepoRoot $CatalogPath
+    if (-not (Test-Path $full)) { throw "Catalogo nao encontrado: $full" }
+    return (Get-Content -Raw -Encoding UTF8 $full | ConvertFrom-Json)
+}
+
+function Get-TaskById {
+    param($Catalog, [string]$TaskId)
+    $task = $Catalog.tasks | Where-Object { $_.id -eq $TaskId } | Select-Object -First 1
+    if (-not $task) { throw "Task '$TaskId' nao existe no catalogo." }
+    return $task
+}
+
+function Get-WorktreeRoot {
+    param([string]$RepoRoot)
+    $parent = Split-Path $RepoRoot -Parent
+    $name = Split-Path $RepoRoot -Leaf
+    return (Join-Path $parent "$name-codex-worktrees")
+}
+
+function Get-WorktreePath {
+    param([string]$RepoRoot, [string]$TaskId)
+    $root = Get-WorktreeRoot -RepoRoot $RepoRoot
+    return (Join-Path $root $TaskId.ToLowerInvariant())
+}
+
+function Ensure-LocalExclude {
+    param([string]$RepoRoot)
+    $exclude = Join-Path $RepoRoot ".git/info/exclude"
+    $dir = Split-Path $exclude -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    if (-not (Test-Path $exclude)) { New-Item -ItemType File -Path $exclude | Out-Null }
+    $current = Get-Content $exclude -ErrorAction SilentlyContinue
+    foreach ($line in @(".codex-orchestrator/", ".codex-results/")) {
+        if ($current -notcontains $line) { Add-Content -Encoding UTF8 -Path $exclude -Value $line }
+    }
+}
+
+function ConvertTo-WindowsCommandLineArgument {
+    param([AllowEmptyString()][string]$Argument)
+
+    if ($null -eq $Argument -or $Argument.Length -eq 0) { return '""' }
+    if ($Argument -notmatch '[\s"]') { return $Argument }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+
+    foreach ($char in $Argument.ToCharArray()) {
+        if ($char -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($char -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+            }
+            [void]$builder.Append('\"')
+            $backslashes = 0
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+        [void]$builder.Append($char)
+    }
+
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Get-NativeCommandPath {
+    param([string]$CommandName)
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $command) { throw "Comando '$CommandName' nao encontrado no PATH." }
+
+    if ($command.CommandType -eq 'Application') {
+        return $command.Source
+    }
+
+    throw "'$CommandName' precisa resolver para um executavel nativo. Resolvido como $($command.CommandType): $($command.Source)"
+}
+
+function New-NativeProcessStartInfo {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FileName
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $false
+    if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
+    $psi.Arguments = (($Arguments | ForEach-Object { ConvertTo-WindowsCommandLineArgument $_ }) -join ' ')
+    return $psi
+}
+
+function Invoke-NativeCaptureProcess {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory = ""
+    )
+
+    $psi = New-NativeProcessStartInfo -FileName $FileName -Arguments $Arguments -WorkingDirectory $WorkingDirectory
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Falha ao iniciar '$FileName'." }
+
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdoutTask.Wait()
+    $stderrTask.Wait()
+
+    return [pscustomobject]@{
+        ExitCode = [int]$process.ExitCode
+        StdOut   = [string]$stdoutTask.Result
+        StdErr   = [string]$stderrTask.Result
+    }
+}
+
+function Invoke-NativeConsoleProcess {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory = ""
+    )
+
+    # Do not pipe native stdout/stderr through PowerShell. Windows PowerShell 5.1
+    # can promote native stderr to NativeCommandError when ErrorActionPreference=Stop.
+    # Inheriting the console keeps Codex output live and leaves failure detection to
+    # the real native process ExitCode.
+    $psi = New-NativeProcessStartInfo -FileName $FileName -Arguments $Arguments -WorkingDirectory $WorkingDirectory
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Falha ao iniciar '$FileName'." }
+    $process.WaitForExit()
+    return [int]$process.ExitCode
+}
+
+function Get-CodexHelpText {
+    param([string[]]$Arguments)
+    $codexPath = Get-NativeCommandPath -CommandName "codex"
+    $result = Invoke-NativeCaptureProcess -FileName $codexPath -Arguments $Arguments
+    if ($result.ExitCode -ne 0) {
+        throw "codex $($Arguments -join ' ') falhou com exit code $($result.ExitCode).`n$($result.StdErr)"
+    }
+    return ($result.StdOut + "`n" + $result.StdErr)
+}
+
+function Get-CodexBaseArgs {
+    param([ValidateSet("workspace-write","read-only")][string]$Sandbox, [string]$Model)
+    $topHelp = Get-CodexHelpText -Arguments @("--help")
+    $execHelp = Get-CodexHelpText -Arguments @("exec", "--help")
+    $args = @()
+    if ($topHelp -match "--ask-for-approval" -or $topHelp -match "-a,") {
+        $args += @("-a", "never")
+    }
+    if ($Model) { $args += @("-m", $Model) }
+    $args += "exec"
+    if ($execHelp -match "--sandbox") { $args += @("--sandbox", $Sandbox) }
+    return ,$args
+}
+
+function Invoke-CodexExec {
+    param(
+        [string]$WorkingDirectory,
+        [string]$Prompt,
+        [string]$OutputFile,
+        [ValidateSet("workspace-write","read-only")][string]$Sandbox = "workspace-write",
+        [string]$Model = ""
+    )
+
+    $codexPath = Get-NativeCommandPath -CommandName "codex"
+    $args = Get-CodexBaseArgs -Sandbox $Sandbox -Model $Model
+    $execHelp = Get-CodexHelpText -Arguments @("exec", "--help")
+    if ($OutputFile) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $OutputFile -Parent) | Out-Null
+        if ($execHelp -match "--output-last-message") {
+            $args += @("--output-last-message", $OutputFile)
+        }
+        elseif ($execHelp -match "-o,") {
+            $args += @("-o", $OutputFile)
+        }
+    }
+    $args += $Prompt
+
+    $exitCode = Invoke-NativeConsoleProcess -FileName $codexPath -Arguments $args -WorkingDirectory $WorkingDirectory
+    if ($null -eq $exitCode) { throw "Codex terminou sem fornecer exit code." }
+    return [int]$exitCode
+}
+
+function Get-NpmCommand {
+    if (Get-Command npm.cmd -ErrorAction SilentlyContinue) { return "npm.cmd" }
+    if (Get-Command npm -ErrorAction SilentlyContinue) { return "npm" }
+    throw "npm nao encontrado no PATH."
+}
+
+function Initialize-CodexTestDatabase {
+    param(
+        [string]$WorktreePath,
+        [string]$ContainerName = $(if ($env:CODEX_TEST_DB_CONTAINER) { $env:CODEX_TEST_DB_CONTAINER } else { "erp-agencia-postgres" }),
+        [string]$DatabaseName = $(if ($env:CODEX_TEST_DB_NAME) { $env:CODEX_TEST_DB_NAME } else { "erp_agencia_test" }),
+        [string]$DatabaseUser = $(if ($env:CODEX_TEST_DB_USER) { $env:CODEX_TEST_DB_USER } else { "erp" }),
+        [string]$DatabasePassword = $(if ($env:CODEX_TEST_DB_PASSWORD) { $env:CODEX_TEST_DB_PASSWORD } else { "erp" }),
+        [string]$MigratorRole = $(if ($env:CODEX_TEST_MIGRATOR_ROLE) { $env:CODEX_TEST_MIGRATOR_ROLE } else { "codex_test_migrator" }),
+        [string]$MigratorPassword = $(if ($env:CODEX_TEST_MIGRATOR_PASSWORD) { $env:CODEX_TEST_MIGRATOR_PASSWORD } else { [Guid]::NewGuid().ToString("N") }),
+        [string]$AppRole = $(if ($env:CODEX_TEST_APP_ROLE) { $env:CODEX_TEST_APP_ROLE } else { "codex_test_app" }),
+        [string]$AppPassword = $(if ($env:CODEX_TEST_APP_PASSWORD) { $env:CODEX_TEST_APP_PASSWORD } else { [Guid]::NewGuid().ToString("N") }),
+        [int]$HostPort = $(if ($env:CODEX_TEST_DB_PORT) { [int]$env:CODEX_TEST_DB_PORT } else { 55432 })
+    )
+
+    if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_NAME invalido." }
+    if ($DatabaseUser -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_DB_USER invalido." }
+    if ($MigratorRole -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_MIGRATOR_ROLE invalido." }
+    if ($AppRole -notmatch '^[A-Za-z0-9_]+$') { throw "CODEX_TEST_APP_ROLE invalido." }
+    if ($MigratorRole -eq $AppRole) { throw "As roles de migracao e runtime devem ser diferentes." }
+    if (-not $MigratorPassword -or $MigratorPassword -match "[`r`n`0]") { throw "CODEX_TEST_MIGRATOR_PASSWORD invalido." }
+    if (-not $AppPassword -or $AppPassword -match "[`r`n`0]") { throw "CODEX_TEST_APP_PASSWORD invalido." }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker nao encontrado no PATH." }
+
+    $running = (& docker inspect -f "{{.State.Running}}" $ContainerName 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $running -ne "true") {
+        Write-Host "Test DB: iniciando servico postgres via docker compose..." -ForegroundColor DarkCyan
+        Push-Location $WorktreePath
+        try {
+            & docker compose up -d postgres
+            if ($LASTEXITCODE -ne 0) { throw "docker compose up -d postgres falhou." }
+        }
+        finally { Pop-Location }
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        & docker exec $ContainerName pg_isready -U $DatabaseUser -d postgres *> $null
+        if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) { throw "Postgres do container '$ContainerName' nao ficou pronto." }
+
+    Write-Host "Test DB: resetando $DatabaseName..." -ForegroundColor DarkCyan
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DatabaseName WITH (FORCE);"
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao remover DB de teste '$DatabaseName'." }
+
+    $migratorPasswordSql = $MigratorPassword.Replace("'", "''")
+    $appPasswordSql = $AppPassword.Replace("'", "''")
+    $roleSql = @"
+DO `$`$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$MigratorRole') THEN
+        CREATE ROLE $MigratorRole;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$AppRole') THEN
+        CREATE ROLE $AppRole;
+    END IF;
+END
+`$`$;
+ALTER ROLE $MigratorRole WITH LOGIN PASSWORD '$migratorPasswordSql' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;
+ALTER ROLE $AppRole WITH LOGIN PASSWORD '$appPasswordSql' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c $roleSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar roles separadas do DB de teste." }
+
+    & docker exec $ContainerName psql -U $DatabaseUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DatabaseName OWNER $MigratorRole;"
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao criar DB de teste '$DatabaseName'." }
+
+    $defaultPrivilegesSql = @"
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO $AppRole;
+ALTER DEFAULT PRIVILEGES FOR ROLE $MigratorRole IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $AppRole;
+ALTER DEFAULT PRIVILEGES FOR ROLE $MigratorRole IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO $AppRole;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d $DatabaseName -v ON_ERROR_STOP=1 -c $defaultPrivilegesSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar privilegios default do DB de teste." }
+
+    $encodedMigratorPassword = [Uri]::EscapeDataString($MigratorPassword)
+    $encodedAppPassword = [Uri]::EscapeDataString($AppPassword)
+    $adminUrl = "postgresql://${MigratorRole}:${encodedMigratorPassword}@127.0.0.1:${HostPort}/${DatabaseName}"
+    $appUrl = "postgresql://${AppRole}:${encodedAppPassword}@127.0.0.1:${HostPort}/${DatabaseName}"
+    $env:DATABASE_TEST_ADMIN_URL = $adminUrl
+    $env:DATABASE_DIRECT_URL = $adminUrl
+    $env:DATABASE_TEST_URL = $appUrl
+    $env:DATABASE_URL = $appUrl
+
+    Write-Host "Test DB: aplicando migrations..." -ForegroundColor DarkCyan
+    $npm = Get-NpmCommand
+    Push-Location $WorktreePath
+    try {
+        & $npm run db:migrate
+        if ($LASTEXITCODE -ne 0) { throw "db:migrate falhou no banco de teste." }
+    }
+    finally { Pop-Location }
+
+    $runtimePrivilegesSql = @"
+GRANT CONNECT ON DATABASE $DatabaseName TO $AppRole;
+GRANT USAGE ON SCHEMA public TO $AppRole;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $AppRole;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO $AppRole;
+"@
+    & docker exec $ContainerName psql -U $DatabaseUser -d $DatabaseName -v ON_ERROR_STOP=1 -c $runtimePrivilegesSql
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao conceder privilegios de runtime no DB de teste." }
+
+    Write-Host "Test DB: pronta com roles separadas de migracao e runtime." -ForegroundColor DarkCyan
+}
+
+function Invoke-TaskGates {
+    param(
+        [string]$WorktreePath,
+        [string[]]$Gates,
+        [string]$LogPath,
+        [string]$BaseRef = ""
+    )
+    $npm = Get-NpmCommand
+    $lines = New-Object System.Collections.Generic.List[string]
+    $ok = $true
+    $oldDatabaseUrl = $env:DATABASE_URL
+    $oldDatabaseDirectUrl = $env:DATABASE_DIRECT_URL
+    $oldDatabaseTestUrl = $env:DATABASE_TEST_URL
+    $oldDatabaseTestAdminUrl = $env:DATABASE_TEST_ADMIN_URL
+
+    Push-Location $WorktreePath
+    try {
+        $lines.Add("# git diff --check")
+        $out = (& git diff --check 2>&1 | Out-String)
+        $lines.Add($out)
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+        if ($ok -and $BaseRef) {
+            $lines.Add("# git diff --check $BaseRef...HEAD")
+            $out = (& git diff --check "$BaseRef...HEAD" 2>&1 | Out-String)
+            $lines.Add($out)
+            if ($LASTEXITCODE -ne 0) { $ok = $false }
+        }
+
+        foreach ($gate in $Gates) {
+            if (-not $ok) { break }
+            if ($gate -eq "test:db") {
+                Pop-Location
+                try {
+                    [void](Initialize-CodexTestDatabase -WorktreePath $WorktreePath)
+                    $lines.Add("# disposable database prepared with separate migrator and runtime roles")
+                }
+                finally { Push-Location $WorktreePath }
+            }
+            $lines.Add("# npm run $gate")
+            $out = (& $npm run $gate 2>&1 | Out-String)
+            $lines.Add($out)
+            if ($LASTEXITCODE -ne 0) { $ok = $false }
+        }
+    }
+    finally {
+        Pop-Location
+        $env:DATABASE_URL = $oldDatabaseUrl
+        $env:DATABASE_DIRECT_URL = $oldDatabaseDirectUrl
+        $env:DATABASE_TEST_URL = $oldDatabaseTestUrl
+        $env:DATABASE_TEST_ADMIN_URL = $oldDatabaseTestAdminUrl
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
+    Set-Content -Encoding UTF8 -Path $LogPath -Value ($lines -join "`n")
+    return $ok
+}
+
+function Write-OrchestratorRunRecord {
+    param([string]$RepoRoot, [string]$TaskId, [hashtable]$Data)
+    $dir = Join-Path $RepoRoot ".codex-orchestrator/runs"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $path = Join-Path $dir "$stamp-$($TaskId.ToLowerInvariant()).json"
+    $payload = [ordered]@{
+        task = $TaskId
+        at = (Get-Date).ToString("o")
+    }
+    foreach ($k in $Data.Keys) { $payload[$k] = $Data[$k] }
+    $payload | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $path
+    return $path
+}

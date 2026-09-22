@@ -23,6 +23,7 @@ import {
   StatusBadge,
   Tag,
   Toolbar,
+  useToast,
 } from "@/components/fg";
 import type { DataTableColumn, SortDir } from "@/components/fg/data-table";
 import { formatDate } from "@/features/finance/rules";
@@ -32,6 +33,10 @@ import type {
   EmploymentType,
   PeopleFilters,
 } from "@/features/people/rules";
+import {
+  downloadFile,
+  fileDownloadErrorFeedback,
+} from "@/lib/client-file-download";
 
 type FilterOption = { id: string; name: string };
 
@@ -74,6 +79,7 @@ export function PeopleView({
   initialFilters,
   canWrite,
 }: PeopleViewProps) {
+  const pushToast = useToast();
   const [search, setSearch] = useState(initialFilters.query ?? "");
   const [statusFilter, setStatusFilter] = useState<string[]>(
     initialFilters.status && initialFilters.status !== "all"
@@ -101,6 +107,7 @@ export function PeopleView({
   const [density, setDensity] = useState<"regular" | "compact">("regular");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [exporting, setExporting] = useState(false);
   const [sort, setSort] = useState<{ key: string; dir: SortDir }>({
     key: "fullName",
     dir: "asc",
@@ -201,42 +208,30 @@ export function PeopleView({
   ]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const exportFiltered = () => {
-    const rows = filtered.map((employee) => [
-      employee.registrationNumber,
-      employee.socialName || employee.fullName,
-      employee.areaName,
-      employee.positionName,
-      employmentTypeLabels[employee.employmentType],
-      employeeStatusLabels[employee.status],
-      employee.managerName ?? "",
-      formatDate(employee.startDate),
-      formatTenure(employee.tenureMonths),
-    ]);
-    const csv = [
-      [
-        "Matricula",
-        "Nome",
-        "Area",
-        "Cargo",
-        "Vinculo",
-        "Status",
-        "Gestor",
-        "Entrada",
-        "Tempo de casa",
-      ],
-      ...rows,
-    ]
-      .map((row) => row.map(escapeCsvCell).join(";"))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
+  const exportFiltered = async () => {
+    const params = buildExportSearchParams({
+      areaFilter,
+      employmentFilter,
+      positionFilter,
+      search,
+      sort,
+      statusFilter,
+    });
 
-    anchor.href = url;
-    anchor.download = "colaboradores.csv";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    setExporting(true);
+    try {
+      await downloadFile(
+        `/app/colaboradores/exportar?${params.toString()}`,
+        "colaboradores.csv",
+      );
+    } catch (error) {
+      pushToast({
+        ...fileDownloadErrorFeedback(error),
+        tone: "error",
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns: DataTableColumn<EmployeeListItem>[] = [
@@ -345,10 +340,12 @@ export function PeopleView({
             <button
               className="fg-btn fg-btn-outline fg-btn-sm"
               type="button"
+              aria-busy={exporting}
+              disabled={exporting}
               onClick={exportFiltered}
             >
               <Download size={14} aria-hidden />
-              <span>Exportar</span>
+              <span>{exporting ? "Exportando..." : "Exportar"}</span>
             </button>
             {canWrite ? (
               <Link
@@ -529,10 +526,12 @@ function employeeSortValue(employee: EmployeeListItem, key: string) {
   }
 }
 
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
 function formatTenure(months: number) {
-  if (months < 12) {
-    return `${months}m`;
-  }
+  if (months < 12) return `${months}m`;
 
   const years = Math.floor(months / 12);
   const remainingMonths = months % 12;
@@ -540,14 +539,32 @@ function formatTenure(months: number) {
   return remainingMonths === 0 ? `${years}a` : `${years}a ${remainingMonths}m`;
 }
 
-function uniqueSorted(values: string[]) {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-}
+function buildExportSearchParams(input: {
+  areaFilter: string[];
+  employmentFilter: string[];
+  positionFilter: string[];
+  search: string;
+  sort: { key: string; dir: SortDir };
+  statusFilter: string[];
+}) {
+  const params = new URLSearchParams();
 
-function escapeCsvCell(value: string) {
-  const normalized = value.replace(/\r?\n/g, " ");
+  if (input.search.trim()) params.set("q", input.search.trim());
+  params.set("sortKey", input.sort.key);
+  params.set("sortDir", input.sort.dir);
+  input.areaFilter.forEach((area) => params.append("area", area));
+  input.positionFilter.forEach((position) =>
+    params.append("position", position),
+  );
 
-  return /[;"]/.test(normalized)
-    ? `"${normalized.replace(/"/g, '""')}"`
-    : normalized;
+  Object.entries(employeeStatusLabels).forEach(([status, label]) => {
+    if (input.statusFilter.includes(label)) params.append("status", status);
+  });
+  Object.entries(employmentTypeLabels).forEach(([employmentType, label]) => {
+    if (input.employmentFilter.includes(label)) {
+      params.append("employmentType", employmentType);
+    }
+  });
+
+  return params;
 }

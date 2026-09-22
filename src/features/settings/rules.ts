@@ -8,6 +8,25 @@ export const settingLabels: Record<string, string> = {
   upload_max_bytes: "Limite de upload",
 };
 
+export const lastSettingsAdministratorError =
+  "At least one active settings administrator is required.";
+
+export function assertRoleReplacementKeepsSettingsAdministrator(input: {
+  activeSettingsAdministratorCount: number;
+  replacementHasSettingsManage: boolean;
+  targetHasSettingsManage: boolean;
+  targetIsActive: boolean;
+}) {
+  if (
+    input.targetIsActive &&
+    input.targetHasSettingsManage &&
+    !input.replacementHasSettingsManage &&
+    input.activeSettingsAdministratorCount <= 1
+  ) {
+    throw new Error(lastSettingsAdministratorError);
+  }
+}
+
 export type SettingJson =
   | null
   | string

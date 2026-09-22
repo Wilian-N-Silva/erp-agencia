@@ -21,4 +21,3 @@ Rules:
 3. Branch from `development` before changing files.
 4. Merge feature branches back into `development`.
 5. Promote `development` to `main` only for releases.
-

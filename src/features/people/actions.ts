@@ -1,8 +1,6 @@
 "use server";
 
-import { hashPassword } from "better-auth/crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import type { Route } from "next";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -11,7 +9,6 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import {
-  accounts,
   areas,
   compensationHistory,
   employeeBenefits,
@@ -19,12 +16,14 @@ import {
   lifecycleChecklistItems,
   lifecycleChecklists,
   positions,
-  roles,
-  userRoles,
-  users,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  runWithCurrentTenantDb,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput, toDateKey } from "@/features/finance/rules";
 import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
@@ -32,13 +31,11 @@ import { defaultLifecycleChecklistItems } from "@/features/lifecycle/rules";
 import {
   employeeStatusLabels,
   employmentTypeLabels,
-  formatCpfInput,
-  formatPhoneInput,
   getCompensationDifference,
   getNextRegistrationNumber,
 } from "./rules";
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const employeeStatusSchema = z.enum(
   Object.keys(employeeStatusLabels) as [
     keyof typeof employeeStatusLabels,
@@ -52,13 +49,13 @@ const employmentTypeSchema = z.enum(
   ],
 );
 
-const employeeBaseSchema = z.object({
+const employeeBaseSchema = z.strictObject({
   fullName: z.string().trim().min(1).max(180),
   socialName: optionalTextSchema(120),
   corporateEmail: optionalEmailSchema(),
   personalEmail: optionalEmailSchema(),
-  phone: optionalMaskedTextSchema(40, formatPhoneInput),
-  cpf: optionalMaskedTextSchema(20, formatCpfInput),
+  phone: optionalTextSchema(40),
+  cpf: optionalTextSchema(20),
   rg: optionalTextSchema(30),
   birthDate: optionalDateSchema(),
   address: optionalTextSchema(300),
@@ -86,7 +83,7 @@ const updateEmployeeSchema = employeeBaseSchema.extend({
   id: z.string().uuid(),
 });
 
-const updateCompensationSchema = z.object({
+const updateCompensationSchema = z.strictObject({
   employeeId: z.string().uuid(),
   newAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
   recurringCostAllowance: optionalMoneySchema(),
@@ -95,7 +92,7 @@ const updateCompensationSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-const createBenefitSchema = z.object({
+const createBenefitSchema = z.strictObject({
   employeeId: z.string().uuid(),
   benefitType: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(160),
@@ -109,22 +106,26 @@ const createBenefitSchema = z.object({
   notes: optionalTextSchema(1000),
 });
 
-const endBenefitSchema = z.object({
+const endBenefitSchema = z.strictObject({
   id: z.string().uuid(),
   employeeId: z.string().uuid(),
 });
 
-const createEmployeeAccessSchema = z.object({
-  employeeId: z.string().uuid(),
-  email: z.string().trim().toLowerCase().email().max(180),
-  password: z.string().min(8).max(200),
-});
-
 export async function createEmployeeAction(formData: FormData) {
+  const redirectTo = await runWithCurrentTenantDb(() =>
+    createEmployee(formData),
+  );
+
+  redirect(redirectTo as Route);
+}
+
+async function createEmployee(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterWithCompensationContext();
   const shouldCreateOnboardingChecklist = formData.get("createOnboardingChecklist") === "on";
   const redirectTo = normalizeRedirectPath(formData.get("redirectTo"));
-  const input = createEmployeeSchema.parse(formDataToObject(formData));
+  const input = createEmployeeSchema.parse(
+    formDataToObject(formData, ["createOnboardingChecklist", "redirectTo"]),
+  );
   await assertAreaPositionAndManager(input, organizationId);
   const registrationNumber = await getNextRegistrationForOrganization(organizationId);
 
@@ -211,14 +212,10 @@ export async function createEmployeeAction(formData: FormData) {
   revalidatePath("/app/colaboradores");
   revalidatePath("/app/colaboradores/admissoes");
 
-  if (redirectTo) {
-    redirect(redirectTo as Route);
-  }
-
-  redirect(`/app/colaboradores/${employee.id}`);
+  return redirectTo ?? `/app/colaboradores/${employee.id}`;
 }
 
-export async function updateEmployeeAction(formData: FormData) {
+async function updateEmployeeAction(formData: FormData) {
   const { context, organizationId } = await requirePeopleWriterContext();
   const input = updateEmployeeSchema.parse(formDataToObject(formData));
   await assertAreaPositionAndManager(input, organizationId, input.id);
@@ -271,110 +268,7 @@ export async function updateEmployeeAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.id}`);
 }
 
-export async function createEmployeeAccessAction(formData: FormData) {
-  const { context, organizationId } = await requireSettingsManagerContext();
-  const input = createEmployeeAccessSchema.parse(formDataToObject(formData));
-  const before = await getEmployeeForWrite(input.employeeId, organizationId);
-
-  if (before.userId) {
-    throw new Error("Colaborador ja possui usuario vinculado.");
-  }
-
-  const [existingUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1);
-
-  if (existingUser) {
-    throw new Error("Ja existe um usuario com esse e-mail.");
-  }
-
-  const [employeeRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.key, "employee"))
-    .limit(1);
-
-  if (!employeeRole) {
-    throw new Error("Perfil Colaborador nao encontrado.");
-  }
-
-  const [user] = await db
-    .insert(users)
-    .values({
-      id: `user-${randomUUID()}`,
-      organizationId,
-      name: before.socialName || before.fullName,
-      email: input.email,
-      emailVerified: true,
-      isActive: true,
-    })
-    .returning();
-
-  const passwordHash = await hashPassword(input.password);
-
-  await db.insert(accounts).values({
-    id: `credential:${user.id}`,
-    userId: user.id,
-    accountId: user.id,
-    providerId: "credential",
-    password: passwordHash,
-  });
-
-  await db.insert(userRoles).values({
-    userId: user.id,
-    roleId: employeeRole.id,
-    assignedByUserId: context.userId,
-  });
-
-  const [after] = await db
-    .update(employees)
-    .set({
-      userId: user.id,
-      corporateEmail: before.corporateEmail ?? input.email,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(employees.id, input.employeeId),
-        eq(employees.organizationId, organizationId),
-        isNull(employees.deletedAt),
-      ),
-    )
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "create",
-    entityType: "user",
-    entityId: user.id,
-    after: {
-      email: user.email,
-      employeeId: input.employeeId,
-      isActive: user.isActive,
-      name: user.name,
-      roleKeys: ["employee"],
-    },
-  });
-
-  await writeAuditLog(context, {
-    action: "update",
-    entityType: "employee",
-    entityId: input.employeeId,
-    before,
-    after,
-    metadata: {
-      section: "access",
-      userId: user.id,
-    },
-  });
-
-  revalidatePath("/app/configuracoes");
-  revalidatePath("/app/colaboradores");
-  revalidatePath(`/app/colaboradores/${input.employeeId}`);
-}
-
-export async function updateEmployeeCompensationAction(formData: FormData) {
+async function updateEmployeeCompensationAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = updateCompensationSchema.parse(formDataToObject(formData));
   const before = await getEmployeeForWrite(input.employeeId, organizationId);
@@ -429,7 +323,7 @@ export async function updateEmployeeCompensationAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function createEmployeeBenefitAction(formData: FormData) {
+async function createEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = createBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -464,7 +358,7 @@ export async function createEmployeeBenefitAction(formData: FormData) {
   revalidatePath(`/app/colaboradores/${input.employeeId}/remuneracao`);
 }
 
-export async function endEmployeeBenefitAction(formData: FormData) {
+async function endEmployeeBenefitAction(formData: FormData) {
   const { context, organizationId } = await requireCompensationWriterContext();
   const input = endBenefitSchema.parse(formDataToObject(formData));
   await getEmployeeForWrite(input.employeeId, organizationId);
@@ -529,25 +423,6 @@ async function requireCompensationWriterContext() {
   }
 
   assertCan("compensation.write", context);
-
-  if (!context.organizationId) {
-    throw new AccessDeniedError();
-  }
-
-  return {
-    context,
-    organizationId: context.organizationId,
-  };
-}
-
-async function requireSettingsManagerContext() {
-  const context = await getCurrentAccessContext();
-
-  if (!context) {
-    redirect("/login");
-  }
-
-  assertCan("settings.manage", context);
 
   if (!context.organizationId) {
     throw new AccessDeniedError();
@@ -646,10 +521,6 @@ async function getBenefitForWrite(id: string, employeeId: string, organizationId
   return benefit;
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -659,30 +530,13 @@ function optionalTextSchema(maxLength: number) {
     .transform((value) => value || null);
 }
 
-function optionalMaskedTextSchema(maxLength: number, formatter: (value: string) => string) {
-  return z
-    .string()
-    .trim()
-    .max(maxLength)
-    .optional()
-    .transform((value) => {
-      if (!value) {
-        return null;
-      }
-
-      const formatted = formatter(value);
-
-      return formatted || null;
-    });
-}
-
 function optionalDateSchema() {
   return z
     .string()
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }
@@ -716,3 +570,19 @@ function optionalMoneySchema() {
 function normalizeRedirectPath(value: FormDataEntryValue | null) {
   return typeof value === "string" && value.startsWith("/app/") ? value : null;
 }
+
+export {
+  tenantUpdateEmployeeAction as updateEmployeeAction,
+  tenantUpdateEmployeeCompensationAction as updateEmployeeCompensationAction,
+  tenantCreateEmployeeBenefitAction as createEmployeeBenefitAction,
+  tenantEndEmployeeBenefitAction as endEmployeeBenefitAction,
+};
+
+const tenantUpdateEmployeeAction = bindCurrentTenantContext(updateEmployeeAction);
+const tenantUpdateEmployeeCompensationAction = bindCurrentTenantContext(
+  updateEmployeeCompensationAction,
+);
+const tenantCreateEmployeeBenefitAction = bindCurrentTenantContext(
+  createEmployeeBenefitAction,
+);
+const tenantEndEmployeeBenefitAction = bindCurrentTenantContext(endEmployeeBenefitAction);

@@ -6,13 +6,19 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { db, withTenantDb } from "@/lib/db";
 import { employees, lifecycleChecklistItems, lifecycleChecklists } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isIsoDate } from "@/lib/validation";
 
 import { toDateKey } from "@/features/finance/rules";
 
+import { terminateEmployeeAndRevokeSessions } from "./offboarding-access";
 import {
   defaultLifecycleChecklistItems,
   getLifecycleChecklistProgress,
@@ -37,22 +43,22 @@ const lifecycleItemStatusSchema = z.enum(
     ...(keyof typeof lifecycleChecklistItemStatusLabels)[],
   ],
 );
-const createChecklistSchema = z.object({
+const createChecklistSchema = z.strictObject({
   employeeId: z.string().uuid(),
   type: lifecycleTypeSchema,
   dueDate: optionalDateSchema(),
   notes: optionalTextSchema(1200),
 });
-const updateItemStatusSchema = z.object({
+const updateItemStatusSchema = z.strictObject({
   id: z.string().uuid(),
   notes: optionalTextSchema(1000),
   status: lifecycleItemStatusSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function createLifecycleChecklistAction(formData: FormData) {
+async function createLifecycleChecklistAction(formData: FormData) {
   const context = await requireLifecycleWriterContext();
   const input = createChecklistSchema.parse(formDataToObject(formData));
   const employee = await getEmployeeForWrite(input.employeeId, context.organizationId);
@@ -118,7 +124,7 @@ export async function createLifecycleChecklistAction(formData: FormData) {
   revalidateLifecyclePaths(input.type);
 }
 
-export async function updateLifecycleChecklistItemStatusAction(formData: FormData) {
+async function updateLifecycleChecklistItemStatusAction(formData: FormData) {
   const context = await requireLifecycleWriterContext();
   const input = updateItemStatusSchema.parse(formDataToObject(formData));
   const before = await getChecklistItemForWrite(input.id, context.organizationId);
@@ -156,7 +162,7 @@ export async function updateLifecycleChecklistItemStatusAction(formData: FormDat
   revalidateLifecyclePaths(before.checklistType as LifecycleType);
 }
 
-export async function completeLifecycleChecklistAction(formData: FormData) {
+async function completeLifecycleChecklistAction(formData: FormData) {
   const context = await requireLifecycleWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getChecklistForWrite(input.id, context.organizationId);
@@ -184,16 +190,16 @@ export async function completeLifecycleChecklistAction(formData: FormData) {
     .where(eq(lifecycleChecklists.id, input.id))
     .returning();
 
-  if (before.type === "offboarding") {
-    await db
-      .update(employees)
-      .set({
-        endDate: before.dueDate ?? toDateKey(new Date()),
-        status: "terminated",
-        updatedAt: new Date(),
-      })
-      .where(eq(employees.id, before.employeeId));
-  }
+  const revokedSessionCount =
+    before.type === "offboarding"
+      ? await withTenantDb(context, (transaction) =>
+          terminateEmployeeAndRevokeSessions(transaction, {
+            employeeId: before.employeeId,
+            endDate: before.dueDate ?? toDateKey(new Date()),
+            organizationId: context.organizationId,
+          }),
+        )
+      : 0;
 
   await writeAuditLog(context, {
     action: "status_change",
@@ -202,6 +208,7 @@ export async function completeLifecycleChecklistAction(formData: FormData) {
     before,
     after,
     metadata: {
+      revokedSessionCount,
       status: "completed",
       type: before.type,
     },
@@ -210,7 +217,7 @@ export async function completeLifecycleChecklistAction(formData: FormData) {
   revalidateLifecyclePaths(before.type as LifecycleType);
 }
 
-export async function cancelLifecycleChecklistAction(formData: FormData) {
+async function cancelLifecycleChecklistAction(formData: FormData) {
   const context = await requireLifecycleWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getChecklistForWrite(input.id, context.organizationId);
@@ -359,10 +366,6 @@ function revalidateLifecyclePaths(type: LifecycleType) {
   }
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -378,7 +381,27 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }
+
+export {
+  tenantCreateLifecycleChecklistAction as createLifecycleChecklistAction,
+  tenantUpdateLifecycleChecklistItemStatusAction as updateLifecycleChecklistItemStatusAction,
+  tenantCompleteLifecycleChecklistAction as completeLifecycleChecklistAction,
+  tenantCancelLifecycleChecklistAction as cancelLifecycleChecklistAction,
+};
+
+const tenantCreateLifecycleChecklistAction = bindCurrentTenantContext(
+  createLifecycleChecklistAction,
+);
+const tenantUpdateLifecycleChecklistItemStatusAction = bindCurrentTenantContext(
+  updateLifecycleChecklistItemStatusAction,
+);
+const tenantCompleteLifecycleChecklistAction = bindCurrentTenantContext(
+  completeLifecycleChecklistAction,
+);
+const tenantCancelLifecycleChecklistAction = bindCurrentTenantContext(
+  cancelLifecycleChecklistAction,
+);

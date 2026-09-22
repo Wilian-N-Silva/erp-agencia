@@ -1,34 +1,22 @@
-import { neon } from "@neondatabase/serverless";
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/neon-http";
-import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool, type PoolConfig } from "pg";
 
 import { getRequiredEnv } from "@/lib/env";
+import type { AccessContext } from "@/lib/dal";
 
 import * as schema from "./schema";
+import { createWithTenantDb, getActiveTenantTransaction } from "./tenant";
 
-function createDatabase() {
-  const databaseUrl = getRequiredEnv("DATABASE_URL");
+export function createDatabase(
+  databaseUrl = getRequiredEnv("DATABASE_URL"),
+  poolConfig: Omit<PoolConfig, "connectionString"> = {},
+) {
+  const pool = new Pool({
+    ...poolConfig,
+    connectionString: databaseUrl,
+  });
 
-  if (isLocalPostgresUrl(databaseUrl)) {
-    return drizzleNodePostgres(new Pool({ connectionString: databaseUrl }), {
-      schema,
-    });
-  }
-
-  const client = neon(databaseUrl);
-
-  return drizzle(client, { schema });
-}
-
-function isLocalPostgresUrl(value: string) {
-  try {
-    const { hostname } = new URL(value);
-
-    return ["127.0.0.1", "::1", "localhost"].includes(hostname);
-  } catch {
-    return false;
-  }
+  return drizzle(pool, { schema });
 }
 
 let cachedDb: Database | undefined;
@@ -43,9 +31,26 @@ export type Database = ReturnType<typeof createDatabase>;
 
 export const db = new Proxy({} as Database, {
   get(_target, property, receiver) {
-    const database = getDb();
+    const database = getActiveTenantTransaction() ?? getDb();
     const value = Reflect.get(database, property, receiver);
 
     return typeof value === "function" ? value.bind(database) : value;
   },
 });
+
+export const withTenantDb = createWithTenantDb(db);
+
+export type TenantBoundOperation<Arguments extends unknown[], Result> = (
+  context: AccessContext,
+  ...args: Arguments
+) => Promise<Result>;
+
+export function bindTenantContext<Arguments extends unknown[], Result>(
+  operation: TenantBoundOperation<Arguments, Result>,
+): TenantBoundOperation<Arguments, Result> {
+  return async (context: AccessContext, ...args: Arguments) =>
+    withTenantDb(context, () => operation(context, ...args));
+}
+
+export { createWithTenantDb };
+export type { TenantDbOperation, TenantTransaction } from "./tenant";

@@ -2,7 +2,7 @@ import { Ban, Check, DollarSign, RefreshCw } from "lucide-react";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/fg";
+import { Button, RateLimitedActionForm } from "@/components/fg";
 import {
   approveInvoiceRequestAction,
   markInvoicePaidAction,
@@ -83,7 +83,10 @@ function buildRowActions({
     <span style={{ display: "inline-flex", gap: 6 }}>
       {canReviewInvoice(invoice.status) ? (
         <>
-          <form action={approveInvoiceRequestAction} style={{ display: "inline" }}>
+          <RateLimitedActionForm
+            action={approveInvoiceRequestAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={invoice.id} />
             <Button
               type="submit"
@@ -94,8 +97,11 @@ function buildRowActions({
             >
               Aprovar
             </Button>
-          </form>
-          <form action={rejectInvoiceRequestAction} style={{ display: "inline" }}>
+          </RateLimitedActionForm>
+          <RateLimitedActionForm
+            action={rejectInvoiceRequestAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={invoice.id} />
             <input name="adjustment" type="hidden" value="on" />
             <Button
@@ -107,8 +113,11 @@ function buildRowActions({
             >
               Ajuste
             </Button>
-          </form>
-          <form action={rejectInvoiceRequestAction} style={{ display: "inline" }}>
+          </RateLimitedActionForm>
+          <RateLimitedActionForm
+            action={rejectInvoiceRequestAction}
+            style={{ display: "inline" }}
+          >
             <input name="id" type="hidden" value={invoice.id} />
             <Button
               type="submit"
@@ -119,11 +128,14 @@ function buildRowActions({
             >
               Recusar
             </Button>
-          </form>
+          </RateLimitedActionForm>
         </>
       ) : null}
       {canMarkInvoicePaid(invoice.status) ? (
-        <form action={markInvoicePaidAction} style={{ display: "inline" }}>
+        <RateLimitedActionForm
+          action={markInvoicePaidAction}
+          style={{ display: "inline" }}
+        >
           <input name="id" type="hidden" value={invoice.id} />
           <Button
             type="submit"
@@ -134,7 +146,7 @@ function buildRowActions({
           >
             Marcar pago
           </Button>
-        </form>
+        </RateLimitedActionForm>
       ) : null}
     </span>
   );

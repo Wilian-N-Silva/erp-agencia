@@ -8,8 +8,13 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { employees, saasSubscriptionUsers, saasSubscriptions } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
+import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput } from "@/features/finance/rules";
 
@@ -21,14 +26,14 @@ import {
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateSchema = isoDateSchema;
 const saasStatusSchema = z.enum(
   Object.keys(saasSubscriptionStatusLabels) as [
     keyof typeof saasSubscriptionStatusLabels,
     ...(keyof typeof saasSubscriptionStatusLabels)[],
   ],
 );
-const saasBaseSchema = z.object({
+const saasBaseSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(120),
   provider: optionalTextSchema(120),
@@ -41,19 +46,19 @@ const createSaasSubscriptionSchema = saasBaseSchema;
 const updateSaasSubscriptionSchema = saasBaseSchema.extend({
   id: z.string().uuid(),
 });
-const linkSaasUserSchema = z.object({
+const linkSaasUserSchema = z.strictObject({
   employeeId: z.string().uuid(),
   subscriptionId: z.string().uuid(),
 });
-const renewSaasSubscriptionSchema = z.object({
+const renewSaasSubscriptionSchema = z.strictObject({
   id: z.string().uuid(),
   renewalDate: dateSchema,
 });
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function createSaasSubscriptionAction(formData: FormData) {
+async function createSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = createSaasSubscriptionSchema.parse(formDataToObject(formData));
   const [created] = await db
@@ -81,7 +86,7 @@ export async function createSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function updateSaasSubscriptionAction(formData: FormData) {
+async function updateSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = updateSaasSubscriptionSchema.parse(formDataToObject(formData));
   const before = await getSaasSubscriptionForWrite(input.id, context.organizationId);
@@ -115,7 +120,7 @@ export async function updateSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
+async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = linkSaasUserSchema.parse(formDataToObject(formData));
 
@@ -153,7 +158,7 @@ export async function linkEmployeeToSaasSubscriptionAction(formData: FormData) {
   revalidateSaasPaths();
 }
 
-export async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormData) {
+async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = linkSaasUserSchema.parse(formDataToObject(formData));
 
@@ -190,7 +195,7 @@ export async function unlinkEmployeeFromSaasSubscriptionAction(formData: FormDat
   revalidateSaasPaths();
 }
 
-export async function markSaasSubscriptionRenewedAction(formData: FormData) {
+async function markSaasSubscriptionRenewedAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = renewSaasSubscriptionSchema.parse(formDataToObject(formData));
 
@@ -199,7 +204,7 @@ export async function markSaasSubscriptionRenewedAction(formData: FormData) {
   });
 }
 
-export async function cancelSaasSubscriptionAction(formData: FormData) {
+async function cancelSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
   const input = idSchema.parse(formDataToObject(formData));
 
@@ -309,10 +314,6 @@ function revalidateSaasPaths() {
   revalidatePath("/portal");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function optionalTextSchema(maxLength: number) {
   return z
     .string()
@@ -328,7 +329,7 @@ function optionalDateSchema() {
     .trim()
     .optional()
     .transform((value) => value || null)
-    .refine((value) => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    .refine((value) => value === null || isIsoDate(value), {
       message: "Invalid date.",
     });
 }
@@ -340,3 +341,31 @@ function optionalMoneySchema() {
     .optional()
     .transform((value) => (value ? normalizeMoneyInput(value) : null));
 }
+
+export {
+  tenantCreateSaasSubscriptionAction as createSaasSubscriptionAction,
+  tenantUpdateSaasSubscriptionAction as updateSaasSubscriptionAction,
+  tenantLinkEmployeeToSaasSubscriptionAction as linkEmployeeToSaasSubscriptionAction,
+  tenantUnlinkEmployeeFromSaasSubscriptionAction as unlinkEmployeeFromSaasSubscriptionAction,
+  tenantMarkSaasSubscriptionRenewedAction as markSaasSubscriptionRenewedAction,
+  tenantCancelSaasSubscriptionAction as cancelSaasSubscriptionAction,
+};
+
+const tenantCreateSaasSubscriptionAction = bindCurrentTenantContext(
+  createSaasSubscriptionAction,
+);
+const tenantUpdateSaasSubscriptionAction = bindCurrentTenantContext(
+  updateSaasSubscriptionAction,
+);
+const tenantLinkEmployeeToSaasSubscriptionAction = bindCurrentTenantContext(
+  linkEmployeeToSaasSubscriptionAction,
+);
+const tenantUnlinkEmployeeFromSaasSubscriptionAction = bindCurrentTenantContext(
+  unlinkEmployeeFromSaasSubscriptionAction,
+);
+const tenantMarkSaasSubscriptionRenewedAction = bindCurrentTenantContext(
+  markSaasSubscriptionRenewedAction,
+);
+const tenantCancelSaasSubscriptionAction = bindCurrentTenantContext(
+  cancelSaasSubscriptionAction,
+);

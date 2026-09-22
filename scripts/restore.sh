@@ -5,8 +5,8 @@
 #   ./scripts/restore.sh <dump-path> <target-database-url> [--clean]
 #
 # Safety: the target database MUST be empty or you must pass --clean.
-# This script never targets $DATABASE_URL by default - pass a separate URL for
-# the restore target to avoid clobbering production.
+# This script never targets either configured database URL by default. Pass a
+# separate URL for the restore target to avoid clobbering production.
 
 set -euo pipefail
 

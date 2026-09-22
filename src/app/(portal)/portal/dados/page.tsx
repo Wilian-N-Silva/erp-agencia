@@ -1,33 +1,17 @@
-import { redirect } from "next/navigation";
-
-import { Card, EmptyState } from "@/components/fg";
-import { getPortalEmployeeSummary } from "@/features/portal/dal";
+import { Card } from "@/components/fg";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 import { employmentTypeLabels, type EmploymentType } from "@/features/people/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalDataPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const employee = await getPortalEmployeeSummary(context);
-
-  if (!employee) {
-    return (
-      <>
-        <h1 className="fg-portal-h1">Meus dados</h1>
-        <Card>
-          <EmptyState
-            title="Sem dados disponíveis"
-            description="Sua conta ainda não está associada a um cadastro de colaborador."
-          />
-        </Card>
-      </>
-    );
-  }
+  const { employee } = access;
 
   return (
     <>

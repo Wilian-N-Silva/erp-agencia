@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
 
 import { getDocumentForAccess } from "@/features/documents/dal";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
@@ -11,6 +12,8 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+const documentIdSchema = z.string().uuid();
+
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const context = await getCurrentAccessContext();
 
@@ -18,8 +21,21 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const { id } = await params;
-  const document = await getDocumentForAccess(context, id);
+  const parsedId = documentIdSchema.safeParse((await params).id);
+
+  if (!parsedId.success) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "DOCUMENT_NOT_FOUND",
+          message: "Documento nao encontrado.",
+        },
+      },
+      { status: 404 },
+    );
+  }
+
+  const document = await getDocumentForAccess(context, parsedId.data);
   const body = await getStorageObject({
     bucket: document.bucket,
     key: document.storageKey,

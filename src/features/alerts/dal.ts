@@ -1,8 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import {
-  accessRecords,
   alerts,
   clientBillingProfiles,
   clients,
@@ -30,11 +29,6 @@ import {
 } from "@/features/finance/rules";
 import { getLifecycleChecklistState } from "@/features/lifecycle/rules";
 import { hasInvoiceDivergence, type InvoiceRequestStatus, type ReimbursementStatus } from "@/features/portal/rules";
-import {
-  getAccessReviewState,
-  isTerminatedEmployeeAccessAlert,
-  type AccessRecordStatus,
-} from "@/features/accesses/rules";
 import { isEquipmentReturnAlert, type EquipmentStatus } from "@/features/equipment/rules";
 import { getSaasRenewalState, type SaasSubscriptionStatus } from "@/features/saas/rules";
 import {
@@ -73,7 +67,7 @@ export type StoredAlertListItem = {
   updatedAt: Date;
 };
 
-export async function listStoredAlerts(
+async function listStoredAlerts(
   context: AccessContext,
   filters: AlertFilters = {},
 ): Promise<StoredAlertListItem[]> {
@@ -109,13 +103,12 @@ export async function listStoredAlerts(
   );
 }
 
-export async function listAlertCandidates(
+async function listAlertCandidates(
   context: AccessContext,
   filters: AlertFilters = {},
 ): Promise<AlertCandidate[]> {
   assertCanAny(["alerts.read", "alerts.write"], context);
-  const organizationId = requireOrganizationId(context);
-  const candidates = await generateAlertCandidatesForOrganization(organizationId);
+  const candidates = await generateAlertCandidatesForOrganization(context);
 
   return applyAlertFilters(
     sortAlertCandidates(dedupeAlertCandidates(candidates)),
@@ -126,10 +119,11 @@ export async function listAlertCandidates(
   );
 }
 
-export async function generateAlertCandidatesForOrganization(
-  organizationId: string,
+async function generateAlertCandidatesForOrganization(
+  context: AccessContext,
   asOf: string | Date = new Date(),
 ): Promise<AlertCandidate[]> {
+  const organizationId = requireOrganizationId(context);
   const asOfKey = toDateKey(asOf);
   const [
     clientCandidates,
@@ -140,7 +134,6 @@ export async function generateAlertCandidatesForOrganization(
     vacationBalanceCandidates,
     lifecycleCandidates,
     equipmentCandidates,
-    accessCandidates,
     saasCandidates,
     birthdayCandidates,
   ] = await Promise.all([
@@ -152,7 +145,6 @@ export async function generateAlertCandidatesForOrganization(
     buildVacationBalanceAlertCandidates(organizationId, asOfKey),
     buildLifecycleAlertCandidates(organizationId, asOfKey),
     buildEquipmentAlertCandidates(organizationId),
-    buildAccessAlertCandidates(organizationId, asOfKey),
     buildSaasAlertCandidates(organizationId, asOfKey),
     buildBirthdayAlertCandidates(organizationId, asOfKey),
   ]);
@@ -167,14 +159,13 @@ export async function generateAlertCandidatesForOrganization(
       ...vacationBalanceCandidates,
       ...lifecycleCandidates,
       ...equipmentCandidates,
-      ...accessCandidates,
       ...saasCandidates,
       ...birthdayCandidates,
     ]),
   );
 }
 
-export async function buildBirthdayAlertCandidates(
+async function buildBirthdayAlertCandidates(
   organizationId: string,
   asOf: string,
 ): Promise<AlertCandidate[]> {
@@ -417,6 +408,8 @@ async function buildFinancialExpenseAlertCandidates(
       id: financialExpenses.id,
       supplier: financialExpenses.supplier,
       description: financialExpenses.description,
+      amount: financialExpenses.amount,
+      paidAmount: financialExpenses.paidAmount,
       dueDate: financialExpenses.dueDate,
       paidDate: financialExpenses.paidDate,
       status: financialExpenses.status,
@@ -667,66 +660,6 @@ async function buildEquipmentAlertCandidates(organizationId: string): Promise<Al
     .filter(isAlertCandidate);
 }
 
-async function buildAccessAlertCandidates(
-  organizationId: string,
-  asOf: string,
-): Promise<AlertCandidate[]> {
-  const rows = await db
-    .select({
-      id: accessRecords.id,
-      employeeId: accessRecords.employeeId,
-      employeeName: employees.fullName,
-      employeeStatus: employees.status,
-      platform: accessRecords.platform,
-      critical: accessRecords.critical,
-      reviewDueDate: accessRecords.reviewDueDate,
-      status: accessRecords.status,
-    })
-    .from(accessRecords)
-    .innerJoin(employees, eq(accessRecords.employeeId, employees.id))
-    .where(eq(accessRecords.organizationId, organizationId));
-
-  return rows
-    .flatMap((row): AlertCandidate[] => {
-      const target = {
-        critical: row.critical,
-        employeeId: row.employeeId,
-        employeeStatus: row.employeeStatus,
-        reviewDueDate: row.reviewDueDate,
-        status: row.status as AccessRecordStatus,
-      };
-      const candidates: AlertCandidate[] = [];
-
-      if (isTerminatedEmployeeAccessAlert(target)) {
-        candidates.push({
-          kind: "access_review",
-          title: `${row.employeeName}: acesso ativo apos desligamento`,
-          description: `${row.platform} continua ativo para colaborador desligado.`,
-          severity: "critical",
-          entityType: "access_record",
-          entityId: row.id,
-          dueDate: row.reviewDueDate,
-        });
-      }
-
-      const reviewState = getAccessReviewState(target, asOf);
-
-      if (reviewState === "missing" || reviewState === "overdue" || reviewState === "due_soon") {
-        candidates.push({
-          kind: "access_review",
-          title: `${row.platform}: revisao de acesso critico`,
-          description: reviewState === "missing" ? "Acesso critico sem data de revisao." : "Acesso critico requer revisao.",
-          severity: reviewState === "overdue" || reviewState === "missing" ? "high" : "medium",
-          entityType: "access_record",
-          entityId: row.id,
-          dueDate: row.reviewDueDate,
-        });
-      }
-
-      return candidates;
-    });
-}
-
 async function buildSaasAlertCandidates(
   organizationId: string,
   asOf: string,
@@ -838,3 +771,15 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListStoredAlerts as listStoredAlerts,
+  tenantListAlertCandidates as listAlertCandidates,
+  tenantGenerateAlertCandidatesForOrganization as generateAlertCandidatesForOrganization,
+};
+
+const tenantListStoredAlerts = bindTenantContext(listStoredAlerts);
+const tenantListAlertCandidates = bindTenantContext(listAlertCandidates);
+const tenantGenerateAlertCandidatesForOrganization = bindTenantContext(
+  generateAlertCandidatesForOrganization,
+);

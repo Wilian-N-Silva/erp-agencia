@@ -1,10 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ZodError } from "zod";
 
 import { buildAuditXlsx } from "@/features/audit/export-xlsx";
 import { listAuditLogs } from "@/features/audit/dal";
-import { canExportAuditReport, normalizeAuditFilters } from "@/features/audit/rules";
+import { canExportAuditReport, parseAuditExportFilters } from "@/features/audit/rules";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  reportRateLimitSecurityEvent,
+  toRateLimitResponse,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +25,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/acesso-negado", request.url));
   }
 
-  const filters = normalizeAuditFilters(
-    Object.fromEntries(request.nextUrl.searchParams.entries()),
-  );
+  try {
+    await enforceAuthenticatedRateLimit("export", context);
+  } catch (error) {
+    await reportRateLimitSecurityEvent(error);
+    const response = toRateLimitResponse(error);
+    if (response) return response;
+    throw error;
+  }
+
+  let filters;
+  try {
+    filters = parseAuditExportFilters(request.nextUrl.searchParams);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return invalidFiltersResponse();
+    }
+    throw error;
+  }
   const logs = await listAuditLogs(context, filters, { limit: 1000 });
   const buffer = await buildAuditXlsx(logs, filters);
   const auditMetadata = getRequestAuditMetadata(request.headers);
@@ -44,4 +65,16 @@ export async function GET(request: NextRequest) {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     },
   });
+}
+
+function invalidFiltersResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        code: "INVALID_EXPORT_FILTERS",
+        message: "Filtros de exportacao invalidos.",
+      },
+    },
+    { status: 400 },
+  );
 }

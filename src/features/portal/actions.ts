@@ -20,8 +20,17 @@ import {
   reimbursementRequests,
   positions,
 } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validation";
 import {
   createStorageKey,
   getSha256Hex,
@@ -56,13 +65,13 @@ import {
   type ReimbursementStatus,
 } from "./rules";
 
-const competenceSchema = z.string().trim().regex(/^\d{4}-\d{2}$/);
-const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
-const idSchema = z.object({
+const competenceSchema = isoMonthSchema;
+const dateSchema = isoDateSchema;
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-const createInvoiceRequestSchema = z.object({
+const createInvoiceRequestSchema = z.strictObject({
   employeeId: z.string().uuid(),
   competence: competenceSchema,
   dueDate: dateSchema,
@@ -75,12 +84,12 @@ const createInvoiceRequestSchema = z.object({
   suggestedDescription: optionalTextSchema(700),
 });
 
-const submitInvoiceSchema = z.object({
+const submitInvoiceSchema = z.strictObject({
   id: z.string().uuid(),
   issuedAmount: z.string().trim().min(1).transform(normalizeMoneyInput),
 });
 
-const rejectInvoiceSchema = z.object({
+const rejectInvoiceSchema = z.strictObject({
   id: z.string().uuid(),
   adjustment: z
     .string()
@@ -88,7 +97,7 @@ const rejectInvoiceSchema = z.object({
     .transform((value) => value === "on"),
 });
 
-const createReimbursementSchema = z.object({
+const createReimbursementSchema = z.strictObject({
   title: z.string().trim().min(1).max(180),
   category: z
     .string()
@@ -106,7 +115,7 @@ export type InvoiceRequestFormState = {
   error?: string;
 };
 
-export async function createInvoiceRequestFormAction(
+async function createInvoiceRequestFormAction(
   _prevState: InvoiceRequestFormState,
   formData: FormData,
 ): Promise<InvoiceRequestFormState> {
@@ -142,7 +151,7 @@ export async function createInvoiceRequestFormAction(
   }
 }
 
-export async function createInvoiceRequestAction(formData: FormData) {
+async function createInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = createInvoiceRequestSchema.parse(formDataToObject(formData));
   const employee = await getInvoiceEmployeeForWrite(input.employeeId, organizationId);
@@ -204,9 +213,9 @@ export async function createInvoiceRequestAction(formData: FormData) {
   revalidateInvoicePaths();
 }
 
-export async function submitInvoiceRequestAction(formData: FormData) {
+async function submitInvoiceRequestAction(formData: FormData) {
   const context = await requireCurrentContext();
-  const input = submitInvoiceSchema.parse(formDataToObject(formData));
+  const input = submitInvoiceSchema.parse(formDataToObject(formData, ["file"]));
   const before = await getInvoiceForWrite(input.id, context.organizationId);
 
   if (
@@ -258,8 +267,9 @@ export async function submitInvoiceRequestAction(formData: FormData) {
   revalidateInvoicePaths();
 }
 
-export async function approveInvoiceRequestAction(formData: FormData) {
+async function approveInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -306,8 +316,9 @@ export async function approveInvoiceRequestAction(formData: FormData) {
   revalidatePath("/app/financeiro");
 }
 
-export async function rejectInvoiceRequestAction(formData: FormData) {
+async function rejectInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = rejectInvoiceSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -338,8 +349,9 @@ export async function rejectInvoiceRequestAction(formData: FormData) {
   revalidateInvoicePaths();
 }
 
-export async function markInvoicePaidAction(formData: FormData) {
+async function markInvoicePaidAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getInvoiceForWrite(input.id, organizationId);
 
@@ -397,7 +409,7 @@ export async function markInvoicePaidAction(formData: FormData) {
   revalidateReimbursementPaths();
 }
 
-export async function createReimbursementAction(formData: FormData) {
+async function createReimbursementAction(formData: FormData) {
   const context = await requireCurrentContext();
 
   if (!context.employeeId || !context.organizationId) {
@@ -405,7 +417,9 @@ export async function createReimbursementAction(formData: FormData) {
   }
 
   assertCan("reimbursements.read_own", context);
-  const input = createReimbursementSchema.parse(formDataToObject(formData));
+  const input = createReimbursementSchema.parse(
+    formDataToObject(formData, ["file"]),
+  );
   const uploadedFile = getUploadedFile(formData);
   const reimbursementId = randomUUID();
   const storedDocument = uploadedFile
@@ -452,8 +466,9 @@ export async function createReimbursementAction(formData: FormData) {
   revalidateReimbursementPaths();
 }
 
-export async function approveReimbursementByManagerAction(formData: FormData) {
+async function approveReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -472,8 +487,9 @@ export async function approveReimbursementByManagerAction(formData: FormData) {
   });
 }
 
-export async function rejectReimbursementByManagerAction(formData: FormData) {
+async function rejectReimbursementByManagerAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -492,8 +508,9 @@ export async function rejectReimbursementByManagerAction(formData: FormData) {
   });
 }
 
-export async function approveReimbursementByFinanceAction(formData: FormData) {
+async function approveReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -512,8 +529,9 @@ export async function approveReimbursementByFinanceAction(formData: FormData) {
   });
 }
 
-export async function rejectReimbursementByFinanceAction(formData: FormData) {
+async function rejectReimbursementByFinanceAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -532,16 +550,16 @@ export async function rejectReimbursementByFinanceAction(formData: FormData) {
   });
 }
 
-const includeReimbursementSchema = z.object({
+const includeReimbursementSchema = z.strictObject({
   reimbursementId: z.string().uuid(),
   invoiceRequestId: z.string().uuid(),
 });
 
-const excludeReimbursementSchema = z.object({
+const excludeReimbursementSchema = z.strictObject({
   reimbursementId: z.string().uuid(),
 });
 
-export async function includeReimbursementInInvoiceAction(formData: FormData) {
+async function includeReimbursementInInvoiceAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = includeReimbursementSchema.parse(formDataToObject(formData));
   const reimbursementBefore = await getReimbursementForWrite(input.reimbursementId, organizationId);
@@ -605,7 +623,7 @@ export async function includeReimbursementInInvoiceAction(formData: FormData) {
   );
 }
 
-export async function excludeReimbursementFromInvoiceAction(formData: FormData) {
+async function excludeReimbursementFromInvoiceAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = excludeReimbursementSchema.parse(formDataToObject(formData));
   const reimbursementBefore = await getReimbursementForWrite(input.reimbursementId, organizationId);
@@ -662,8 +680,9 @@ export async function excludeReimbursementFromInvoiceAction(formData: FormData) 
   );
 }
 
-export async function markReimbursementPaidAction(formData: FormData) {
+async function markReimbursementPaidAction(formData: FormData) {
   const context = await requireCurrentContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
 
@@ -912,6 +931,7 @@ async function updateReimbursementStatus(
 }
 
 async function storePortalDocument(input: StorePortalDocumentInput) {
+  await enforceAuthenticatedRateLimit("upload", input.context);
   const originalName = input.uploadedFile.name;
   const mimeType = input.uploadedFile.type || "application/octet-stream";
   const byteSize = input.uploadedFile.size;
@@ -1043,10 +1063,6 @@ function revalidateReimbursementPaths() {
   revalidatePath("/app/reembolsos");
 }
 
-function formDataToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
-}
-
 function getRequiredUploadedFile(formData: FormData, message: string) {
   const file = getUploadedFile(formData);
 
@@ -1079,3 +1095,63 @@ function optionalMoneySchema() {
     .optional()
     .transform((value) => (value ? normalizeMoneyInput(value) : null));
 }
+
+export {
+  tenantCreateInvoiceRequestFormAction as createInvoiceRequestFormAction,
+  tenantCreateInvoiceRequestAction as createInvoiceRequestAction,
+  tenantSubmitInvoiceRequestAction as submitInvoiceRequestAction,
+  tenantApproveInvoiceRequestAction as approveInvoiceRequestAction,
+  tenantRejectInvoiceRequestAction as rejectInvoiceRequestAction,
+  tenantMarkInvoicePaidAction as markInvoicePaidAction,
+  tenantCreateReimbursementAction as createReimbursementAction,
+  tenantApproveReimbursementByManagerAction as approveReimbursementByManagerAction,
+  tenantRejectReimbursementByManagerAction as rejectReimbursementByManagerAction,
+  tenantApproveReimbursementByFinanceAction as approveReimbursementByFinanceAction,
+  tenantRejectReimbursementByFinanceAction as rejectReimbursementByFinanceAction,
+  tenantIncludeReimbursementInInvoiceAction as includeReimbursementInInvoiceAction,
+  tenantExcludeReimbursementFromInvoiceAction as excludeReimbursementFromInvoiceAction,
+  tenantMarkReimbursementPaidAction as markReimbursementPaidAction,
+};
+
+const tenantCreateInvoiceRequestFormAction = bindCurrentTenantContext(
+  createInvoiceRequestFormAction,
+);
+const tenantCreateInvoiceRequestAction = bindCurrentTenantContext(
+  createInvoiceRequestAction,
+);
+const tenantSubmitInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(submitInvoiceRequestAction),
+);
+const tenantApproveInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveInvoiceRequestAction),
+);
+const tenantRejectInvoiceRequestAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectInvoiceRequestAction),
+);
+const tenantMarkInvoicePaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markInvoicePaidAction),
+);
+const tenantCreateReimbursementAction = withRateLimitActionResult(
+  bindCurrentTenantContext(createReimbursementAction),
+);
+const tenantApproveReimbursementByManagerAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveReimbursementByManagerAction),
+);
+const tenantRejectReimbursementByManagerAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectReimbursementByManagerAction),
+);
+const tenantApproveReimbursementByFinanceAction = withRateLimitActionResult(
+  bindCurrentTenantContext(approveReimbursementByFinanceAction),
+);
+const tenantRejectReimbursementByFinanceAction = withRateLimitActionResult(
+  bindCurrentTenantContext(rejectReimbursementByFinanceAction),
+);
+const tenantIncludeReimbursementInInvoiceAction = bindCurrentTenantContext(
+  includeReimbursementInInvoiceAction,
+);
+const tenantExcludeReimbursementFromInvoiceAction = bindCurrentTenantContext(
+  excludeReimbursementFromInvoiceAction,
+);
+const tenantMarkReimbursementPaidAction = withRateLimitActionResult(
+  bindCurrentTenantContext(markReimbursementPaidAction),
+);

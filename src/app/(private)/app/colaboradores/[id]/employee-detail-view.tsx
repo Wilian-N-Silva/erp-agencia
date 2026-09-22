@@ -31,12 +31,13 @@ import {
   Dropdown,
   EmptyState,
   KpiCard,
-  MaskedInput,
   MoneyInput,
+  RateLimitedActionForm,
   Sheet,
   StatusBadge,
   Tabs,
   Tag,
+  useToast,
 } from "@/components/fg";
 import { registerDocumentAction } from "@/features/documents/actions";
 import {
@@ -51,7 +52,7 @@ import {
 import { assignEquipmentAction } from "@/features/equipment/actions";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { createLifecycleChecklistAction } from "@/features/lifecycle/actions";
-import { createEmployeeAccessAction, updateEmployeeAction } from "@/features/people/actions";
+import { updateEmployeeAction } from "@/features/people/actions";
 import { createReimbursementAction } from "@/features/portal/actions";
 import type { EmployeeStatus, EmploymentType } from "@/features/people/rules";
 import type {
@@ -68,6 +69,10 @@ import type {
   AccessReviewState,
 } from "@/features/accesses/rules";
 import type { EquipmentStatus } from "@/features/equipment/rules";
+import {
+  downloadFile,
+  fileDownloadErrorFeedback,
+} from "@/lib/client-file-download";
 
 type BadgeTone =
   | "success"
@@ -79,7 +84,6 @@ type BadgeTone =
 
 type EmployeeView = {
   id: string;
-  userId: string | null;
   registrationNumber: string;
   fullName: string;
   socialName: string | null;
@@ -97,6 +101,7 @@ type EmployeeView = {
   areaId: string;
   areaName: string;
   managerEmployeeId: string | null;
+  managerName: string | null;
   employmentType: EmploymentType;
   startDate: string;
   endDate: string | null;
@@ -252,7 +257,6 @@ type AuditLogView = {
 
 type EmployeeDetailActions = {
   canAssignEquipment: boolean;
-  canCreateAccess: boolean;
   canEdit: boolean;
   canExportProfile: boolean;
   canRegisterReimbursement: boolean;
@@ -417,14 +421,14 @@ export function EmployeeDetailView({
   invoiceRequests,
   reimbursements,
 }: EmployeeDetailViewProps) {
+  const pushToast = useToast();
   const [tab, setTab] = useState("resumo");
+  const [exportingProfile, setExportingProfile] = useState(false);
   const [activeAction, setActiveAction] = useState<
     "timeoff" | "reimbursement" | "equipment" | null
   >(null);
   const displayName = employee.socialName || employee.fullName;
-  const managerName =
-    options?.managers.find((manager) => manager.id === employee.managerEmployeeId)
-      ?.name ?? null;
+  const managerName = employee.managerName;
   const tabs = useMemo(
     () =>
       BASE_TABS.filter((item) => {
@@ -438,6 +442,23 @@ export function EmployeeDetailView({
   );
   const canAssignEquipment =
     actions.canAssignEquipment && assignableEquipmentItems.length > 0;
+
+  const exportEmployeeProfile = async () => {
+    setExportingProfile(true);
+    try {
+      await downloadFile(
+        `/app/colaboradores/${employee.id}/exportar`,
+        `ficha-${employee.registrationNumber}.txt`,
+      );
+    } catch (error) {
+      pushToast({
+        ...fileDownloadErrorFeedback(error),
+        tone: "error",
+      });
+    } finally {
+      setExportingProfile(false);
+    }
+  };
 
   return (
     <div className="fg-page">
@@ -496,25 +517,6 @@ export function EmployeeDetailView({
               <span>Editar</span>
             </button>
           )}
-          {actions.canCreateAccess ? (
-            <ActionSheet
-              title="Criar acesso"
-              description="Crie o login do portal e vincule ao cadastro deste colaborador."
-              trigger={
-                <button className="fg-btn fg-btn-outline fg-btn-sm" type="button">
-                  <KeyRound size={14} aria-hidden />
-                  <span>Criar acesso</span>
-                </button>
-              }
-            >
-              <CreateAccessForm employee={employee} />
-            </ActionSheet>
-          ) : employee.userId ? (
-            <button className="fg-btn fg-btn-outline fg-btn-sm" type="button" disabled>
-              <KeyRound size={14} aria-hidden />
-              <span>Acesso ativo</span>
-            </button>
-          ) : null}
           {actions.canStartOffboarding ? (
             <ActionSheet
               title="Iniciar desligamento"
@@ -562,10 +564,10 @@ export function EmployeeDetailView({
               },
               { separator: true },
               {
-                label: "Exportar ficha",
+                label: exportingProfile ? "Exportando ficha..." : "Exportar ficha",
                 icon: <Download size={13} />,
-                disabled: !actions.canExportProfile,
-                onClick: () => exportEmployeeProfile(employee, managerName),
+                disabled: !actions.canExportProfile || exportingProfile,
+                onClick: exportEmployeeProfile,
               },
             ]}
           />
@@ -1281,10 +1283,9 @@ function DocumentsTab({
 
 function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
   return (
-    <form
+    <RateLimitedActionForm
       action={registerDocumentAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <input name="ownerType" type="hidden" value="employee" />
       <input name="ownerId" type="hidden" value={employee.id} />
@@ -1350,7 +1351,7 @@ function DocumentRegistrationForm({ employee }: { employee: EmployeeView }) {
           <span>Enviar documento</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -1659,10 +1660,9 @@ function TimeOffRequestForm({ employee }: { employee: EmployeeView }) {
 
 function ReimbursementRequestForm() {
   return (
-    <form
+    <RateLimitedActionForm
       action={createReimbursementAction}
       className="fg-form"
-      encType="multipart/form-data"
     >
       <Field label="Descricao" required>
         <input className="fg-input" maxLength={180} name="title" required />
@@ -1701,7 +1701,7 @@ function ReimbursementRequestForm() {
           <span>Enviar reembolso</span>
         </button>
       </div>
-    </form>
+    </RateLimitedActionForm>
   );
 }
 
@@ -1736,81 +1736,6 @@ function AssignEquipmentForm({
         >
           <Laptop size={14} aria-hidden />
           <span>Atribuir equipamento</span>
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function exportEmployeeProfile(employee: EmployeeView, managerName: string | null) {
-  const lines = [
-    "Ficha do colaborador",
-    "",
-    `Matricula: ${employee.registrationNumber}`,
-    `Nome: ${employee.fullName}`,
-    employee.socialName ? `Nome social: ${employee.socialName}` : null,
-    `Status: ${employeeStatusLabels[employee.status]}`,
-    `Vinculo: ${employmentTypeLabels[employee.employmentType]}`,
-    `Area: ${employee.areaName}`,
-    `Cargo: ${employee.positionName}`,
-    `Gestor: ${managerName ?? "-"}`,
-    `Entrada: ${formatDate(employee.startDate)}`,
-    `Saida: ${formatDate(employee.endDate)}`,
-    `Modelo: ${employee.workModel ?? "-"}`,
-    `Localizacao: ${employee.location ?? "-"}`,
-    `Email corporativo: ${employee.corporateEmail ?? "-"}`,
-    `Email pessoal: ${employee.sensitiveProfileHidden ? "Restrito" : employee.personalEmail ?? "-"}`,
-    `Telefone: ${employee.sensitiveProfileHidden ? "Restrito" : employee.phone ?? "-"}`,
-  ].filter(Boolean);
-  const blob = new Blob([lines.join("\n")], {
-    type: "text/plain;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `ficha-${safeFileName(employee.registrationNumber || employee.fullName)}.txt`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function safeFileName(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
-function CreateAccessForm({ employee }: { employee: EmployeeView }) {
-  return (
-    <form action={createEmployeeAccessAction} className="fg-form">
-      <input name="employeeId" type="hidden" value={employee.id} />
-
-      <Field label="Email de login" required>
-        <input
-          className="fg-input"
-          defaultValue={employee.corporateEmail ?? employee.personalEmail ?? ""}
-          maxLength={180}
-          name="email"
-          required
-          type="email"
-        />
-      </Field>
-      <Field label="Senha inicial" required>
-        <input className="fg-input" minLength={8} name="password" required type="password" />
-      </Field>
-      <div className="text-sm text-muted-foreground">
-        O usuario sera criado com o perfil Colaborador e vinculado a este cadastro.
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="fg-btn fg-btn-primary fg-btn-default" type="submit">
-          <KeyRound size={14} aria-hidden />
-          <span>Criar acesso</span>
         </button>
       </div>
     </form>
@@ -1907,12 +1832,7 @@ function EmployeeEditForm({
 
       <div className="fg-form-row">
         <Field label="Telefone">
-          <MaskedInput
-            autoComplete="tel"
-            defaultValue={employee.phone}
-            mask="phone"
-            name="phone"
-          />
+          <input className="fg-input" defaultValue={employee.phone ?? ""} maxLength={40} name="phone" />
         </Field>
         <Field label="Localizacao">
           <input className="fg-input" defaultValue={employee.location ?? ""} maxLength={120} name="location" />
@@ -1921,7 +1841,7 @@ function EmployeeEditForm({
 
       <div className="fg-form-row">
         <Field label="CPF">
-          <MaskedInput defaultValue={employee.cpf} mask="cpf" name="cpf" />
+          <input className="fg-input" defaultValue={employee.cpf ?? ""} maxLength={20} name="cpf" />
         </Field>
         <Field label="RG">
           <input className="fg-input" defaultValue={employee.rg ?? ""} maxLength={30} name="rg" />

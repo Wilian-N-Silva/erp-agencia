@@ -1,20 +1,20 @@
 import { KeyRound, ShieldAlert } from "lucide-react";
-import { redirect } from "next/navigation";
 
 import { Card, EmptyState, StatusBadge } from "@/components/fg";
 import { listAccessRecords, type AccessRecordListItem } from "@/features/accesses/dal";
 import { accessRecordStatusLabels, type AccessRecordStatus } from "@/features/accesses/rules";
-import { getCurrentAccessContext } from "@/lib/dal";
+import { getCurrentPortalEmployeeAccess } from "@/features/portal/access";
+import { PortalEmployeeLinkRequired } from "@/features/portal/employee-link-required";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalAccessesPage() {
-  const context = await getCurrentAccessContext();
-  if (!context) {
-    redirect("/login");
+  const access = await getCurrentPortalEmployeeAccess();
+  if (!access) {
+    return <PortalEmployeeLinkRequired />;
   }
 
-  const records = await listAccessRecords(context, {}, { ownOnly: true });
+  const records = await listAccessRecords(access.context, {}, { ownOnly: true });
 
   return (
     <>

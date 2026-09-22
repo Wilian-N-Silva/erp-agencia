@@ -59,6 +59,7 @@ Use BLOCK apenas se houver algo que deve impedir o merge.
 "@
 
 $exit = Invoke-CodexExec -WorkingDirectory $WorktreePath -Prompt $prompt -OutputFile $report -Sandbox "read-only" -Model $Model
+if ($exit -isnot [int]) { throw "Invoke-CodexExec retornou um valor invalido em vez de exit code inteiro." }
 if ($exit -ne 0) {
     Write-Error "Codex reviewer falhou com exit code $exit. Relatorio: $report"
     exit $exit

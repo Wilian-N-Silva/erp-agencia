@@ -1,6 +1,9 @@
+import { z } from "zod";
+
 import type { AccessContext } from "@/lib/dal";
 import { auditActions, type AuditAction } from "@/lib/audit";
 import { can, canAny } from "@/lib/rbac";
+import { isoDateSchema } from "@/lib/validation";
 
 export const auditActionLabels: Record<AuditAction, string> = {
   "auth.login": "Login",
@@ -11,6 +14,7 @@ export const auditActionLabels: Record<AuditAction, string> = {
   delete: "Exclusao",
   export: "Exportacao",
   permission_change: "Permissao",
+  rate_limit_exceeded: "Limite de tentativas excedido",
   reject: "Recusa",
   sensitive_read: "Leitura sensivel",
   status_change: "Status",
@@ -27,6 +31,10 @@ export const auditEntityLabels: Record<string, string> = {
   file: "Arquivo",
   financial_entry: "Entrada financeira",
   financial_expense: "Saida financeira",
+  financial_allocation: "Alocacao financeira",
+  financial_transaction: "Movimentacao financeira",
+  graphic_job: "Trabalho da Grafica",
+  graphic_project: "Projeto da Grafica",
   financial_report: "Relatorio financeiro",
   invoice_request: "NF PJ",
   lifecycle_checklist: "Checklist",
@@ -50,10 +58,23 @@ export type AuditFilters = {
   query?: string;
 };
 
+const auditExportFiltersSchema = z.strictObject({
+  action: z.enum(["all", ...auditActions]).optional(),
+  actorUserId: z.string().trim().max(200).optional(),
+  dateFrom: isoDateSchema.optional(),
+  dateTo: isoDateSchema.optional(),
+  entityId: z.string().trim().max(200).optional(),
+  entityType: z.string().trim().max(120).regex(/^[\w.-]*$/).optional(),
+  q: z.string().trim().max(200).optional(),
+  query: z.string().trim().max(200).optional(),
+});
+
 const financeAuditEntities = [
   "client",
   "financial_entry",
   "financial_expense",
+  "financial_allocation",
+  "financial_transaction",
   "financial_report",
   "invoice_request",
   "provision",
@@ -171,6 +192,14 @@ export function normalizeAuditFilters(input: {
     entityType: normalizeEntityType(firstValue(input.entityType)),
     query: normalizeSearchValue(firstValue(input.q) ?? firstValue(input.query)),
   };
+}
+
+export function parseAuditExportFilters(searchParams: URLSearchParams) {
+  return normalizeAuditFilters(
+    auditExportFiltersSchema.parse(
+      Object.fromEntries(searchParams.entries()),
+    ),
+  );
 }
 
 export function applyAuditTextFilter<

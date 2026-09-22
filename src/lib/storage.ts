@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type StorageProvider = "local" | "r2";
@@ -117,6 +117,24 @@ export async function getStorageObject(
   return readFile(resolveLocalObjectPath(config.localDir, key));
 }
 
+export async function deleteStorageObject(
+  object: Pick<StoredObject, "bucket" | "key" | "provider">,
+  config = getStorageConfig(),
+) {
+  const key = normalizeObjectKey(object.key);
+
+  if (object.provider === "r2") {
+    await deleteR2Object(key, {
+      ...config,
+      bucket: object.bucket ?? config.bucket,
+      provider: "r2",
+    });
+    return;
+  }
+
+  await rm(resolveLocalObjectPath(config.localDir, key), { force: true });
+}
+
 function normalizeR2Endpoint(env: Record<string, string | undefined>) {
   if (env.STORAGE_ENDPOINT) {
     return env.STORAGE_ENDPOINT.replace(/\/+$/g, "");
@@ -186,6 +204,22 @@ async function getR2Object(key: string, config: StorageConfig) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+async function deleteR2Object(key: string, config: StorageConfig) {
+  const response = await fetch(buildR2Url(key, config), {
+    headers: signR2Headers({
+      bodyHash: emptyPayloadHash,
+      config,
+      key,
+      method: "DELETE",
+    }),
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`R2 deletion failed with status ${response.status}.`);
+  }
+}
+
 function buildR2Url(key: string, config: StorageConfig) {
   assertR2Config(config);
   const encodedKey = key.split("/").map(encodeURIComponent).join("/");
@@ -198,7 +232,7 @@ function signR2Headers(input: {
   config: StorageConfig;
   contentType?: string;
   key: string;
-  method: "GET" | "PUT";
+  method: "DELETE" | "GET" | "PUT";
 }) {
   const config = input.config;
   assertR2Config(config);

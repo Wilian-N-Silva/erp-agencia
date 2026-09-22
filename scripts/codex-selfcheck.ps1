@@ -47,7 +47,7 @@ foreach ($file in $files) {
 }
 
 Write-Host ""
-foreach ($commandName in @("git", "codex", "npm.cmd")) {
+foreach ($commandName in @("git", "codex", "npm.cmd", "docker")) {
     if (Get-Command $commandName -ErrorAction SilentlyContinue) {
         Write-Host "[ OK ] command: $commandName" -ForegroundColor Green
     }

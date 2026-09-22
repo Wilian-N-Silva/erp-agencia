@@ -41,6 +41,7 @@ VERDICT: BLOCK
 "@
 
 $exit = Invoke-CodexExec -WorkingDirectory $repoRoot -Prompt $prompt -OutputFile $report -Sandbox "read-only" -Model $Model
+if ($exit -isnot [int]) { throw "Invoke-CodexExec retornou um valor invalido em vez de exit code inteiro." }
 if ($exit -ne 0) { exit $exit }
 $content = Get-Content -Raw -Encoding UTF8 $report
 Write-Host "Relatorio: $report"

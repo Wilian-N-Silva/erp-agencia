@@ -51,8 +51,8 @@ import {
 type Tab = "entradas" | "saidas" | "provisoes";
 
 const tabLabel: Record<Tab, string> = {
-  entradas: "Entradas",
-  saidas: "Saidas",
+  entradas: "Contas a receber",
+  saidas: "Contas a pagar",
   provisoes: "Provisoes",
 };
 
@@ -225,19 +225,19 @@ export function FinanceView({
 
   const kpis = [
     {
-      label: "Entradas previstas",
+      label: "Contas a receber",
       value: formatMoney(dashboard.totals.incomeExpected),
       secondary: `Competencia ${formatCompetence(dashboard.competence)}`,
       icon: <ArrowDownRight size={16} />,
     },
     {
-      label: "Entradas recebidas",
+      label: "Recebimentos liquidados",
       value: formatMoney(dashboard.totals.incomeReceived),
       secondary: "Realizado",
       icon: <Wallet size={16} />,
     },
     {
-      label: "Saidas previstas",
+      label: "Contas a pagar",
       value: formatMoney(dashboard.totals.expensesExpected),
       secondary: `Competencia ${formatCompetence(dashboard.competence)}`,
       icon: <ArrowUpRight size={16} />,
@@ -522,24 +522,32 @@ function EntriesTab({
     },
     {
       key: "amount",
-      label: "Previsto",
+      label: "Valor original",
       sortable: true,
       align: "right",
       render: (row) => <span className="fg-tabular">{formatMoney(row.amount)}</span>,
     },
     {
-      key: "receivedAmount",
-      label: "Recebido",
+      key: "settledAmount",
+      label: "Liquidado",
       sortable: true,
       align: "right",
       render: (row) => (
         <span
           className={`fg-tabular ${
-            row.status === "received" ? "fg-good" : "fg-muted"
+            row.status === "settled" ? "fg-good" : "fg-muted"
           }`.trim()}
         >
-          {row.receivedAmount ? formatMoney(row.receivedAmount) : "-"}
+          {moneyToCents(row.settledAmount) > 0 ? formatMoney(row.settledAmount) : "-"}
         </span>
+      ),
+    },
+    {
+      key: "settlementDate",
+      label: "Liquidação",
+      sortable: true,
+      render: (row) => (
+        <span className="fg-tabular fg-muted">{formatDate(row.settlementDate)}</span>
       ),
     },
     {
@@ -606,7 +614,7 @@ function EntriesTab({
         onSelectAll={(value) => togglePageSelection(selected, onSelected, paged, value)}
         rowAttention={(row) => (row.status === "overdue" ? "danger" : null)}
         density={density}
-        emptyMessage="Nenhuma entrada para os filtros selecionados."
+        emptyMessage="Nenhuma conta a receber para os filtros selecionados."
       />
       <Pagination
         page={page}
@@ -719,13 +727,32 @@ function ExpensesTab({
     },
     {
       key: "amount",
-      label: "Valor",
+      label: "Valor original",
       sortable: true,
       align: "right",
       render: (row) => (
         <span className="fg-tabular fg-cell-strong">
           {formatMoney(row.amount)}
         </span>
+      ),
+    },
+    {
+      key: "settledAmount",
+      label: "Liquidado",
+      sortable: true,
+      align: "right",
+      render: (row) => (
+        <span className={row.status === "settled" ? "fg-tabular fg-good" : "fg-tabular fg-muted"}>
+          {moneyToCents(row.settledAmount) > 0 ? formatMoney(row.settledAmount) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "settlementDate",
+      label: "Liquidação",
+      sortable: true,
+      render: (row) => (
+        <span className="fg-tabular fg-muted">{formatDate(row.settlementDate)}</span>
       ),
     },
     {
@@ -799,7 +826,7 @@ function ExpensesTab({
         onSelectAll={(value) => togglePageSelection(selected, onSelected, paged, value)}
         rowAttention={(row) => (row.status === "overdue" ? "danger" : null)}
         density={density}
-        emptyMessage="Nenhuma saida para os filtros selecionados."
+        emptyMessage="Nenhuma conta a pagar para os filtros selecionados."
       />
       <Pagination
         page={page}
@@ -1007,13 +1034,13 @@ function getHeaderSummary({
       0,
     );
     const totalReceived = entries.reduce(
-      (total, entry) => total + moneyToCents(entry.receivedAmount),
+      (total, entry) => total + moneyToCents(entry.settledAmount),
       0,
     );
 
-    return `${entries.length} lancamentos - Total ${formatCents(
+    return `${entries.length} contas a receber - Total ${formatCents(
       totalExpected,
-    )} - Recebido ${formatCents(totalReceived)}`;
+    )} - Liquidado ${formatCents(totalReceived)}`;
   }
 
   if (tab === "saidas") {
@@ -1021,13 +1048,14 @@ function getHeaderSummary({
       (total, expense) => total + moneyToCents(expense.amount),
       0,
     );
-    const totalPaid = expenses
-      .filter((expense) => expense.status === "paid")
-      .reduce((total, expense) => total + moneyToCents(expense.amount), 0);
+    const totalPaid = expenses.reduce(
+      (total, expense) => total + moneyToCents(expense.settledAmount),
+      0,
+    );
 
-    return `${expenses.length} lancamentos - Total ${formatCents(
+    return `${expenses.length} contas a pagar - Total ${formatCents(
       totalExpected,
-    )} - Pago ${formatCents(totalPaid)}`;
+    )} - Liquidado ${formatCents(totalPaid)}`;
   }
 
   const activeProvisions = provisions.filter((provision) => provision.status === "active");
@@ -1142,13 +1170,13 @@ function financeSortValue(row: Record<string, unknown>, key: string): string | n
 
   if (
     key === "amount" ||
-    key === "receivedAmount" ||
+    key === "settledAmount" ||
     key === "estimatedMonthlyAmount"
   ) {
     return moneyToCents(typeof value === "string" ? value : null);
   }
 
-  if (key === "dueDate" || key === "competence") {
+  if (key === "dueDate" || key === "settlementDate" || key === "competence") {
     return typeof value === "string" ? value : "";
   }
 
@@ -1275,8 +1303,10 @@ function provisionStatusLabel(status: string) {
 
 function mapEntryStatus(status: FinancialEntryStatus): string {
   switch (status) {
-    case "received":
+    case "settled":
       return "recebido";
+    case "partial":
+      return "parcial";
     case "overdue":
       return "atrasado";
     case "cancelled":
@@ -1288,8 +1318,10 @@ function mapEntryStatus(status: FinancialEntryStatus): string {
 
 function mapExpenseStatus(status: FinancialExpenseStatus): string {
   switch (status) {
-    case "paid":
+    case "settled":
       return "pago";
+    case "partial":
+      return "parcial";
     case "overdue":
       return "atrasado";
     case "cancelled":

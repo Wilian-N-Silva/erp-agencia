@@ -16,6 +16,7 @@ const headers = [
   "Categoria",
   "Competencia",
   "Vencimento",
+  "Liquidacao",
   "Status",
   "Valor",
   "Recorrente",
@@ -32,12 +33,13 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
 
   for (const entry of dashboard.entries) {
     sheet.addRow([
-      "Entrada",
+      "Conta a receber",
       entry.description,
       entry.clientName ?? "",
       "",
       formatCompetence(entry.competence),
       formatDate(entry.dueDate),
+      formatDate(entry.settlementDate),
       financialEntryStatusLabels[entry.status],
       formatMoney(entry.amount),
       entry.recurring ? "Sim" : "Nao",
@@ -46,12 +48,13 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
 
   for (const expense of dashboard.expenses) {
     sheet.addRow([
-      "Saida",
+      "Conta a pagar",
       expense.description,
       expense.supplier,
       expense.category,
       formatCompetence(expense.competence),
       formatDate(expense.dueDate),
+      formatDate(expense.settlementDate),
       financialExpenseStatusLabels[expense.status],
       formatMoney(expense.amount),
       expense.recurring ? "Sim" : "Nao",
@@ -66,6 +69,7 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
       provision.category,
       "",
       provision.expectedDay ? `Dia ${provision.expectedDay}` : "",
+      "",
       provision.status,
       formatMoney(provision.estimatedMonthlyAmount),
       provision.recurring ? "Sim" : "Nao",

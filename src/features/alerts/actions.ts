@@ -8,21 +8,34 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { alerts } from "@/lib/db/schema";
-import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
+import {
+  bindCurrentTenantContext,
+  getCurrentAccessContext,
+  type AccessContext,
+} from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import {
+  enforceAuthenticatedRateLimit,
+  withRateLimitActionResult,
+} from "@/lib/rate-limit";
+import { formDataToObject } from "@/lib/validation";
+
+import { generateAccessReviewWorkItems } from "@/features/work-items/access-review-pilot";
 
 import { generateAlertCandidatesForOrganization } from "./dal";
 import { getAlertKey, type AlertStatus } from "./rules";
 
 type AuthorizedContext = AccessContext & { organizationId: string };
 
-const idSchema = z.object({
+const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
-export async function generateAlertsAction() {
+async function generateAlertsAction() {
   const context = await requireAlertsWriterContext();
-  const candidates = await generateAlertCandidatesForOrganization(context.organizationId);
+  await enforceAuthenticatedRateLimit("common_mutation", context);
+  const workItemResults = await generateAccessReviewWorkItems(context);
+  const candidates = await generateAlertCandidatesForOrganization(context);
   const existingRows = await db
     .select({
       entityId: alerts.entityId,
@@ -61,23 +74,25 @@ export async function generateAlertsAction() {
     metadata: {
       candidateCount: candidates.length,
       insertedCount: newCandidates.length,
+      pilotWorkItemCount: workItemResults.length,
+      pilotWorkItemInsertedCount: workItemResults.filter((result) => result.created).length,
     },
   });
 
   revalidateAlertsPaths();
 }
 
-export async function resolveAlertAction(formData: FormData) {
+async function resolveAlertAction(formData: FormData) {
   await updateAlertStatus(formData, "resolved");
 }
 
-export async function dismissAlertAction(formData: FormData) {
+async function dismissAlertAction(formData: FormData) {
   await updateAlertStatus(formData, "dismissed");
 }
 
 async function updateAlertStatus(formData: FormData, status: Exclude<AlertStatus, "open">) {
   const context = await requireAlertsWriterContext();
-  const input = idSchema.parse(Object.fromEntries(formData.entries()));
+  const input = idSchema.parse(formDataToObject(formData));
   const before = await getAlertForWrite(input.id, context.organizationId);
   const [after] = await db
     .update(alerts)
@@ -141,3 +156,15 @@ function revalidateAlertsPaths() {
   revalidatePath("/app");
   revalidatePath("/app/alertas");
 }
+
+export {
+  tenantGenerateAlertsAction as generateAlertsAction,
+  tenantResolveAlertAction as resolveAlertAction,
+  tenantDismissAlertAction as dismissAlertAction,
+};
+
+const tenantGenerateAlertsAction = withRateLimitActionResult(
+  bindCurrentTenantContext(generateAlertsAction),
+);
+const tenantResolveAlertAction = bindCurrentTenantContext(resolveAlertAction);
+const tenantDismissAlertAction = bindCurrentTenantContext(dismissAlertAction);

@@ -1,0 +1,2 @@
+ALTER TABLE "graphic_production_events" DROP CONSTRAINT "graphic_production_events_waiting_check";--> statement-breakpoint
+ALTER TABLE "graphic_production_events" ADD CONSTRAINT "graphic_production_events_waiting_check" CHECK (("graphic_production_events"."to_status" = 'waiting' and "graphic_production_events"."waiting_reason" is not null and "graphic_production_events"."waiting_reason" in ('client','art','internal','supplier','material','payment','other')) or ("graphic_production_events"."to_status" <> 'waiting' and "graphic_production_events"."waiting_reason" is null));

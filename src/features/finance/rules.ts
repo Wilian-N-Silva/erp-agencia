@@ -1,34 +1,42 @@
-export const financialEntryStatusLabels = {
-  planned: "Previsto",
-  received: "Recebido",
-  overdue: "Atrasado",
+import { z } from "zod";
+
+import { isoMonthSchema } from "@/lib/validation";
+
+export const financialObligationStatusLabels = {
+  open: "Em aberto",
+  partial: "Parcialmente liquidado",
+  settled: "Liquidado",
+  overdue: "Vencido",
   cancelled: "Cancelado",
 } as const;
 
-export const financialExpenseStatusLabels = {
-  planned: "Previsto",
-  paid: "Pago",
-  overdue: "Atrasado",
-  cancelled: "Cancelado",
-} as const;
+export const financialEntryStatusLabels = financialObligationStatusLabels;
+export const financialExpenseStatusLabels = financialObligationStatusLabels;
 
-export type FinancialEntryStatus = keyof typeof financialEntryStatusLabels;
-export type FinancialExpenseStatus = keyof typeof financialExpenseStatusLabels;
+export type FinancialObligationStatus = keyof typeof financialObligationStatusLabels;
+export type FinancialEntryStatus = FinancialObligationStatus;
+export type FinancialExpenseStatus = FinancialObligationStatus;
+export type LegacyFinancialEntryStatus = "planned" | "received" | "overdue" | "cancelled";
+export type LegacyFinancialExpenseStatus = "planned" | "paid" | "overdue" | "cancelled";
+type FinancialEntryStatusSource = LegacyFinancialEntryStatus | FinancialEntryStatus;
+type FinancialExpenseStatusSource = LegacyFinancialExpenseStatus | FinancialExpenseStatus;
 
 export type FinanceEntryRecord = {
   amount: string;
   competence: string;
   dueDate: string | Date;
+  receivedAmount?: string | null;
   receivedDate?: string | Date | null;
-  status: FinancialEntryStatus;
+  status: LegacyFinancialEntryStatus;
 };
 
 export type FinanceExpenseRecord = {
   amount: string;
   competence: string;
   dueDate: string | Date;
+  paidAmount?: string | null;
   paidDate?: string | Date | null;
-  status: FinancialExpenseStatus;
+  status: LegacyFinancialExpenseStatus;
 };
 
 export type ProvisionRecord = {
@@ -62,6 +70,54 @@ export type FinanceFilters = {
   query?: string;
 };
 
+export type FinancialExpenseEditableFields = {
+  amount: string;
+  competence: string;
+  description: string;
+  dueDate: string;
+  notes: string | null;
+  recurring: boolean;
+  subcategory: string | null;
+};
+
+export type FinancialExpenseMasterDataUpdate = {
+  categoryId: string | null;
+  costCenterId: string | null;
+  supplierId: string | null;
+};
+
+export function buildFinancialExpenseUpdateValues(
+  input: FinancialExpenseEditableFields,
+  masterData: FinancialExpenseMasterDataUpdate,
+  updatedAt: Date = new Date(),
+) {
+  return {
+    supplierId: masterData.supplierId,
+    categoryId: masterData.categoryId,
+    costCenterId: masterData.costCenterId,
+    subcategory: input.subcategory,
+    description: input.description,
+    amount: input.amount,
+    dueDate: input.dueDate,
+    competence: input.competence,
+    recurring: input.recurring,
+    notes: input.notes,
+    updatedAt,
+  };
+}
+
+const financeExportFiltersSchema = z.strictObject({
+  competence: isoMonthSchema.optional(),
+  entryStatus: z
+    .enum(["all", "open", "partial", "settled", "overdue", "cancelled"])
+    .optional(),
+  expenseStatus: z
+    .enum(["all", "open", "partial", "settled", "overdue", "cancelled"])
+    .optional(),
+  q: z.string().trim().max(180).optional(),
+  query: z.string().trim().max(180).optional(),
+});
+
 export type FinanceEntryFilterTarget = FinanceEntryRecord & {
   clientName?: string | null;
   description: string;
@@ -80,6 +136,7 @@ export type ProvisionFilterTarget = ProvisionRecord & {
 
 const moneyPattern = /^-?\d+(?:\.\d{1,2})?$/;
 const positiveMoneyPattern = /^\d+(?:\.\d{1,2})?$/;
+const maxMoneyCents = 999_999_999_999;
 
 export function toDateKey(value: string | Date) {
   if (typeof value === "string") {
@@ -118,8 +175,17 @@ export function moneyToCents(value: string | null | undefined) {
   const sign = normalized.startsWith("-") ? -1 : 1;
   const unsigned = sign === -1 ? normalized.slice(1) : normalized;
   const [units, cents = ""] = unsigned.split(".");
+  const valueInCents =
+    Number(units) * 100 + Number(cents.padEnd(2, "0"));
 
-  return sign * (Number(units) * 100 + Number(cents.padEnd(2, "0")));
+  if (
+    !Number.isSafeInteger(valueInCents) ||
+    valueInCents > maxMoneyCents
+  ) {
+    throw new Error("Money value exceeds the supported range.");
+  }
+
+  return sign * valueInCents;
 }
 
 export function normalizeMoneyInput(value: string) {
@@ -211,6 +277,14 @@ export function normalizeFinanceFilters(input: {
   };
 }
 
+export function parseFinanceExportFilters(searchParams: URLSearchParams) {
+  return normalizeFinanceFilters(
+    financeExportFiltersSchema.parse(
+      Object.fromEntries(searchParams.entries()),
+    ),
+  );
+}
+
 export function applyFinanceEntryFilters<T extends FinanceEntryFilterTarget>(
   entries: readonly T[],
   filters: FinanceFilters,
@@ -269,33 +343,104 @@ export function applyProvisionFilters<T extends ProvisionFilterTarget>(
 }
 
 export function getFinancialEntryEffectiveStatus(
-  entry: Pick<FinanceEntryRecord, "dueDate" | "receivedDate" | "status">,
+  entry: {
+    amount: string;
+    dueDate: string | Date;
+    receivedAmount?: string | null;
+    receivedDate?: string | Date | null;
+    status: FinancialEntryStatusSource;
+  },
   asOf: string | Date = new Date(),
 ): FinancialEntryStatus {
-  if (entry.status === "cancelled") {
-    return "cancelled";
-  }
-
-  if (entry.receivedDate || entry.status === "received") {
-    return "received";
-  }
-
-  return toDateKey(entry.dueDate) < toDateKey(asOf) ? "overdue" : "planned";
+  return deriveFinancialObligation({
+    amount: entry.amount,
+    settledAmount: getFinancialEntrySettledAmount(entry),
+    dueDate: entry.dueDate,
+    cancelled: entry.status === "cancelled",
+    asOf,
+  }).status;
 }
 
 export function getFinancialExpenseEffectiveStatus(
-  expense: Pick<FinanceExpenseRecord, "dueDate" | "paidDate" | "status">,
+  expense: {
+    amount: string;
+    dueDate: string | Date;
+    paidAmount?: string | null;
+    paidDate?: string | Date | null;
+    status: FinancialExpenseStatusSource;
+  },
   asOf: string | Date = new Date(),
 ): FinancialExpenseStatus {
-  if (expense.status === "cancelled") {
-    return "cancelled";
+  return deriveFinancialObligation({
+    amount: expense.amount,
+    settledAmount: getFinancialExpenseSettledAmount(expense),
+    dueDate: expense.dueDate,
+    cancelled: expense.status === "cancelled",
+    asOf,
+  }).status;
+}
+
+export function deriveFinancialObligation(input: {
+  amount: string;
+  settledAmount?: string | null;
+  dueDate: string | Date;
+  cancelled?: boolean;
+  asOf?: string | Date;
+}) {
+  const amountCents = moneyToCents(input.amount);
+  const settledCents = Math.max(moneyToCents(input.settledAmount), 0);
+  const outstandingCents = Math.max(amountCents - settledCents, 0);
+  let status: FinancialObligationStatus;
+
+  if (input.cancelled) {
+    status = "cancelled";
+  } else if (amountCents > 0 && settledCents >= amountCents) {
+    status = "settled";
+  } else if (settledCents > 0) {
+    status = "partial";
+  } else if (toDateKey(input.dueDate) < toDateKey(input.asOf ?? new Date())) {
+    status = "overdue";
+  } else {
+    status = "open";
   }
 
-  if (expense.paidDate || expense.status === "paid") {
-    return "paid";
+  return {
+    status,
+    settledAmount: centsToMoney(settledCents),
+    outstandingAmount: centsToMoney(outstandingCents),
+  };
+}
+
+export function getFinancialEntrySettledAmount(
+  entry: {
+    amount: string;
+    receivedAmount?: string | null;
+    status: FinancialEntryStatusSource;
+  },
+) {
+  if (entry.receivedAmount !== null && entry.receivedAmount !== undefined) {
+    return centsToMoney(Math.max(moneyToCents(entry.receivedAmount), 0));
   }
 
-  return toDateKey(expense.dueDate) < toDateKey(asOf) ? "overdue" : "planned";
+  return entry.status === "received" || entry.status === "settled"
+    ? entry.amount
+    : "0.00";
+}
+
+export function getFinancialExpenseSettledAmount(
+  expense: {
+    amount: string;
+    paidAmount?: string | null;
+    status: FinancialExpenseStatusSource;
+  },
+) {
+  if (expense.paidAmount !== null && expense.paidAmount !== undefined) {
+    return centsToMoney(Math.max(moneyToCents(expense.paidAmount), 0));
+  }
+
+  return expense.status === "paid" || expense.status === "settled"
+    ? expense.amount
+    : "0.00";
 }
 
 export function computeFinanceDashboard(input: {
@@ -323,8 +468,8 @@ export function computeFinanceDashboard(input: {
   );
   const incomeReceived = sumMoney(
     entriesInCompetence
-      .filter((entry) => getFinancialEntryEffectiveStatus(entry, asOfKey) === "received")
-      .map((entry) => entry.amount),
+      .filter((entry) => entry.status !== "cancelled")
+      .map(getFinancialEntrySettledAmount),
   );
   const incomeOverdue = sumMoney(
     entriesInCompetence
@@ -338,8 +483,8 @@ export function computeFinanceDashboard(input: {
   );
   const expensesPaid = sumMoney(
     expensesInCompetence
-      .filter((expense) => getFinancialExpenseEffectiveStatus(expense, asOfKey) === "paid")
-      .map((expense) => expense.amount),
+      .filter((expense) => expense.status !== "cancelled")
+      .map(getFinancialExpenseSettledAmount),
   );
   const expensesOverdue = sumMoney(
     expensesInCompetence
@@ -355,20 +500,44 @@ export function computeFinanceDashboard(input: {
       return (
         dueDate >= asOfKey &&
         dueDate <= forecastEndKey &&
-        getFinancialEntryEffectiveStatus(entry, asOfKey) === "planned"
+        !["settled", "cancelled"].includes(getFinancialEntryEffectiveStatus(entry, asOfKey))
       );
     })
-    .reduce((total, entry) => total + moneyToCents(entry.amount), 0);
+    .reduce(
+      (total, entry) =>
+        total +
+        moneyToCents(
+          deriveFinancialObligation({
+            amount: entry.amount,
+            settledAmount: getFinancialEntrySettledAmount(entry),
+            dueDate: entry.dueDate,
+            asOf: asOfKey,
+          }).outstandingAmount,
+        ),
+      0,
+    );
   const forecastExpenseCents = input.expenses
     .filter((expense) => {
       const dueDate = toDateKey(expense.dueDate);
       return (
         dueDate >= asOfKey &&
         dueDate <= forecastEndKey &&
-        getFinancialExpenseEffectiveStatus(expense, asOfKey) === "planned"
+        !["settled", "cancelled"].includes(getFinancialExpenseEffectiveStatus(expense, asOfKey))
       );
     })
-    .reduce((total, expense) => total + moneyToCents(expense.amount), 0);
+    .reduce(
+      (total, expense) =>
+        total +
+        moneyToCents(
+          deriveFinancialObligation({
+            amount: expense.amount,
+            settledAmount: getFinancialExpenseSettledAmount(expense),
+            dueDate: expense.dueDate,
+            asOf: asOfKey,
+          }).outstandingAmount,
+        ),
+      0,
+    );
   const forecastProvisionCents = activeProvisions
     .filter((provision) =>
       isProvisionDueWithinRange(provision.expectedDay, asOfKey, forecastEndKey),

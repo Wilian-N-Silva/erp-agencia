@@ -145,7 +145,9 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       ? formatMoney(centsToMoney(feeRecorrenteCents))
       : "—",
     feeHidden: !canReadFinance,
-    contractsActive: clients.filter((c) => c.status === "active").length,
+    contractsActive: clients.filter(
+      (c) => c.status === "active" && c.billingDay !== null,
+    ).length,
     clientsOverdue: Object.values(monthlyByClient).filter((item) => item.hasOverdue)
       .length,
     aReceberMes: financeDashboard

@@ -1,6 +1,6 @@
 import { asc, desc, eq } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { bindTenantContext, db } from "@/lib/db";
 import { accessRecords, employees, users } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
@@ -43,7 +43,7 @@ export type AccessEmployeeOption = {
   name: string;
 };
 
-export async function listAccessRecords(
+async function listAccessRecords(
   context: AccessContext,
   filters: AccessRecordFilters = {},
   options: { limit?: number; ownOnly?: boolean } = {},
@@ -128,7 +128,7 @@ export async function listAccessRecords(
   ).slice(0, options.limit);
 }
 
-export async function listAccessEmployeeOptions(
+async function listAccessEmployeeOptions(
   context: AccessContext,
 ): Promise<AccessEmployeeOption[]> {
   assertCanAny(["access_records.write", "access_records.configure"], context);
@@ -144,7 +144,7 @@ export async function listAccessEmployeeOptions(
     .orderBy(asc(employees.fullName));
 }
 
-export async function listAccessReviewAlerts(
+async function listAccessReviewAlerts(
   context: AccessContext,
   options: { limit?: number } = {},
 ) {
@@ -160,3 +160,13 @@ function requireOrganizationId(context: AccessContext) {
 
   return context.organizationId;
 }
+
+export {
+  tenantListAccessRecords as listAccessRecords,
+  tenantListAccessEmployeeOptions as listAccessEmployeeOptions,
+  tenantListAccessReviewAlerts as listAccessReviewAlerts,
+};
+
+const tenantListAccessRecords = bindTenantContext(listAccessRecords);
+const tenantListAccessEmployeeOptions = bindTenantContext(listAccessEmployeeOptions);
+const tenantListAccessReviewAlerts = bindTenantContext(listAccessReviewAlerts);
