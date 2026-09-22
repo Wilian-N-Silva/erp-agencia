@@ -9,6 +9,8 @@ import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/f
 import { advanceGraphicProduction, getGraphicProduction } from "@/features/graphics/production";
 import { contractGraphicSupplier } from "@/features/graphics/commitment";
 import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
+import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
+import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -245,6 +247,36 @@ it("creates signal and balance receivables once, without cash, with rollback and
   }
   await expect(withTenantDb(contexts[1], tx => tx.execute(sql`insert into graphic_sale_installments (organization_id,sale_id,entry_id,ordinal,label) values (${orgs[0]},${first.id},${result!.installments[0].entryId},3,'Tampered')`))).rejects.toThrow();
   await expect(admin.execute(sql`insert into graphic_sale_installments (organization_id,sale_id,entry_id,ordinal,label) values (${orgs[1]},${first.id},${result!.installments[0].entryId},3,'Tampered')`)).rejects.toThrow();
+});
+
+it("derives finance totals from linked titles, hides unreliable margins and protects financial access", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: ["graphics.finance_read"] };
+  await expect(getGraphicFinanceSummary(contexts[0], jobs[2])).rejects.toThrow();
+  expect(await getGraphicFinanceSummary({ ...context, organizationId: orgs[1], userId: userIds[1] }, jobs[2])).toBeNull();
+  expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ contracted: "1500.00", receivableOpen: "1500.00", received: "0.00", payableTotal: "100.00", paid: "0.00", reliable: true, contractedMargin: "1400.00" });
+  const sale = await getGraphicSale(contexts[0], jobs[2]);
+  const entryId = sale!.installments[0].entryId;
+  await admin.execute(sql`update financial_entries set received_amount=100 where id=${entryId}`);
+  try {
+    expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ receivableOpen: "1400.00", received: "0.00", reliable: false, contractedMargin: null });
+  } finally { await admin.execute(sql`update financial_entries set received_amount=0 where id=${entryId}`); }
+  expect(await getGraphicFinanceSummary(context, jobs[0])).toMatchObject({ contracted: null, reliable: false, contractedMargin: null });
+});
+
+it("counts partial cash once across installments and withholds margin until its movement is reconciled", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: ["graphics.finance_read", "finance.settle"] };
+  const sale = await getGraphicSale(contexts[0], jobs[2]);
+  const rollback = new Error("Rollback cash summary fixture");
+  await expect(withTenantDb(context, async tx => {
+    const accountId = randomUUID(), transactionId = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${accountId},${orgs[0]},'Summary QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${transactionId},${orgs[0]},${accountId},'in',700,now(),${userIds[0]})`);
+    await createFinancialAllocations(context, { transactionId, allocations: [{ targetId: sale!.installments[0].entryId, targetType: "receivable", amount: "300.00" }] });
+    expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ received: "300.00", receivableOpen: "1200.00", pendingMovements: 1, reliable: false, contractedMargin: null });
+    await createFinancialAllocations(context, { transactionId, allocations: [{ targetId: sale!.installments[0].entryId, targetType: "receivable", amount: "200.00" }, { targetId: sale!.installments[1].entryId, targetType: "receivable", amount: "200.00" }] });
+    expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ received: "700.00", receivableOpen: "800.00", pendingMovements: 0, reliable: true, contractedMargin: "1400.00", cashResult: "700.00" });
+    throw rollback;
+  })).rejects.toBe(rollback);
 });
 
 it("runs production through a blocking work item, resume, delivery and closure with protected history", async () => {

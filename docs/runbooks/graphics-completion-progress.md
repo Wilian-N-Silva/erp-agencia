@@ -11,7 +11,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-007: implementada e validada nesta branch — produção, bloqueios, responsável, entrega e encerramento.
 - GRF-008: implementada e validada nesta branch — contratação explícita e AP idempotente/transacional.
 - GRF-009: implementada e validada nesta branch — condição comercial, sinal/parcelas e AR sem caixa automático.
-- GRF-010: pendente — resumo financeiro derivado de obrigações e alocações.
+- GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: pendente — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: pendente — dashboard operacional/financeiro com filtros.
 - GRF-013: pendente — importação com staging, dry-run, proveniência, pendências e relatório.
@@ -63,3 +63,11 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Não amplia automaticamente concessões de finance.settle: administração de acesso mantém a concessão explícita. Nenhuma permissão de liquidação é concedida à Gráfica.
 - Typecheck, lint, build e diff-check aprovados; 350 testes unitários, 154 de banco e 4 E2E aprovados. E2E testa valor acima do título, preservação dos campos, sinal/saldo e persistência após recarga. Correções de seletores cobrem indicador de campo obrigatório e anúncio de rota do Next.js.
 - Sem migration ou backfill nesta dependência. Worktree sec-002 preexistente preservada; Git gerenciado manualmente nesta branch.
+
+## Evidência GRF-010 — 21/09/2026
+
+- Resumo financeiro no detalhe: venda contratada, AR/AP em aberto, recebimentos/pagamentos conciliados, custos ativos, status e quantidade de movimentações parcialmente vinculadas. Entradas monetárias são lidas em um único snapshot SQL, com organização explícita e RLS.
+- Margem contratada é distinta de resultado de caixa. Ausência de venda/custos, títulos inativos, divergência entre venda e AR, liquidações históricas sem alocações e pendências de conciliação impedem exibir margem como confiável. Valores são calculados em centavos.
+- Migração 0037 adiciona graphics.finance_read ao catálogo e aos perfis Admin Técnico/Diretoria; finance.read também autoriza consulta. Demais usuários da Gráfica não recebem dados de liquidação. Nenhuma tabela ou backfill criado.
+- Typecheck, lint, build e diff-check aprovados; 355 testes unitários, 156 de banco e 4 E2E passaram. Inclui upgrade, RBAC/IDOR, caixa dividido entre parcelas sem dupla contagem, margem indisponível durante conciliação parcial e resultado real após recebimento pela UI.
+- Movimentações totalmente sem vínculo não são atribuídas por aproximação ao trabalho; devem ser identificadas no Financeiro. O dashboard e a atualização da listagem são tratados na GRF-012. A margem considera somente custos cadastrados, conforme orientação visível na tela.

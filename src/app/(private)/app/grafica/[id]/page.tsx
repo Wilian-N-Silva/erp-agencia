@@ -29,6 +29,7 @@ import { ProductionForm } from "../production-form";
 import { CommitmentForm } from "../commitment-form";
 import { GraphicSaleForm } from "../sale-form";
 import { getGraphicSale } from "@/features/graphics/sale";
+import { canReadGraphicFinance, getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
 import { getGraphicCommitments, getGraphicCommitmentOptions } from "@/features/graphics/commitment";
 import { getGraphicProduction } from "@/features/graphics/production";
 import { productionNextStatuses, waitingReasonLabels } from "@/features/graphics/production-rules";
@@ -65,6 +66,7 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const lastStage = production[0];
   const commitments = await getGraphicCommitments(context, id);
   const sale = await getGraphicSale(context, id);
+  const finance = canReadGraphicFinance(context) ? await getGraphicFinanceSummary(context, id) : null;
   const commitmentOptions = canProduce ? await getGraphicCommitmentOptions(context) : null;
   const uncontractedQuotes = quotes.filter(quote => quote.status === "approved" && !commitments.some(row => row.commitment.quoteId === quote.id));
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
@@ -80,7 +82,7 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     <InlineAlert title={`Próxima ação: ${job.nextAction}`} description={`Responsável: ${job.responsibleName}`} />
     {editing && options ? <Card title="Editar trabalho"><RateLimitedActionForm action={updateGraphicJobAction}><input name="id" type="hidden" value={id} /><GraphicJobFormFields job={job} options={options} /><div className="mt-5 flex justify-end"><button className={primaryButtonClassName} type="submit">Salvar alterações</button></div></RateLimitedActionForm></Card> : null}
     <div className="grid gap-5 lg:grid-cols-2">
-      <Card title="Resumo"><dl className="grid gap-4 sm:grid-cols-2"><Item label="Status operacional"><StatusBadge label={graphicJobOperationalStatusLabels[job.operationalStatus]} /></Item><Item label="Status financeiro">{graphicJobFinancialStatusLabels[job.financialStatus]}</Item><Item label="Responsável">{job.responsibleName}</Item><Item label="Projeto/evento">{job.projectName ?? "Sem projeto"}</Item><Item label="Solicitado em">{formatDate(job.requestedAt)}</Item><Item label="Entrega desejada">{formatDate(job.desiredDeliveryAt)}</Item></dl></Card>
+      <Card title="Resumo"><dl className="grid gap-4 sm:grid-cols-2"><Item label="Status operacional"><StatusBadge label={graphicJobOperationalStatusLabels[job.operationalStatus]} /></Item><Item label="Status financeiro">{finance ? graphicJobFinancialStatusLabels[finance.status] : "Acesso restrito ao resumo financeiro"}</Item><Item label="Responsável">{job.responsibleName}</Item><Item label="Projeto/evento">{job.projectName ?? "Sem projeto"}</Item><Item label="Solicitado em">{formatDate(job.requestedAt)}</Item><Item label="Entrega desejada">{formatDate(job.desiredDeliveryAt)}</Item></dl></Card>
       <Card title="Descrição"><p className="whitespace-pre-wrap text-sm">{job.description}</p>{job.notes ? <><h3 className="mt-5 text-sm font-semibold">Observações internas</h3><p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{job.notes}</p></> : null}</Card>
     </div>
     <Card title="OS externa">
@@ -98,6 +100,22 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
       {!currentOs ? <p className="text-sm text-muted-foreground">Registre a OS para acompanhar a resposta do cliente.</p> : canRecordClientDecision(job.operationalStatus) && context.permissions.includes("graphics.client_approval_write") ? <ClientDecisionForm key={`${currentOs.id}-${clientDecisions[0]?.decision.id ?? "first"}`} jobId={id} osVersionId={currentOs.id} osVersion={currentOs.version} previousId={clientDecisions[0]?.decision.id} rejected={job.operationalStatus === "client_rejected"} /> : <p className="text-sm text-muted-foreground">{job.operationalStatus === "approved" ? "Cliente aprovou a OS. O próximo passo é liberar a produção." : "Acompanhe abaixo o histórico de respostas. O registro exige permissão e uma OS aguardando decisão."}</p>}
       {clientDecisions.length ? <ol className="mt-4 grid gap-3">{clientDecisions.map(({ decision, osVersion, actor }) => <li key={decision.id} className="rounded-md border p-3 text-sm"><p className="font-semibold">{clientDecisionLabels[decision.decision as keyof typeof clientDecisionLabels]} · OS versão {osVersion}</p><p>{decision.contact} · {clientChannelLabels[decision.channel as keyof typeof clientChannelLabels]} · {decision.decidedAt.split("-").reverse().join("/")}</p><p className="whitespace-pre-wrap">{decision.notes}</p><p className="text-muted-foreground">Registrado por {actor} em {formatDateTime(decision.createdAt)}</p>{decision.fileId ? <a className="text-primary underline" href={`/app/grafica/${id}/cliente/${decision.id}/download`}>Baixar evidência da resposta</a> : null}</li>)}</ol> : null}
     </Card>
+    {finance ? <Card title="Resumo financeiro do trabalho">
+      <dl className="grid gap-4 sm:grid-cols-3">
+        <Item label="Valor contratado">{finance.contracted === null ? "Venda não registrada" : formatMoney(finance.contracted)}</Item>
+        <Item label="A receber em aberto">{formatMoney(finance.receivableOpen)}</Item>
+        <Item label="Recebido e conciliado">{formatMoney(finance.received)}</Item>
+        <Item label="Custos contratados ativos">{formatMoney(finance.payableTotal)}</Item>
+        <Item label="A pagar em aberto">{formatMoney(finance.payableOpen)}</Item>
+        <Item label="Pago e conciliado">{formatMoney(finance.paid)}</Item>
+        <Item label="Situação financeira">{graphicJobFinancialStatusLabels[finance.status]}</Item>
+        <Item label="Movimentações parcialmente vinculadas">{finance.pendingMovements}</Item>
+        <Item label="Margem contratada">{finance.contractedMargin === null ? "Aguardando vínculos confiáveis" : formatMoney(finance.contractedMargin)}</Item>
+        <Item label="Resultado de caixa conciliado">{finance.cashResult === null ? "Aguardando vínculos confiáveis" : formatMoney(finance.cashResult)}</Item>
+      </dl>
+      <p className="mt-4 text-sm text-muted-foreground">Margem contratada compara a venda com os custos ativos cadastrados; não representa dinheiro disponível nem garante que todos os custos foram informados. Resultado de caixa compara recebimentos e pagamentos conciliados. Movimentações sem vínculo precisam ser identificadas pelo Financeiro.</p>
+      {finance.warnings.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{finance.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul> : null}
+    </Card> : null}
     <Card title="Venda e contas a receber">
       {sale ? <div className="grid gap-3 text-sm"><p className="font-semibold">Valor contratado: {formatMoney(sale.sale.amount)}</p><p>Contas a receber criadas. Recebimento acompanhado pelo Financeiro.</p><ol className="grid gap-2">{sale.installments.map(item => <li key={item.id} className="rounded-md border p-3">{item.label} · {formatMoney(item.amount)} · Vencimento: {item.dueDate.split("-").reverse().join("/")}</li>)}</ol></div> : currentOs && context.permissions.includes("graphics.client_approval_write") && ["approved", "in_production", "waiting", "ready", "delivered"].includes(job.operationalStatus) ? <GraphicSaleForm jobId={id} osVersionId={currentOs.id} presentedAmount={currentOs.presentedAmount} /> : <p className="text-sm text-muted-foreground">Após a aprovação do cliente, registre as condições comerciais para criar as contas a receber.</p>}
     </Card>

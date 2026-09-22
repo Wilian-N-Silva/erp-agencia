@@ -81,6 +81,7 @@ export function getGraphicJobNextAction(status: GraphicJobOperationalStatus) {
 }
 
 export const graphicJobReadPermissions = [
+  "graphics.finance_read",
   "graphics.production_write",
   "graphics.client_approval_write",
   "graphics.read",

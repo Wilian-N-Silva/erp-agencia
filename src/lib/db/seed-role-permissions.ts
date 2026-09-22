@@ -23,6 +23,7 @@ export const defaultRolePermissions: Record<
     "graphics.supplier_quote_approve",
     "graphics.client_approval_write",
     "graphics.production_write",
+    "graphics.finance_read",
     "people.configure",
     "equipment.configure",
     "access_records.configure",

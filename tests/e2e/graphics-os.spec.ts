@@ -134,6 +134,11 @@ test("OS external PDF registration, version history and download", async ({ page
   await page.reload();
   await expect(page.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
   await page.goto(jobUrl);
+  const financeSummary = page.locator(".fg-card").filter({ has: page.getByText("Resumo financeiro do trabalho", { exact: true }) });
+  await expect(financeSummary).toContainText("Recebido e conciliado");
+  await expect(financeSummary.locator("dl")).toContainText("R$ 1.950,00");
+  await expect(financeSummary).toContainText("R$ 750,00");
+  await expect(financeSummary).not.toContainText("Aguardando vínculos confiáveis");
   await page.getByRole("combobox", { name: "Próxima etapa", exact: true }).selectOption("in_production");
   await page.getByRole("button", { name: "Registrar etapa", exact: true }).click();
   await expect(page.getByText("Em produção", { exact: true })).toBeVisible();

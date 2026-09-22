@@ -260,6 +260,13 @@
       "when": 1790033371549,
       "tag": "0036_graphics_sales_security",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790037067640,
+      "tag": "0037_graphics_finance_summary_permission",
+      "breakpoints": true
     }
   ]
 }
