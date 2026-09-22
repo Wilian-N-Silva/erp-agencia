@@ -14,7 +14,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
-- GRF-013: pendente — importação com staging, dry-run, proveniência, pendências e relatório.
+- GRF-013: em andamento — parser XLSX implementado; staging, revisão, confirmação e relatório ainda pendentes.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
 
 Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
@@ -87,3 +87,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Visão financeira usa leitura em lote com organização/RLS e exibe contratado, AR/AP aberto, recebido/pago conciliado, custos e margem/caixa apenas quando todos os trabalhos têm vínculos confiáveis. Usuários somente operacionais não recebem resumos monetários. Encerramento operacional com saldo pendente indica a próxima ação financeira.
 - Sem migration/backfill. Testes de filtros e autorização no DAL; E2E confere totais de um trabalho e resultado vazio ao trocar etapa. O teste unitário antigo da página foi ajustado ao novo carregamento do dashboard, preservando a cobertura do perfil apenas aprovador.
 - Typecheck, lint, build e diff-check aprovados; 359 testes unitários, 158 de banco e 4 E2E passaram. A leitura consolidada reutiliza as mesmas regras financeiras do detalhe para evitar divergência de totais.
+
+## Progresso GRF-013 — parser — 22/09/2026
+
+- Parser XLSX com ExcelJS existente, mapeamento explícito de até três blocos (vendas/OS, saídas, entradas), aba/intervalo/colunas e até 10.000 linhas. Blocos não podem compartilhar células de origem.
+- Preserva checksum SHA-256, aba, número da linha, valores originais e campos normalizados, incluindo projeto. OS ausente/múltipla/duplicada gera classificação ambígua; datas inválidas, fórmulas e valores inválidos exigem revisão. Não infere vínculo de caixa com vendas pelo texto da OS.
+- Validação prévia do ZIP limita arquivo a 10 MB, expansão real a 40 MB e 500 entradas; rejeita criptografia, macros, links externos e estruturas inconsistentes. Não executa fórmulas ou usa seu resultado em cache como valor confirmado.
+- Esta etapa ainda não disponibiliza importação na interface nem escreve registros financeiros. Próximos passos obrigatórios: staging persistente, dry-run, resolução de referências, confirmação idempotente, work items, relatório e E2E.
