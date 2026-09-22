@@ -16,6 +16,7 @@ import {
   normalizeGraphicJobFilters,
 } from "@/features/graphics/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
+import { can } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function GraphicJobsPage({ searchParams }: { searchParams?:
         description={`${jobs.length} trabalho${jobs.length === 1 ? "" : "s"} encontrado${jobs.length === 1 ? "" : "s"}`}
         actions={canWrite ? <Link className={primaryButtonClassName} href="/app/grafica/novo"><Plus size={16} />Novo trabalho</Link> : undefined}
       />
+      {can("graphics.import", context) ? <Link className="text-primary underline" href="/app/grafica/importar">Importar histórico da Gráfica</Link> : null}
       <form className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-2 xl:grid-cols-7">
         <label className="relative xl:col-span-2">
           <span className="mb-1 block text-sm">Buscar trabalho</span>

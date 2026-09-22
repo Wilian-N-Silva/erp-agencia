@@ -108,3 +108,11 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Migração 0042 permite origem histórica explícita em graphic_sales por FK para a linha de importação. Uma venda deve ter exatamente uma origem: versão de OS ou linha histórica. Fluxo novo continua exigindo OS aprovada; histórico não fabrica documento, aprovação ou recebimento.
 - Confirmação transacional processa até 100 linhas revisadas por chamada. Vendas criam trabalho, venda e AR vinculada; entradas/saídas criam movimentações com proveniência e pendência de conciliação. Reenvio não recria registros. Linhas não revisadas geram work item; ignorar exige motivo e preserva os dados brutos.
 - Testes focados aprovados: rollback de auditoria, reenvio idempotente, saldo de AR sem caixa automático, histórico sem OS fictícia, caixa sem alocações inventadas, permissão financeira adicional, pendências/resolução e upgrade até 0042. Interface, relatório e E2E ainda necessários para concluir a task.
+
+## Progresso GRF-013 — interface de revisão — 22/09/2026
+
+- Telas de envio/mapeamento, lotes recentes e revisão paginada em 50 linhas. Campos acessíveis para vínculos explícitos, correções e justificativas; nenhum cliente é escolhido por aproximação textual. Caixa exige finance.write também na interface e no DAL.
+- Confirmação explícita processa até 100 linhas revisadas; linhas pendentes e ignoradas permanecem visíveis. Links levam ao trabalho ou à conciliação criada. Relatório JSON autenticado, limitado e auditado preserva origem, decisões e IDs gerados; resposta sem cache.
+- Limite graphics_import aplicado à preparação de arquivos; revisão/ignorar/confirmação usam common_mutation, permitindo processar arquivos grandes em partes sem consumir a cota de novos arquivos.
+- Typecheck, lint, build, 366 testes unitários e 162 testes de banco aprovados. Novos testes de formulário verificam ausência de inferência por nome e separação das referências de entrada/saída. Ajuste final de seleção de rate limiter feito após o build; precisa entrar no próximo build para E2E.
+- Ainda falta validar a importação no navegador/E2E e revisar relatório/usabilidade com esse fluxo. GRF-013 permanece em andamento, GRF-014 e a auditoria final do módulo continuam pendentes. Nenhuma migration/backfill adicional. Worktree sec-002 preservada.

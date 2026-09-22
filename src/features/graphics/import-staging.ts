@@ -2,11 +2,25 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { withTenantDb } from "@/lib/db";
-import { graphicImportBatches, graphicImportRows } from "@/lib/db/schema";
+import { financialAccounts, suppliers, graphicImportBatches, graphicImportRows } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { AccessDeniedError, assertCan, can } from "@/lib/rbac";
+import { getGraphicJobFormOptions } from "./dal";
 import { parseGraphicWorkbook } from "./import-xlsx";
 import { GraphicImportError } from "./import-rules";
+
+export async function getGraphicImportOptions(context: AccessContext) {
+  assertCan("graphics.import", context);
+  if (!context.organizationId) throw new AccessDeniedError();
+  const organizationId = context.organizationId;
+  const options = await getGraphicJobFormOptions(context);
+  const cash = can("finance.write", context) ? await withTenantDb(context, async tx => ({
+    accounts: await tx.select({ id: financialAccounts.id, name: financialAccounts.name }).from(financialAccounts).where(and(eq(financialAccounts.organizationId, organizationId), eq(financialAccounts.status, "active"))).orderBy(asc(financialAccounts.name)),
+    suppliers: await tx.select({ id: suppliers.id, name: suppliers.name }).from(suppliers).where(and(eq(suppliers.organizationId, organizationId), eq(suppliers.isActive, true))).orderBy(asc(suppliers.name)),
+  })) : { accounts: [], suppliers: [] };
+  return { ...options, ...cash, canImportCash: can("finance.write", context) };
+}
+export type GraphicImportOptions = Awaited<ReturnType<typeof getGraphicImportOptions>>;
 
 export async function stageGraphicImport(context: AccessContext, upload: File, mapping: unknown) {
   assertCan("graphics.import", context);
