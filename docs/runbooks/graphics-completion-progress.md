@@ -6,6 +6,8 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 
 ## Acompanhamento
 
+**Estado final em 22/09/2026:** GRF-005 a GRF-014 integradas em `development` local (`755b6cb`) e revalidadas. Os registros cronológicos abaixo preservam pendências intermediárias; o resultado vigente está em [graphics-acceptance.md](graphics-acceptance.md). Nenhum bloqueio aberto para o escopo solicitado. Homologação externa e generalização documental fora da Gráfica não fazem parte deste aceite local.
+
 - GRF-005: implementada no commit 267b563, incorporada nesta branch.
 - GRF-006: implementada e validada nesta branch; decisão vinculada à versão atual, histórico imutável, evidência privada e permissão específica.
 - GRF-007: implementada e validada nesta branch — produção, bloqueios, responsável, entrega e encerramento.

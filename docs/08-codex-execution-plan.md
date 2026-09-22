@@ -95,6 +95,8 @@ CORE-002 e CORE-004 podem ser paralelos se write scopes não se cruzarem. FIN-00
 
 ## 7. Wave 3 — Gráfica operacional
 
+Integração manual em 22/09/2026: **GRF-005 a GRF-014 — `done` em development local**, merge `755b6cb`, revalidado com typecheck, lint, 370 testes unitários, 164 de banco e 5 E2E. Build da árvore idêntica aprovado. Critérios, limites da evidência e roteiro: [aceite da Gráfica](runbooks/graphics-acceptance.md). Não representa publicação em produção nem conclusão global de DOC-001/002 para outros domínios.
+
 | Ordem | ID | Dependências |
 |---:|---|---|
 | 1 | GRF-001 | SEC-003, CORE-001, FIN-002 |

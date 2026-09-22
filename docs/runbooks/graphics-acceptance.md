@@ -2,6 +2,8 @@
 
 Verificação de 22/09/2026. Implementação revisada contra `development` em `codex/graphics-completion`. Este relatório descreve o módulo local; não é homologação de produção nem validação com usuários reais.
 
+Integrada em `development` local pelo merge `755b6cb`, sem conflitos. Revalidação pós-merge: typecheck, lint, 370 unitários, 164 testes de banco, 5 E2E e diff-check aprovados. A árvore integrada é idêntica à árvore de implementação cujo build passou. Nenhum push remoto ou alteração em `main` nesta integração.
+
 ## Matriz de aceite
 
 | Task | Comportamento comprovado | Evidência no repositório |
