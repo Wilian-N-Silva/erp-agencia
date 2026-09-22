@@ -46,6 +46,7 @@ import {
 } from "./rules";
 import { transitionPendingGraphicSupplierQuote } from "./quote-decision";
 import { lockGraphicJobForQuoteSubmission } from "./quote-submission";
+import type { ServerActionResult } from "@/lib/server-action-result";
 import { registerGraphicOs } from "./os-registration";
 
 async function createGraphicJobEntryPoint(formData: FormData) {
@@ -629,14 +630,33 @@ function refresh(id: string) {
   revalidatePath(`/app/grafica/${id}`);
 }
 
-export const createGraphicJobAction = withRateLimitActionResult(createGraphicJobEntryPoint);
-export const updateGraphicJobAction = withRateLimitActionResult(updateGraphicJobEntryPoint);
+export const createGraphicJobAction = withGraphicJobConflictResult(createGraphicJobEntryPoint);
+export const updateGraphicJobAction = withGraphicJobConflictResult(updateGraphicJobEntryPoint);
 export const deleteGraphicJobAction = withRateLimitActionResult(deleteGraphicJobEntryPoint);
 export const createGraphicSupplierQuoteAction = withRateLimitActionResult(createGraphicSupplierQuoteEntryPoint);
 export const updateGraphicSupplierQuoteAction = withRateLimitActionResult(updateGraphicSupplierQuoteEntryPoint);
 export const cancelGraphicSupplierQuoteAction = withRateLimitActionResult(cancelGraphicSupplierQuoteEntryPoint);
 export const approveGraphicSupplierQuoteAction = withRateLimitActionResult(approveGraphicSupplierQuoteEntryPoint);
 export const rejectGraphicSupplierQuoteAction = withRateLimitActionResult(rejectGraphicSupplierQuoteEntryPoint);
+
+function withGraphicJobConflictResult<T>(operation: (formData: FormData) => Promise<T>) {
+  const limited = withRateLimitActionResult(operation);
+  return async (formData: FormData): Promise<ServerActionResult<T>> => {
+    try { return await limited(formData); }
+    catch (error) {
+      // Match only the known organization/code constraint, after transaction rollback.
+      let cause: unknown = error;
+      for (let depth = 0; depth < 4 && cause && typeof cause === "object"; depth++) {
+        const detail = cause as { code?: string; constraint?: string; cause?: unknown };
+        if (detail.code === "23505" && detail.constraint === "graphic_jobs_internal_code_idx") {
+          return { ok: false, code: "CONFLICT", message: "Este código interno já está em uso nesta organização, inclusive em trabalhos arquivados. Escolha outro código ou consulte o trabalho existente. Seus dados foram mantidos." };
+        }
+        cause = detail.cause;
+      }
+      throw error;
+    }
+  };
+}
 
 export async function registerGraphicOsAction(formData: FormData) {
   const context = await getCurrentAccessContext();

@@ -2,7 +2,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { RateLimitedActionForm } from "@/components/fg";
+import { GraphicJobActionForm } from "../job-action-form";
 import { createGraphicJobAction } from "@/features/graphics/actions";
 import { getGraphicJobFormOptions } from "@/features/graphics/dal";
 import { canWriteGraphicJobs } from "@/features/graphics/rules";
@@ -20,10 +20,10 @@ export default async function NewGraphicJobPage() {
 
   return <section className="flex w-full flex-col gap-6">
     <div><Link className={secondaryButtonClassName} href="/app/grafica"><ArrowLeft size={16} />Voltar</Link><h1 className="mt-4 text-2xl font-semibold">Novo trabalho da Gráfica</h1><p className="text-sm text-muted-foreground">Registre a demanda antes de existir uma OS.</p></div>
-    <RateLimitedActionForm action={createGraphicJobAction} className="rounded-lg border bg-card p-5">
+    <GraphicJobActionForm action={createGraphicJobAction} className="rounded-lg border bg-card p-5">
       <GraphicJobFormFields options={options} />
       <div className="mt-5 flex justify-end"><button className={primaryButtonClassName} type="submit"><Plus size={16} />Criar trabalho</button></div>
-    </RateLimitedActionForm>
+    </GraphicJobActionForm>
   </section>;
 }
 
