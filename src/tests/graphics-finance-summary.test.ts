@@ -18,6 +18,7 @@ describe("GRF-010 financial summary", () => {
   });
   it("withholds margin for pending reconciliation and prioritizes overdue balances", () => {
     expect(summarizeGraphicFinance({ ...base, pendingMovements: 1 })).toMatchObject({ contractedMargin: null, reliable: false });
+    expect(summarizeGraphicFinance({ ...base, pendingSuggestions: 1 })).toMatchObject({ contractedMargin: null, reliable: false });
     expect(summarizeGraphicFinance({ ...base, today: "2026-10-02" })).toMatchObject({ overdueReceivables: "700.00", overduePayables: "400.00", status: "overdue" });
     expect(summarizeGraphicFinance({ ...base, receivables: [title("1000.00", "1000.00")], payables: [title("600.00", "600.00")] })).toMatchObject({ status: "settled", cashResult: "400.00" });
   });

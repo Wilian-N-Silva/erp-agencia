@@ -267,6 +267,20 @@
       "when": 1790037067640,
       "tag": "0037_graphics_finance_summary_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790037436943,
+      "tag": "0038_graphics_reconciliation_suggestions",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790037437869,
+      "tag": "0039_graphics_reconciliation_suggestions_security",
+      "breakpoints": true
     }
   ]
 }

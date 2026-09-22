@@ -35,6 +35,7 @@ export async function getGraphicFinanceSummary(context: AccessContext, rawJobId:
         where c.organization_id=${organizationId} and c.job_id=${jobId}
       )
       select
+        (select count(*)::int from graphic_reconciliation_suggestions where organization_id=${organizationId} and job_id=${jobId} and status='pending') as "pendingSuggestions",
         (select amount::text from graphic_sales where organization_id=${organizationId} and job_id=${jobId}) as contracted,
         coalesce((select jsonb_agg(jsonb_build_object('amount',amount::text,'settled',settled::text,'allocated',allocated::text,'dueDate',due_date,'cancelled',cancelled,'archived',archived)) from ar), '[]') as receivables,
         coalesce((select jsonb_agg(jsonb_build_object('amount',amount::text,'settled',settled::text,'allocated',allocated::text,'dueDate',due_date,'cancelled',cancelled,'archived',archived)) from ap), '[]') as payables,
@@ -42,7 +43,7 @@ export async function getGraphicFinanceSummary(context: AccessContext, rawJobId:
           where t.organization_id=${organizationId} and t.status in ('pending_reconciliation','partially_reconciled')
           and (a.financial_entry_id in (select id from ar) or a.financial_expense_id in (select id from ap))) as pending
     `);
-    const row = result.rows[0] as { contracted: string | null; receivables: GraphicFinancialTitle[]; payables: GraphicFinancialTitle[]; pending: number };
+    const row = result.rows[0] as { contracted: string | null; receivables: GraphicFinancialTitle[]; payables: GraphicFinancialTitle[]; pending: number; pendingSuggestions: number };
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     return summarizeGraphicFinance({ ...row, pendingMovements: row.pending, today });
   });

@@ -8,6 +8,8 @@ import { financialTransactionStatusLabels, type FinancialTransactionStatus } fro
 import { getCurrentAccessContext } from "@/lib/dal";
 import { can, canAny } from "@/lib/rbac";
 import { ReconciliationForm } from "./reconciliation-form";
+import { getGraphicSuggestions } from "@/features/graphics/reconciliation";
+import { GraphicSuggestionReviewForm } from "../../../grafica/reconciliation-forms";
 
 export const dynamic = "force-dynamic";
 export default async function ReconciliationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string | string[] }> }) {
@@ -20,6 +22,7 @@ export default async function ReconciliationPage({ params, searchParams }: { par
   const query = typeof q === "string" ? q.slice(0, 100) : "";
   const data = await getReconciliation(context, { transactionId: id, query });
   if (!data) notFound();
+  const suggestions = await getGraphicSuggestions(context, { transactionId: id });
   return <Page>
     <PageHeader eyebrow="Financeiro" title="Conciliar movimentação" description="Relacione o dinheiro movimentado às contas a receber ou pagar." />
     <Link href="/app/financeiro/movimentacoes" className="text-sm text-primary underline">Voltar às movimentações</Link>
@@ -28,6 +31,16 @@ export default async function ReconciliationPage({ params, searchParams }: { par
       <p className="text-sm">Referência: {data.movement.reference ?? "Não informada"} · {data.movement.occurredAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
       <p className="font-medium">Saldo a conciliar: {formatMoney(data.remaining)}</p>
     </Card>
+    {suggestions.length ? <Card className="mt-5" title="Sugestões da Gráfica">
+      <p className="mb-3 text-sm">Confira a parcela e a justificativa antes de confirmar. A confirmação concilia somente o valor sugerido.</p>
+      {suggestions.map(({ suggestion, code, description }) => <div className="mb-3 rounded-md border p-3" key={suggestion.id}>
+        <Link className="text-primary underline" href={`/app/grafica/${suggestion.jobId}`}>{code}</Link>
+        <p>{description} · {formatMoney(suggestion.amount)}</p><p className="text-sm">{suggestion.reason}</p>
+        <p className="text-sm">{suggestion.status === "pending" ? "Aguardando revisão" : suggestion.status === "accepted" ? "Confirmada" : "Rejeitada"}</p>
+        {suggestion.reviewNotes ? <p className="text-sm">Revisão: {suggestion.reviewNotes}</p> : null}
+        {suggestion.status === "pending" && can("finance.settle", context) ? <GraphicSuggestionReviewForm suggestionId={suggestion.id} /> : null}
+      </div>)}
+    </Card> : null}
     <Card className="mt-5" title="Vínculos confirmados">
       {data.allocations.length ? <ul className="space-y-2">{data.allocations.map(row => <li key={row.id}>{row.description} · {formatMoney(row.amount)}</li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum vínculo confirmado.</p>}
     </Card>

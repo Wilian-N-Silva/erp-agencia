@@ -11,6 +11,7 @@ import { contractGraphicSupplier } from "@/features/graphics/commitment";
 import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
 import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
+import { suggestGraphicReconciliation, reviewGraphicReconciliation, getGraphicSuggestions } from "@/features/graphics/reconciliation";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -275,6 +276,52 @@ it("counts partial cash once across installments and withholds margin until its 
     expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ received: "300.00", receivableOpen: "1200.00", pendingMovements: 1, reliable: false, contractedMargin: null });
     await createFinancialAllocations(context, { transactionId, allocations: [{ targetId: sale!.installments[0].entryId, targetType: "receivable", amount: "200.00" }, { targetId: sale!.installments[1].entryId, targetType: "receivable", amount: "200.00" }] });
     expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ received: "700.00", receivableOpen: "800.00", pendingMovements: 0, reliable: true, contractedMargin: "1400.00", cashResult: "700.00" });
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+
+it("keeps suggestions separate from cash until finance confirms, preserving rejection history and rollback", async () => {
+  const context: AccessContext = { ...contexts[0], permissions: ["graphics.reconcile_suggest", "finance.settle"] };
+  const department: AccessContext = { ...context, permissions: ["graphics.reconcile_suggest"] };
+  const sale = await getGraphicSale(contexts[0], jobs[2]);
+  const rollback = new Error("Rollback suggestion fixture");
+  await expect(withTenantDb(context, async tx => {
+    const accountId = randomUUID(), transactionId = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${accountId},${orgs[0]},'Suggestion QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${transactionId},${orgs[0]},${accountId},'in',500,now(),${userIds[0]})`);
+    const payload = { jobId: jobs[2], transactionId, entryId: sale!.installments[0].entryId, amount: "500.00", reason: "Cliente enviou comprovante" };
+    const suggestion = await suggestGraphicReconciliation(department, payload);
+    await tx.execute(sql`savepoint suggestion_rls`);
+    await tx.execute(sql`select set_config('app.organization_id', ${orgs[1]}, true)`);
+    expect((await tx.execute(sql`select id from graphic_reconciliation_suggestions where id=${suggestion.id}`)).rows).toHaveLength(0);
+    expect((await tx.execute(sql`update graphic_reconciliation_suggestions set reason='tampered' where id=${suggestion.id} returning id`)).rows).toHaveLength(0);
+    expect((await tx.execute(sql`delete from graphic_reconciliation_suggestions where id=${suggestion.id} returning id`)).rows).toHaveLength(0);
+    await expect(tx.execute(sql`insert into graphic_reconciliation_suggestions (organization_id,job_id,transaction_id,entry_id,amount,reason,created_by_user_id) values (${orgs[0]},${jobs[2]},${transactionId},${payload.entryId},1,'Tamper',${userIds[0]})`)).rejects.toThrow();
+    await tx.execute(sql`rollback to savepoint suggestion_rls`);
+    await tx.execute(sql`select set_config('app.organization_id', '', true)`);
+    expect((await tx.execute(sql`select id from graphic_reconciliation_suggestions where id=${suggestion.id}`)).rows).toHaveLength(0);
+    await tx.execute(sql`rollback to savepoint suggestion_rls`);
+    expect((await suggestGraphicReconciliation(department, payload)).id).toBe(suggestion.id);
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${transactionId}`)).rows).toEqual([{ n: 0 }]);
+    await expect(reviewGraphicReconciliation(department, { suggestionId: suggestion.id, decision: "accepted", confirmed: "on", notes: "Conferido" })).rejects.toThrow();
+    const rejected = await reviewGraphicReconciliation(context, { suggestionId: suggestion.id, decision: "rejected", confirmed: "on", notes: "Referência precisa de correção" });
+    expect(rejected.status).toBe("rejected");
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${transactionId}`)).rows).toEqual([{ n: 0 }]);
+    const replacement = await suggestGraphicReconciliation(department, { ...payload, reason: "Referência corrigida" });
+    await tx.execute(sql`savepoint suggestion_failure`);
+    audit.fail = true;
+    try { await expect(reviewGraphicReconciliation(context, { suggestionId: replacement.id, decision: "accepted", confirmed: "on", notes: "Extrato conferido" })).rejects.toThrow("Simulated audit failure"); }
+    finally { audit.fail = false; await tx.execute(sql`rollback to savepoint suggestion_failure`); }
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${transactionId}`)).rows).toEqual([{ n: 0 }]);
+    const accepted = await reviewGraphicReconciliation(context, { suggestionId: replacement.id, decision: "accepted", confirmed: "on", notes: "Extrato conferido" });
+    expect(accepted.status).toBe("accepted");
+    await tx.execute(sql`savepoint suggestion_history`);
+    await expect(tx.execute(sql`delete from graphic_reconciliation_suggestions where id=${accepted.id}`)).rejects.toThrow();
+    await tx.execute(sql`rollback to savepoint suggestion_history`);
+    await reviewGraphicReconciliation(context, { suggestionId: replacement.id, decision: "accepted", confirmed: "on", notes: "Reenvio" });
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${transactionId}`)).rows).toEqual([{ n: 1 }]);
+    expect((await getGraphicSuggestions(department, { jobId: jobs[2] })).map(row => row.suggestion.status).sort()).toEqual(["accepted", "rejected"]);
+    expect((await tx.execute(sql`select count(*)::int n from work_items where source_id in (${suggestion.id},${replacement.id}) and status='resolved'`)).rows).toEqual([{ n: 2 }]);
     throw rollback;
   })).rejects.toBe(rollback);
 });

@@ -16,6 +16,7 @@ export function summarizeGraphicFinance(input: {
   receivables: GraphicFinancialTitle[];
   payables: GraphicFinancialTitle[];
   pendingMovements: number;
+  pendingSuggestions?: number;
   today: string;
 }) {
   const warnings: string[] = [];
@@ -45,6 +46,7 @@ export function summarizeGraphicFinance(input: {
   else if (ar.total !== contracted) warnings.push("As contas a receber ativas não correspondem ao valor contratado.");
   if (!input.payables.some(row => !row.archived && !row.cancelled)) warnings.push("Nenhum custo contratado ativo foi vinculado ao trabalho.");
   if (input.pendingMovements > 0) warnings.push("Há movimentações vinculadas parcialmente ao trabalho aguardando conciliação.");
+  if ((input.pendingSuggestions ?? 0) > 0) warnings.push("Há sugestões de vínculo aguardando revisão do Financeiro.");
   const reliable = warnings.length === 0;
   const status: GraphicJobFinancialStatus = ar.overdue + ap.overdue > 0 ? "overdue"
     : reliable && ar.open === 0 && ap.open === 0 ? "settled"

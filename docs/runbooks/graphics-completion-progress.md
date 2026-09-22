@@ -12,7 +12,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-008: implementada e validada nesta branch — contratação explícita e AP idempotente/transacional.
 - GRF-009: implementada e validada nesta branch — condição comercial, sinal/parcelas e AR sem caixa automático.
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
-- GRF-011: pendente — sugestões de conciliação, confirmação pelo Financeiro.
+- GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
 - GRF-012: pendente — dashboard operacional/financeiro com filtros.
 - GRF-013: pendente — importação com staging, dry-run, proveniência, pendências e relatório.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
@@ -71,3 +71,12 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Migração 0037 adiciona graphics.finance_read ao catálogo e aos perfis Admin Técnico/Diretoria; finance.read também autoriza consulta. Demais usuários da Gráfica não recebem dados de liquidação. Nenhuma tabela ou backfill criado.
 - Typecheck, lint, build e diff-check aprovados; 355 testes unitários, 156 de banco e 4 E2E passaram. Inclui upgrade, RBAC/IDOR, caixa dividido entre parcelas sem dupla contagem, margem indisponível durante conciliação parcial e resultado real após recebimento pela UI.
 - Movimentações totalmente sem vínculo não são atribuídas por aproximação ao trabalho; devem ser identificadas no Financeiro. O dashboard e a atualização da listagem são tratados na GRF-012. A margem considera somente custos cadastrados, conforme orientação visível na tela.
+
+## Implementação GRF-011 — 21/09/2026
+
+- Sugestão explícita por trabalho/parcela/recebimento/valor/justificativa. Permissão graphics.reconcile_suggest separada de finance.settle; nenhum valor é liquidado ao sugerir ou rejeitar.
+- Financeiro revisa pela tela da movimentação. Aceitar cria alocação com as mesmas proteções financeiras e registra a revisão em uma transação. Reenvio da mesma decisão não cria nova baixa. Sugestões antigas ficam preservadas; rejeição exige justificativa.
+- Migrações 0038/0039: tabela tenant com RLS forçada, FKs compostas, vínculo obrigatório de parcela ao trabalho, unicidade de sugestão pendente e proteção do histórico por trigger. Pendência de revisão e auditoria acompanham criação/decisão. Resumo financeiro sinaliza sugestões pendentes.
+- O seletor exibe até 200 recebimentos recentes do mesmo cliente ou ainda não identificado, com data/referência/saldo. Não expõe conta bancária ou contraparte livre à Gráfica. Outros recebimentos devem ser localizados pelo Financeiro na conciliação.
+- Testes cobrem validação, RBAC, ausência de baixa automática, rejeição, repetição de confirmação, rollback de auditoria, histórico imutável, RLS sem contexto/cross-tenant e upgrade. E2E percorre sugestão pela Gráfica e confirmação pelo Financeiro com atualização dos saldos.
+- Gates finais aprovados: typecheck, lint, build, diff-check, 357 testes unitários, 157 testes de banco e 4 E2E. Migrações aplicadas nas bases local e de testes. Worktree sec-002 preservada.

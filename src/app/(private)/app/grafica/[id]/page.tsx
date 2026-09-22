@@ -30,6 +30,8 @@ import { CommitmentForm } from "../commitment-form";
 import { GraphicSaleForm } from "../sale-form";
 import { getGraphicSale } from "@/features/graphics/sale";
 import { canReadGraphicFinance, getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
+import { getGraphicSuggestionMovements, getGraphicSuggestions } from "@/features/graphics/reconciliation";
+import { GraphicSuggestionForm } from "../reconciliation-forms";
 import { getGraphicCommitments, getGraphicCommitmentOptions } from "@/features/graphics/commitment";
 import { getGraphicProduction } from "@/features/graphics/production";
 import { productionNextStatuses, waitingReasonLabels } from "@/features/graphics/production-rules";
@@ -67,6 +69,9 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
   const commitments = await getGraphicCommitments(context, id);
   const sale = await getGraphicSale(context, id);
   const finance = canReadGraphicFinance(context) ? await getGraphicFinanceSummary(context, id) : null;
+  const canSuggest = context.permissions.includes("graphics.reconcile_suggest");
+  const suggestions = canSuggest || canReadGraphicFinance(context) ? await getGraphicSuggestions(context, { jobId: id }) : [];
+  const movements = canSuggest && sale ? await getGraphicSuggestionMovements(context, id) : [];
   const commitmentOptions = canProduce ? await getGraphicCommitmentOptions(context) : null;
   const uncontractedQuotes = quotes.filter(quote => quote.status === "approved" && !commitments.some(row => row.commitment.quoteId === quote.id));
   const duplicateJobs = currentOs ? await findDuplicateOsJobs(context, id, currentOs.externalNumber) : [];
@@ -119,6 +124,11 @@ export default async function GraphicJobDetailPage({ params, searchParams }: {
     <Card title="Venda e contas a receber">
       {sale ? <div className="grid gap-3 text-sm"><p className="font-semibold">Valor contratado: {formatMoney(sale.sale.amount)}</p><p>Contas a receber criadas. Recebimento acompanhado pelo Financeiro.</p><ol className="grid gap-2">{sale.installments.map(item => <li key={item.id} className="rounded-md border p-3">{item.label} · {formatMoney(item.amount)} · Vencimento: {item.dueDate.split("-").reverse().join("/")}</li>)}</ol></div> : currentOs && context.permissions.includes("graphics.client_approval_write") && ["approved", "in_production", "waiting", "ready", "delivered"].includes(job.operationalStatus) ? <GraphicSaleForm jobId={id} osVersionId={currentOs.id} presentedAmount={currentOs.presentedAmount} /> : <p className="text-sm text-muted-foreground">Após a aprovação do cliente, registre as condições comerciais para criar as contas a receber.</p>}
     </Card>
+    {canSuggest || suggestions.length ? <Card title="Sugestões de conciliação">
+      {canSuggest && sale ? <GraphicSuggestionForm jobId={id} movements={movements.map(row => ({ id: row.id, label: `${row.occurredAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} · ${row.reference ?? "Sem referência"} · Saldo ${formatMoney(row.remaining)}` }))} installments={sale.installments.map(row => ({ id: row.entryId, label: `${row.label} · ${formatMoney(row.amount)}` }))} /> : null}
+      {canSuggest && !movements.length ? <p className="mt-3 text-sm text-muted-foreground">Nenhum recebimento disponível entre os 200 mais recentes do cliente ou sem identificação. Solicite ao Financeiro o registro ou a identificação da movimentação.</p> : null}
+      <ol className="mt-4 grid gap-2">{suggestions.map(({ suggestion }) => <li key={suggestion.id} className="rounded-md border p-3 text-sm"><p>{formatMoney(suggestion.amount)} · {suggestion.status === "pending" ? "Aguardando Financeiro" : suggestion.status === "accepted" ? "Confirmada pelo Financeiro" : "Rejeitada pelo Financeiro"}</p><p>{suggestion.reason}</p>{suggestion.reviewNotes ? <p>Revisão: {suggestion.reviewNotes}</p> : null}</li>)}</ol>
+    </Card> : null}
     <Card title="Contratação do fornecedor">
       {canProduce && commitmentOptions && ["approved", "waiting"].includes(job.operationalStatus) && uncontractedQuotes.length ? <CommitmentForm jobId={id} quotes={uncontractedQuotes.map(quote => ({ id: quote.id, name: `${quote.supplierName} · ${formatMoney(quote.quotedAmount)}` }))} categories={commitmentOptions.categories} centers={commitmentOptions.centers} /> : !commitments.length ? <p className="text-sm text-muted-foreground">A contratação fica disponível após a aprovação do cliente. Uma cotação aprovada ainda não é uma conta a pagar.</p> : null}
       {commitments.map(row => <div className="mt-3 rounded-md border p-3 text-sm" key={row.commitment.id}><p className="font-semibold">{row.supplier} · {formatMoney(row.amount)}</p><p>Contratado em {row.commitment.contractedAt.split("-").reverse().join("/")} · Vencimento: {row.dueDate.split("-").reverse().join("/")}</p><p>Conta a pagar criada. Pagamento acompanhado pelo Financeiro.</p></div>)}

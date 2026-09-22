@@ -1387,6 +1387,32 @@ export const graphicSaleInstallments = pgTable("graphic_sale_installments", {
   entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_sale_installments_entry_tenant_fk" }),
 }));
 
+export const graphicReconciliationSuggestions = pgTable("graphic_reconciliation_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  transactionId: uuid("transaction_id").notNull(),
+  entryId: uuid("entry_id").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewedByUserId: text("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNotes: text("review_notes"),
+}, table => ({
+  pendingIdx: uniqueIndex("graphic_reconciliation_suggestions_pending_idx").on(table.organizationId, table.transactionId, table.entryId).where(sql`${table.status} = 'pending'`),
+  jobIdx: index("graphic_reconciliation_suggestions_job_idx").on(table.organizationId, table.jobId),
+  amountCheck: check("graphic_reconciliation_suggestions_amount_check", sql`${table.amount} > 0`),
+  stateCheck: check("graphic_reconciliation_suggestions_state_check", sql`(${table.status} = 'pending' and ${table.reviewedByUserId} is null and ${table.reviewedAt} is null and ${table.reviewNotes} is null) or (${table.status} in ('accepted','rejected') and ${table.reviewedByUserId} is not null and ${table.reviewedAt} is not null and ${table.reviewNotes} is not null)`),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_reconciliation_suggestions_job_fk" }),
+  transactionFk: foreignKey({ columns: [table.organizationId, table.transactionId], foreignColumns: [financialTransactions.organizationId, financialTransactions.id], name: "graphic_reconciliation_suggestions_transaction_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_reconciliation_suggestions_entry_fk" }),
+  authorFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_reconciliation_suggestions_author_fk" }),
+  reviewerFk: foreignKey({ columns: [table.organizationId, table.reviewedByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_reconciliation_suggestions_reviewer_fk" }),
+}));
+
 export const documents = pgTable(
   "documents",
   {
