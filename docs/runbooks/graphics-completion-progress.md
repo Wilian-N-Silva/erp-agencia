@@ -13,7 +13,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-009: implementada e validada nesta branch — condição comercial, sinal/parcelas e AR sem caixa automático.
 - GRF-010: implementada e validada nesta branch — resumo financeiro derivado de obrigações e alocações.
 - GRF-011: implementada e validada nesta branch — sugestões de conciliação, confirmação pelo Financeiro.
-- GRF-012: pendente — dashboard operacional/financeiro com filtros.
+- GRF-012: implementada e validada nesta branch — dashboard operacional/financeiro com filtros.
 - GRF-013: pendente — importação com staging, dry-run, proveniência, pendências e relatório.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
 
@@ -80,3 +80,10 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - O seletor exibe até 200 recebimentos recentes do mesmo cliente ou ainda não identificado, com data/referência/saldo. Não expõe conta bancária ou contraparte livre à Gráfica. Outros recebimentos devem ser localizados pelo Financeiro na conciliação.
 - Testes cobrem validação, RBAC, ausência de baixa automática, rejeição, repetição de confirmação, rollback de auditoria, histórico imutável, RLS sem contexto/cross-tenant e upgrade. E2E percorre sugestão pela Gráfica e confirmação pelo Financeiro com atualização dos saldos.
 - Gates finais aprovados: typecheck, lint, build, diff-check, 357 testes unitários, 157 testes de banco e 4 E2E. Migrações aplicadas nas bases local e de testes. Worktree sec-002 preservada.
+
+## Evidência GRF-012 — 22/09/2026
+
+- Listagem integra visão operacional por etapa, aprovação interna/cliente, produção, espera, entrega atrasada e pendências abertas vinculadas aos trabalhos filtrados. Filtros de busca, etapa, cliente, responsável e projeto têm rótulos acessíveis e opção de limpar; links por etapa preservam os demais filtros.
+- Visão financeira usa leitura em lote com organização/RLS e exibe contratado, AR/AP aberto, recebido/pago conciliado, custos e margem/caixa apenas quando todos os trabalhos têm vínculos confiáveis. Usuários somente operacionais não recebem resumos monetários. Encerramento operacional com saldo pendente indica a próxima ação financeira.
+- Sem migration/backfill. Testes de filtros e autorização no DAL; E2E confere totais de um trabalho e resultado vazio ao trocar etapa. O teste unitário antigo da página foi ajustado ao novo carregamento do dashboard, preservando a cobertura do perfil apenas aprovador.
+- Typecheck, lint, build e diff-check aprovados; 359 testes unitários, 158 de banco e 4 E2E passaram. A leitura consolidada reutiliza as mesmas regras financeiras do detalhe para evitar divergência de totais.

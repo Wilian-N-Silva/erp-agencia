@@ -163,4 +163,16 @@ test("OS external PDF registration, version history and download", async ({ page
     if (stage !== "closed") await expect(page.getByRole("combobox", { name: "Próxima etapa", exact: true })).toHaveValue("");
   }
   await expect(page.getByText("Trabalho encerrado. O histórico permanece disponível.", { exact: true })).toBeVisible();
+  await page.goto("/app/grafica");
+  await page.getByLabel("Buscar trabalho", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  const dashboardFinance = page.locator(".fg-card").filter({ has: page.getByText("Visão financeira", { exact: true }) });
+  await expect(dashboardFinance).toContainText("R$ 1.950,00");
+  await expect(dashboardFinance).toContainText("R$ 750,00");
+  await expect(page.getByRole("link", { name: "Encerrado: 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("row").filter({ has: page.getByRole("link", { name: code, exact: true }) })).toContainText("Resolver pendência financeira");
+  await page.getByRole("combobox", { name: "Etapa", exact: true }).selectOption("in_production");
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await expect(page.getByText("Nenhum trabalho encontrado", { exact: true })).toBeVisible();
+  await expect(dashboardFinance).toContainText("R$ 0,00");
 });

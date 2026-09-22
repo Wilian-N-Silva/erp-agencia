@@ -10,6 +10,7 @@ import { advanceGraphicProduction, getGraphicProduction } from "@/features/graph
 import { contractGraphicSupplier } from "@/features/graphics/commitment";
 import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
 import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
+import { getGraphicDashboard } from "@/features/graphics/dashboard";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 import { suggestGraphicReconciliation, reviewGraphicReconciliation, getGraphicSuggestions } from "@/features/graphics/reconciliation";
 
@@ -324,6 +325,24 @@ it("keeps suggestions separate from cash until finance confirms, preserving reje
     expect((await tx.execute(sql`select count(*)::int n from work_items where source_id in (${suggestion.id},${replacement.id}) and status='resolved'`)).rows).toEqual([{ n: 2 }]);
     throw rollback;
   })).rejects.toBe(rollback);
+});
+
+it("filters the dashboard consistently and never returns monetary totals to operational-only users", async () => {
+  const code = (await admin.execute(sql`select internal_code from graphic_jobs where id=${jobs[2]}`)).rows[0].internal_code as string;
+  const filters = { search: code };
+  const operations = await getGraphicDashboard(contexts[0], filters);
+  expect(operations.jobs.map(job => job.id)).toEqual([jobs[2]]);
+  expect(operations.operations.total).toBe(1);
+  expect(operations.finance).toBeNull();
+  expect(operations.jobs[0].finance).toBeNull();
+  const financial = await getGraphicDashboard({ ...contexts[0], permissions: ["graphics.finance_read"] }, filters);
+  expect(financial.finance).toMatchObject({ contracted: "1500.00", payableTotal: "100.00", count: 1, reliable: true });
+  expect(financial.jobs[0].finance?.contractedMargin).toBe("1400.00");
+  const other = await getGraphicDashboard({ ...contexts[1], permissions: ["graphics.finance_read"] }, filters);
+  expect(other.jobs).toEqual([]);
+  expect(other.finance?.contracted).toBe("0.00");
+  await expect(getGraphicDashboard({ ...contexts[0], permissions: [] }, filters)).rejects.toThrow();
+  expect((await getGraphicDashboard(contexts[0], { ...filters, status: "closed" })).operations.total).toBe(0);
 });
 
 it("runs production through a blocking work item, resume, delivery and closure with protected history", async () => {
