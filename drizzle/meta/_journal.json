@@ -302,6 +302,13 @@
       "when": 1790051469863,
       "tag": "0042_graphics_historical_sales",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790081843836,
+      "tag": "0043_graphics_supplier_permission",
+      "breakpoints": true
     }
   ]
 }

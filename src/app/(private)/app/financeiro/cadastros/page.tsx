@@ -1,3 +1,4 @@
+import { SupplierForm } from "@/features/finance-master-data/supplier-form";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -107,7 +108,7 @@ type Action = FormServerAction<unknown>;
 type AccountItem = Awaited<ReturnType<typeof getFinanceMasterData>>["accounts"][number];
 type CategoryItem = Awaited<ReturnType<typeof getFinanceMasterData>>["categories"][number];
 type CostCenterItem = Awaited<ReturnType<typeof getFinanceMasterData>>["costCenters"][number];
-type SupplierItem = Awaited<ReturnType<typeof getFinanceMasterData>>["suppliers"][number];
+
 
 function AccountForm({ action, item, submitLabel }: { action: Action; item?: AccountItem; submitLabel: string }) {
   return <RateLimitedActionForm action={action} className="grid gap-3 sm:grid-cols-2">{item ? <input name="id" type="hidden" value={item.id} /> : null}<Field label="Nome" required><Input name="name" defaultValue={item?.name} maxLength={120} required /></Field><Field label="Tipo" required><select className="fg-input fg-select" name="type" defaultValue={item?.type ?? "bank"}>{Object.entries(financialAccountTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="Identificação mascarada"><Input name="maskedIdentifier" defaultValue={item?.maskedIdentifier ?? ""} maxLength={80} placeholder="Ex.: Banco •••• 1234" /></Field><Field label="Saldo inicial"><Input name="openingBalance" defaultValue={item?.openingBalance ?? ""} inputMode="decimal" /></Field><Submit label={submitLabel} /></RateLimitedActionForm>;
@@ -121,8 +122,6 @@ function CostCenterForm({ action, item, submitLabel }: { action: Action; item?: 
   return <RateLimitedActionForm action={action} className="grid gap-3">{item ? <input name="id" type="hidden" value={item.id} /> : null}<div className="grid gap-3 sm:grid-cols-2"><Field label="Nome" required><Input name="name" defaultValue={item?.name} maxLength={120} required /></Field><Field label="Código"><Input name="code" defaultValue={item?.code ?? ""} maxLength={40} /></Field></div><Field label="Descrição"><Textarea name="description" defaultValue={item?.description ?? ""} maxLength={500} /></Field><Submit label={submitLabel} /></RateLimitedActionForm>;
 }
 
-function SupplierForm({ action, item, submitLabel }: { action: Action; item?: SupplierItem; submitLabel: string }) {
-  return <RateLimitedActionForm action={action} className="grid gap-3">{item ? <input name="id" type="hidden" value={item.id} /> : null}<div className="grid gap-3 sm:grid-cols-2"><Field label="Nome" required><Input name="name" defaultValue={item?.name} maxLength={160} required /></Field><Field label="CPF/CNPJ"><Input name="taxId" defaultValue={item?.taxId ?? ""} maxLength={30} /></Field><Field label="Contato"><Input name="contactName" defaultValue={item?.contactName ?? ""} maxLength={120} /></Field><Field label="E-mail"><Input name="email" type="email" defaultValue={item?.email ?? ""} maxLength={254} /></Field><Field label="Telefone"><Input name="phone" defaultValue={item?.phone ?? ""} maxLength={40} /></Field></div><Submit label={submitLabel} /></RateLimitedActionForm>;
-}
+
 
 function Submit({ label }: { label: string }) { return <div className="flex justify-end sm:col-span-2"><Button type="submit" size="sm">{label}</Button></div>; }

@@ -30,6 +30,14 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     await expect(categories.getByText("Custos Gráfica QA", { exact: true })).toBeVisible();
   }
   const code = `OS-E2E-${Date.now()}`;
+  const supplierName = `Fornecedor ${code}`;
+  await page.goto("/app/grafica");
+  await page.getByRole("link", { name: "Consultar e cadastrar fornecedores" }).click();
+  const supplierForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Adicionar fornecedor", exact: true }) });
+  await supplierForm.getByLabel("Nome", { exact: false }).fill(supplierName);
+  await supplierForm.getByLabel("Contato", { exact: true }).fill("Contato QA");
+  await supplierForm.getByRole("button", { name: "Adicionar fornecedor", exact: true }).click();
+  await expect(page.getByText(supplierName, { exact: true })).toBeVisible();
   await page.goto("/app/grafica/novo");
   await page.getByRole("textbox", { name: "Código interno", exact: true }).fill(code);
   await page.getByRole("textbox", { name: "Título", exact: true }).fill("QA - Registro de OS externa");
@@ -40,7 +48,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("button", { name: "Criar trabalho", exact: true }).click();
   await expect(page.getByRole("heading", { name: "QA - Registro de OS externa" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Registrar OS", exact: true })).toHaveCount(0);
-  await page.getByRole("combobox", { name: "Fornecedor", exact: true }).selectOption({ label: "Fornecedor QA Grafica A" });
+  await page.getByRole("combobox", { name: "Fornecedor", exact: true }).selectOption({ label: supplierName });
   await page.getByRole("textbox", { name: "Valor cotado", exact: true }).fill("1500,00");
   await page.getByRole("textbox", { name: "Descrição", exact: true }).fill("Primeira cotação acima do orçamento");
   await page.getByRole("button", { name: "Adicionar cotação", exact: true }).click();
