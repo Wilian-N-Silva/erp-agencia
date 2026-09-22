@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { syncReconciliationWorkItem } from "./work-items";
 
 import {
   calculateAllocationTotal,
@@ -270,6 +271,7 @@ export async function createFinancialAllocations(
       }),
     );
 
+    await syncReconciliationWorkItem(context, financialTransaction.id);
     return {
       allocations: createdAllocations,
       transaction: updatedTransaction,

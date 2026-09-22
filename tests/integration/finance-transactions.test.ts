@@ -88,6 +88,8 @@ describe("FIN-003 transaction creation", () => {
       origin: "manual",
       status: "pending_reconciliation",
     });
+    const pending = await adminDb.execute(sql`select status, assigned_user_id from work_items where organization_id = ${orgA} and source_id = ${created.id} and kind = 'financial_reconciliation'`);
+    expect(pending.rows).toEqual([{ status: "open", assigned_user_id: contextA.userId }]);
     const audit = await adminDb.execute(sql`
       select action, entity_type as "entityType", entity_id as "entityId"
       from audit_logs
@@ -267,6 +269,7 @@ async function expectRlsViolation(operation: () => Promise<unknown>) {
 }
 
 async function cleanup() {
+  await adminDb.execute(sql`delete from work_items where organization_id in (${orgA}, ${orgB})`);
   if (!adminDb) return;
   await adminDb.execute(sql`delete from audit_logs where organization_id in (${orgA}, ${orgB})`);
   await adminDb.execute(sql`delete from financial_transactions where organization_id in (${orgA}, ${orgB})`);

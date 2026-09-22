@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { createAuditLogValues } from "@/lib/audit";
+import { syncReconciliationWorkItem } from "@/features/finance-allocations/work-items";
 import { bindTenantContext, db, withTenantDb } from "@/lib/db";
 import {
   auditLogs,
@@ -99,6 +100,7 @@ export async function createFinancialTransactionRecord(
       }),
     );
 
+    await syncReconciliationWorkItem(context, created.id);
     return created;
   });
 }

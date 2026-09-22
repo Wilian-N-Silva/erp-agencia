@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { costCenters, financialAccounts, financialCategories, suppliers } from "@/lib/db/schema";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { enforceAuthenticatedRateLimit, withRateLimitActionResult } from "@/lib/rate-limit";
-import { AccessDeniedError, assertCan } from "@/lib/rbac";
+import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 import { formDataToObject } from "@/lib/validation";
 
 import {
@@ -97,7 +97,7 @@ async function setCostCenterStatus(formData: FormData) {
 }
 
 async function createSupplier(formData: FormData) {
-  const { context, organizationId } = await requireConfigurator();
+  const { context, organizationId } = await requireConfigurator(true);
   const input = supplierInputSchema.parse(formDataToObject(formData));
   const [after] = await db.insert(suppliers).values({ organizationId, ...input }).returning();
   await audit(context, "create", "supplier", after.id, undefined, after);
@@ -105,7 +105,7 @@ async function createSupplier(formData: FormData) {
 }
 
 async function updateSupplier(formData: FormData) {
-  const { context, organizationId } = await requireConfigurator();
+  const { context, organizationId } = await requireConfigurator(true);
   const input = supplierUpdateSchema.parse(formDataToObject(formData));
   const before = await findOwned(suppliers, input.id, organizationId);
   const { id, ...values } = input;
@@ -119,7 +119,7 @@ async function setSupplierStatus(formData: FormData) {
 }
 
 async function setBooleanStatus(formData: FormData, table: typeof financialCategories | typeof costCenters | typeof suppliers, entityType: string) {
-  const { context, organizationId } = await requireConfigurator();
+  const { context, organizationId } = await requireConfigurator(table === suppliers);
   const input = masterDataStatusSchema.parse(formDataToObject(formData));
   const before = await findOwned(table, input.id, organizationId);
   const [after] = await db.update(table).set({ isActive: input.active, updatedAt: new Date() }).where(and(eq(table.id, input.id), eq(table.organizationId, organizationId))).returning();
@@ -133,10 +133,11 @@ async function findOwned(table: typeof financialAccounts | typeof financialCateg
   return row;
 }
 
-async function requireConfigurator() {
+async function requireConfigurator(supplierOnly = false) {
   const context = await getCurrentAccessContext();
   if (!context) redirect("/login");
-  assertCan("finance.configure", context);
+  if (supplierOnly) assertCanAny(["finance.configure", "graphics.supplier_write"], context);
+  else assertCan("finance.configure", context);
   if (!context.organizationId) throw new AccessDeniedError();
   await enforceAuthenticatedRateLimit("common_mutation", context);
   return { context, organizationId: context.organizationId };
@@ -147,6 +148,7 @@ async function audit(context: Parameters<typeof writeAuditLog>[0], action: "crea
 }
 
 function refresh() {
+  revalidatePath("/app/grafica", "layout");
   revalidatePath("/app/financeiro/cadastros");
   revalidatePath("/app/financeiro");
 }

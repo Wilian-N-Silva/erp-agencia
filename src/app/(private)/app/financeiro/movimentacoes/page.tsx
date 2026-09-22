@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import {
   Button,
@@ -57,50 +58,50 @@ export default async function FinancialTransactionsPage() {
               action={createFinancialTransactionAction}
               className="grid gap-4 lg:grid-cols-4"
             >
-              <Field label="Direção" required>
-                <select className="fg-input fg-select" name="direction" defaultValue="in" required>
+              <Field htmlFor="movement-direction" label="Direção" required>
+                <select className="fg-input fg-select" id="movement-direction" name="direction" defaultValue="in" required>
                   <option value="in">Entrada</option>
                   <option value="out">Saída</option>
                 </select>
               </Field>
-              <Field label="Conta financeira" required>
-                <select className="fg-input fg-select" name="accountId" defaultValue="" required>
+              <Field htmlFor="movement-accountId" label="Conta financeira" required>
+                <select className="fg-input fg-select" id="movement-accountId" name="accountId" defaultValue="" required>
                   <option value="" disabled>Selecione a conta</option>
                   {options.accounts.map((account) => (
                     <option key={account.id} value={account.id}>{account.name}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Valor" required>
-                <MoneyInput name="amount" required minimumCents={1} />
+              <Field htmlFor="movement-amount" label="Valor" required>
+                <MoneyInput id="movement-amount" name="amount" required minimumCents={1} />
               </Field>
-              <Field label="Data da movimentação" required>
-                <Input name="occurredAt" type="date" defaultValue={todayInSaoPaulo()} required />
+              <Field htmlFor="movement-occurredAt" label="Data da movimentação" required>
+                <Input id="movement-occurredAt" name="occurredAt" type="date" defaultValue={todayInSaoPaulo()} required />
               </Field>
-              <Field label="Cliente" helper="Use somente para entradas.">
-                <select className="fg-input fg-select" name="clientId" defaultValue="">
+              <Field htmlFor="movement-clientId" label="Cliente" helper="Use somente para entradas.">
+                <select className="fg-input fg-select" id="movement-clientId" name="clientId" defaultValue="">
                   <option value="">Sem cliente vinculado</option>
                   {options.clients.map((client) => (
                     <option key={client.id} value={client.id}>{client.name}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Fornecedor" helper="Use somente para saídas.">
-                <select className="fg-input fg-select" name="supplierId" defaultValue="">
+              <Field htmlFor="movement-supplierId" label="Fornecedor" helper="Use somente para saídas.">
+                <select className="fg-input fg-select" id="movement-supplierId" name="supplierId" defaultValue="">
                   <option value="">Sem fornecedor vinculado</option>
                   {options.suppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Contraparte livre">
-                <Input name="counterpartyName" maxLength={160} placeholder="Quando não houver cadastro" />
+              <Field htmlFor="movement-counterpartyName" label="Contraparte livre">
+                <Input id="movement-counterpartyName" name="counterpartyName" maxLength={160} placeholder="Quando não houver cadastro" />
               </Field>
-              <Field label="Método">
-                <Input name="method" maxLength={80} placeholder="PIX, TED, boleto..." />
+              <Field htmlFor="movement-method" label="Método">
+                <Input id="movement-method" name="method" maxLength={80} placeholder="PIX, TED, boleto..." />
               </Field>
-              <Field label="Referência">
-                <Input name="reference" maxLength={160} placeholder="Identificador bancário ou observação curta" />
+              <Field htmlFor="movement-reference" label="Referência">
+                <Input id="movement-reference" name="reference" maxLength={160} placeholder="Identificador bancário ou observação curta" />
               </Field>
               <div className="flex items-end justify-end lg:col-span-3">
                 <Button type="submit">Registrar movimentação</Button>
@@ -132,6 +133,7 @@ export default async function FinancialTransactionsPage() {
                   <th className="p-3">Referência</th>
                   <th className="p-3 text-right">Valor</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Conciliação</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,6 +151,7 @@ export default async function FinancialTransactionsPage() {
                         tone={transaction.status === "reconciled" ? "success" : transaction.status === "reversed" ? "muted" : "warning"}
                       />
                     </td>
+                    <td className="p-3"><Link className="text-primary underline" href={`/app/financeiro/movimentacoes/${transaction.id}`}>{transaction.status === "reconciled" || transaction.status === "reversed" ? "Ver vínculos" : "Conciliar"}</Link></td>
                   </tr>
                 ))}
               </tbody>

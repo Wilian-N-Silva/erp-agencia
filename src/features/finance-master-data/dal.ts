@@ -26,3 +26,9 @@ function requireOrganizationId(context: AccessContext) {
 }
 
 export const getFinanceMasterData = bindTenantContext(listFinanceMasterData);
+
+export const getSharedSuppliers = bindTenantContext(async (context: AccessContext) => {
+  assertCanAny(["finance.configure", "graphics.supplier_write", "graphics.read", "graphics.supplier_quote_write"], context);
+  const organizationId = requireOrganizationId(context);
+  return db.select().from(suppliers).where(eq(suppliers.organizationId, organizationId)).orderBy(asc(suppliers.name));
+});

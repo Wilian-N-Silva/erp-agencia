@@ -13,6 +13,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -1267,6 +1268,205 @@ export const graphicSupplierQuoteAttachments = pgTable(
     }),
   }),
 );
+
+export const graphicOsVersions = pgTable("graphic_os_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  version: integer("version").notNull(),
+  externalNumber: text("external_number").notNull(),
+  issuedAt: date("issued_at").notNull(),
+  presentedAmount: numeric("presented_amount", { precision: 14, scale: 2 }).notNull(),
+  fileId: uuid("file_id").notNull(),
+  revisionReason: text("revision_reason"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  versionIdx: uniqueIndex("graphic_os_versions_job_version_idx").on(table.organizationId, table.jobId, table.version),
+  numberIdx: index("graphic_os_versions_number_idx").on(table.organizationId, table.externalNumber),
+  tenantJobIdx: uniqueIndex("graphic_os_versions_tenant_job_id_idx").on(table.organizationId, table.jobId, table.id),
+  versionCheck: check("graphic_os_versions_version_check", sql`${table.version} > 0`),
+  amountCheck: check("graphic_os_versions_amount_check", sql`${table.presentedAmount} > 0`),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_os_versions_job_tenant_fk" }),
+  fileFk: foreignKey({ columns: [table.organizationId, table.fileId], foreignColumns: [files.organizationId, files.id], name: "graphic_os_versions_file_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_os_versions_user_tenant_fk" }),
+}));
+
+export const graphicClientDecisions = pgTable("graphic_client_decisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  osVersionId: uuid("os_version_id").notNull(),
+  decision: text("decision").notNull(),
+  contact: text("contact").notNull(),
+  channel: text("channel").notNull(),
+  decidedAt: date("decided_at").notNull(),
+  notes: text("notes").notNull().default(""),
+  fileId: uuid("file_id"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  jobIdx: index("graphic_client_decisions_job_idx").on(table.organizationId, table.jobId, table.createdAt),
+  decisionCheck: check("graphic_client_decisions_decision_check", sql`${table.decision} in ('approved','rejected','revision_requested')`),
+  channelCheck: check("graphic_client_decisions_channel_check", sql`${table.channel} in ('whatsapp','email','signed','phone','in_person','other')`),
+  osFk: foreignKey({ columns: [table.organizationId, table.jobId, table.osVersionId], foreignColumns: [graphicOsVersions.organizationId, graphicOsVersions.jobId, graphicOsVersions.id], name: "graphic_client_decisions_os_tenant_fk" }),
+  fileFk: foreignKey({ columns: [table.organizationId, table.fileId], foreignColumns: [files.organizationId, files.id], name: "graphic_client_decisions_file_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_client_decisions_user_tenant_fk" }),
+}));
+
+export const graphicProductionEvents = pgTable("graphic_production_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  fromStatus: graphicJobOperationalStatusEnum("from_status").notNull(),
+  toStatus: graphicJobOperationalStatusEnum("to_status").notNull(),
+  waitingReason: text("waiting_reason"),
+  responsibleEmployeeId: uuid("responsible_employee_id").notNull(),
+  dueAt: date("due_at"),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  jobIdx: index("graphic_production_events_job_idx").on(table.organizationId, table.jobId, table.createdAt),
+  waitingCheck: check("graphic_production_events_waiting_check", sql`(${table.toStatus} = 'waiting' and ${table.waitingReason} is not null and ${table.waitingReason} in ('client','art','internal','supplier','material','payment','other')) or (${table.toStatus} <> 'waiting' and ${table.waitingReason} is null)`),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_production_events_job_tenant_fk" }),
+  employeeFk: foreignKey({ columns: [table.organizationId, table.responsibleEmployeeId], foreignColumns: [employees.organizationId, employees.id], name: "graphic_production_events_employee_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_production_events_user_tenant_fk" }),
+}));
+
+export const graphicSupplierCommitments = pgTable("graphic_supplier_commitments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  quoteId: uuid("quote_id").notNull(),
+  expenseId: uuid("expense_id").notNull(),
+  contractedAt: date("contracted_at").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  quoteIdx: uniqueIndex("graphic_supplier_commitments_quote_idx").on(table.organizationId, table.quoteId),
+  expenseIdx: uniqueIndex("graphic_supplier_commitments_expense_idx").on(table.organizationId, table.expenseId),
+  jobIdx: index("graphic_supplier_commitments_job_idx").on(table.organizationId, table.jobId),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_supplier_commitments_job_tenant_fk" }),
+  quoteFk: foreignKey({ columns: [table.organizationId, table.quoteId], foreignColumns: [graphicSupplierQuotes.organizationId, graphicSupplierQuotes.id], name: "graphic_supplier_commitments_quote_tenant_fk" }),
+  expenseFk: foreignKey({ columns: [table.organizationId, table.expenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "graphic_supplier_commitments_expense_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_supplier_commitments_user_tenant_fk" }),
+}));
+
+export const graphicSales = pgTable("graphic_sales", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  osVersionId: uuid("os_version_id"),
+  historicalImportRowId: uuid("historical_import_row_id"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  competence: text("competence").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  tenantKey: unique("graphic_sales_tenant_id_key").on(table.organizationId, table.id),
+  jobIdx: uniqueIndex("graphic_sales_job_idx").on(table.organizationId, table.jobId),
+  amountCheck: check("graphic_sales_positive_amount", sql`${table.amount} > 0`),
+  originCheck: check("graphic_sales_origin_check", sql`(${table.osVersionId} is not null and ${table.historicalImportRowId} is null) or (${table.osVersionId} is null and ${table.historicalImportRowId} is not null)`),
+  importIdx: uniqueIndex("graphic_sales_import_idx").on(table.organizationId, table.historicalImportRowId),
+  importFk: foreignKey({ columns: [table.organizationId, table.historicalImportRowId], foreignColumns: [graphicImportRows.organizationId, graphicImportRows.id], name: "graphic_sales_import_tenant_fk" }),
+  osFk: foreignKey({ columns: [table.organizationId, table.jobId, table.osVersionId], foreignColumns: [graphicOsVersions.organizationId, graphicOsVersions.jobId, graphicOsVersions.id], name: "graphic_sales_os_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_sales_user_tenant_fk" }),
+}));
+
+export const graphicSaleInstallments = pgTable("graphic_sale_installments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  saleId: uuid("sale_id").notNull(),
+  entryId: uuid("entry_id").notNull(),
+  ordinal: integer("ordinal").notNull(),
+  label: text("label").notNull(),
+}, table => ({
+  installmentIdx: uniqueIndex("graphic_sale_installments_ordinal_idx").on(table.organizationId, table.saleId, table.ordinal),
+  entryIdx: uniqueIndex("graphic_sale_installments_entry_idx").on(table.organizationId, table.entryId),
+  ordinalCheck: check("graphic_sale_installments_ordinal_check", sql`${table.ordinal} > 0`),
+  saleFk: foreignKey({ columns: [table.organizationId, table.saleId], foreignColumns: [graphicSales.organizationId, graphicSales.id], name: "graphic_sale_installments_sale_tenant_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_sale_installments_entry_tenant_fk" }),
+}));
+
+export const graphicReconciliationSuggestions = pgTable("graphic_reconciliation_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  jobId: uuid("job_id").notNull(),
+  transactionId: uuid("transaction_id").notNull(),
+  entryId: uuid("entry_id").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewedByUserId: text("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNotes: text("review_notes"),
+}, table => ({
+  pendingIdx: uniqueIndex("graphic_reconciliation_suggestions_pending_idx").on(table.organizationId, table.transactionId, table.entryId).where(sql`${table.status} = 'pending'`),
+  jobIdx: index("graphic_reconciliation_suggestions_job_idx").on(table.organizationId, table.jobId),
+  amountCheck: check("graphic_reconciliation_suggestions_amount_check", sql`${table.amount} > 0`),
+  stateCheck: check("graphic_reconciliation_suggestions_state_check", sql`(${table.status} = 'pending' and ${table.reviewedByUserId} is null and ${table.reviewedAt} is null and ${table.reviewNotes} is null) or (${table.status} in ('accepted','rejected') and ${table.reviewedByUserId} is not null and ${table.reviewedAt} is not null and ${table.reviewNotes} is not null)`),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_reconciliation_suggestions_job_fk" }),
+  transactionFk: foreignKey({ columns: [table.organizationId, table.transactionId], foreignColumns: [financialTransactions.organizationId, financialTransactions.id], name: "graphic_reconciliation_suggestions_transaction_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_reconciliation_suggestions_entry_fk" }),
+  authorFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_reconciliation_suggestions_author_fk" }),
+  reviewerFk: foreignKey({ columns: [table.organizationId, table.reviewedByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_reconciliation_suggestions_reviewer_fk" }),
+}));
+
+export const graphicImportBatches = pgTable("graphic_import_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  checksum: text("checksum").notNull(),
+  fileName: text("file_name").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  mapping: jsonb("mapping").notNull().$type<import("@/features/graphics/import-rules").GraphicImportMapping>(),
+  status: text("status").notNull().default("preview"),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  tenantKey: unique("graphic_import_batches_tenant_key").on(table.organizationId, table.id),
+  checksumIdx: uniqueIndex("graphic_import_batches_checksum_idx").on(table.organizationId, table.checksum),
+  checksumCheck: check("graphic_import_batches_checksum_check", sql`${table.checksum} ~ '^[a-f0-9]{64}$'`),
+  sizeCheck: check("graphic_import_batches_size_check", sql`${table.byteSize} > 0 and ${table.byteSize} <= 10485760`),
+  statusCheck: check("graphic_import_batches_status_check", sql`${table.status} in ('preview','partial','complete')`),
+  authorFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_import_batches_author_fk" }),
+}));
+
+export const graphicImportRows = pgTable("graphic_import_rows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  batchId: uuid("batch_id").notNull(),
+  kind: text("kind").notNull(),
+  sourceSheet: text("source_sheet").notNull(),
+  sourceRow: integer("source_row").notNull(),
+  raw: jsonb("raw").notNull().$type<Record<string, unknown>>(),
+  normalized: jsonb("normalized").notNull().$type<import("@/features/graphics/import-rules").GraphicImportRow["normalized"]>(),
+  classification: text("classification").notNull(),
+  issues: jsonb("issues").notNull().$type<string[]>(),
+  resolution: jsonb("resolution").$type<Record<string, unknown>>(),
+  status: text("status").notNull().default("pending"),
+  revision: integer("revision").notNull().default(0),
+  reviewedByUserId: text("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  importedAt: timestamp("imported_at", { withTimezone: true }),
+  jobId: uuid("job_id"), entryId: uuid("entry_id"), transactionId: uuid("transaction_id"),
+}, table => ({
+  tenantKey: unique("graphic_import_rows_tenant_key").on(table.organizationId, table.id),
+  sourceIdx: uniqueIndex("graphic_import_rows_source_idx").on(table.organizationId, table.batchId, table.kind, table.sourceSheet, table.sourceRow),
+  rowCheck: check("graphic_import_rows_row_check", sql`${table.sourceRow} > 0 and ${table.revision} >= 0`),
+  kindCheck: check("graphic_import_rows_kind_check", sql`${table.kind} in ('sales','outgoing','incoming')`),
+  classificationCheck: check("graphic_import_rows_classification_check", sql`${table.classification} in ('clear','ambiguous','invalid')`),
+  statusCheck: check("graphic_import_rows_status_check", sql`${table.status} in ('pending','ready','imported','ignored')`),
+  batchFk: foreignKey({ columns: [table.organizationId, table.batchId], foreignColumns: [graphicImportBatches.organizationId, graphicImportBatches.id], name: "graphic_import_rows_batch_fk" }),
+  reviewerFk: foreignKey({ columns: [table.organizationId, table.reviewedByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_import_rows_reviewer_fk" }),
+  jobFk: foreignKey({ columns: [table.organizationId, table.jobId], foreignColumns: [graphicJobs.organizationId, graphicJobs.id], name: "graphic_import_rows_job_fk" }),
+  entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_import_rows_entry_fk" }),
+  transactionFk: foreignKey({ columns: [table.organizationId, table.transactionId], foreignColumns: [financialTransactions.organizationId, financialTransactions.id], name: "graphic_import_rows_transaction_fk" }),
+}));
 
 export const documents = pgTable(
   "documents",

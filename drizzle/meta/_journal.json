@@ -183,6 +183,139 @@
       "when": 1788441770207,
       "tag": "0025_graphics_supplier_quote_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789995785000,
+      "tag": "0026_graphics_os_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789995790778,
+      "tag": "0027_graphics_os_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789996198998,
+      "tag": "0028_graphics_os_policy_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790015066144,
+      "tag": "0029_graphics_client_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790015067362,
+      "tag": "0030_graphics_client_decisions_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790015774996,
+      "tag": "0031_graphics_production",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790015776070,
+      "tag": "0032_graphics_production_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790032899672,
+      "tag": "0033_graphics_supplier_commitments",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790032900848,
+      "tag": "0034_graphics_supplier_commitments_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790033370361,
+      "tag": "0035_graphics_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790033371549,
+      "tag": "0036_graphics_sales_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790037067640,
+      "tag": "0037_graphics_finance_summary_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790037436943,
+      "tag": "0038_graphics_reconciliation_suggestions",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790037437869,
+      "tag": "0039_graphics_reconciliation_suggestions_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790051229257,
+      "tag": "0040_graphics_import_staging",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790051230170,
+      "tag": "0041_graphics_import_staging_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790051469863,
+      "tag": "0042_graphics_historical_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790081843836,
+      "tag": "0043_graphics_supplier_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790082538396,
+      "tag": "0044_graphics_waiting_reason_required",
+      "breakpoints": true
     }
   ]
 }

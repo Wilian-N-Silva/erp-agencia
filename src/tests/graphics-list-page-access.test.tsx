@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentAccessContext: vi.fn(),
   getGraphicJobFormOptions: vi.fn(),
-  getGraphicJobs: vi.fn(),
+  getGraphicDashboard: vi.fn(),
   redirect: vi.fn(),
 }));
 
@@ -14,8 +14,8 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/features/graphics/dal", () => ({
   getGraphicJobFormOptions: mocks.getGraphicJobFormOptions,
-  getGraphicJobs: mocks.getGraphicJobs,
 }));
+vi.mock("@/features/graphics/dashboard", () => ({ getGraphicDashboard: mocks.getGraphicDashboard }));
 
 vi.mock("@/lib/dal", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/dal")>();
@@ -28,6 +28,7 @@ vi.mock("@/lib/dal", async (importOriginal) => {
 
 import GraphicJobsPage from "@/app/(private)/app/grafica/page";
 import { createAccessContext } from "@/tests/helpers/access-context";
+import { summarizeGraphicOperations } from "@/features/graphics/dashboard-rules";
 
 describe("graphics list page access", () => {
   beforeEach(() => {
@@ -40,7 +41,7 @@ describe("graphics list page access", () => {
         userId: "quote-approver",
       }),
     );
-    mocks.getGraphicJobs.mockResolvedValue([]);
+    mocks.getGraphicDashboard.mockResolvedValue({ jobs: [], operations: summarizeGraphicOperations([], "2026-09-22"), finance: null, pending: 0 });
     mocks.getGraphicJobFormOptions.mockResolvedValue({
       clients: [],
       employees: [],
@@ -57,8 +58,10 @@ describe("graphics list page access", () => {
 
     expect(screen.getByRole("heading", { name: /Trabalhos da Gr.fica/i })).toBeTruthy();
     expect(mocks.redirect).not.toHaveBeenCalled();
-    expect(mocks.getGraphicJobs).toHaveBeenCalledOnce();
+    expect(mocks.getGraphicDashboard).toHaveBeenCalledOnce();
     expect(mocks.getGraphicJobFormOptions).toHaveBeenCalledOnce();
     expect(screen.queryByRole("link", { name: /Novo trabalho/i })).toBeNull();
+    expect(screen.queryByText("Visão financeira")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Etapa" })).toBeTruthy();
   });
 });
