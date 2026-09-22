@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("OS external PDF registration, version history and download", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const password = process.env.DEMO_USER_PASSWORD;
   expect(password, "Set DEMO_USER_PASSWORD for the local demo account").toBeTruthy();
   const signIn = () => page.request.post("/api/auth/sign-in/email", { data: { email: "todos.perfis@formula.local", password } });
@@ -14,6 +14,13 @@ test("OS external PDF registration, version history and download", async ({ page
   }
   expect(login.ok()).toBe(true);
   await page.goto("/app/financeiro/cadastros");
+  const accounts = page.locator(".fg-card").filter({ has: page.getByText("Contas financeiras", { exact: true }) });
+  if (!(await accounts.getByText("Conta Gráfica QA", { exact: true }).count())) {
+    await accounts.getByText("Novo cadastro", { exact: true }).click();
+    await accounts.locator("form").filter({ has: page.getByRole("button", { name: "Adicionar conta", exact: true }) }).locator('input[name="name"]').fill("Conta Gráfica QA");
+    await accounts.getByRole("button", { name: "Adicionar conta", exact: true }).click();
+    await expect(accounts.getByText("Conta Gráfica QA", { exact: true })).toBeVisible();
+  }
   const categories = page.locator(".fg-card").filter({ has: page.getByText("Categorias financeiras", { exact: true }) });
   if (!(await categories.getByText("Custos Gráfica QA", { exact: true }).count())) {
     await categories.getByText("Novo cadastro", { exact: true }).click();
@@ -100,6 +107,33 @@ test("OS external PDF registration, version history and download", async ({ page
   await page.getByLabel("Valor da parcela 2", { exact: true }).fill("1450,00");
   await page.getByRole("button", { name: "Registrar venda e criar contas a receber", exact: true }).click();
   await expect(page.getByText("Contas a receber criadas. Recebimento acompanhado pelo Financeiro.", { exact: true })).toBeVisible();
+  const jobUrl = page.url();
+  await page.goto("/app/financeiro/movimentacoes");
+  await page.getByRole("combobox", { name: /^Conta financeira/ }).selectOption({ label: "Conta Gráfica QA" });
+  await page.getByRole("textbox", { name: /^Valor/ }).fill("1950,00");
+  await page.getByLabel("Cliente", { exact: true }).selectOption({ label: "Horizonte Eventos - Grafica" });
+  await page.getByLabel("Referência", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Registrar movimentação", exact: true }).click();
+  await page.getByRole("row").filter({ has: page.getByRole("cell", { name: code, exact: true }) }).getByRole("link", { name: "Conciliar", exact: true }).click();
+  await page.getByLabel("Buscar por descrição, código do trabalho ou contraparte", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Buscar títulos", exact: true }).click();
+  const sinal = page.getByLabel(`Valor para Gráfica ${code} · Sinal`, { exact: true });
+  await sinal.fill("501,00");
+  await page.getByRole("checkbox", { name: "Conferi os títulos e valores e confirmo a conciliação.", exact: true }).check();
+  await page.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "excede o saldo aberto" })).toBeVisible();
+  await expect(sinal).toHaveValue("501,00");
+  await sinal.fill("500,00");
+  await page.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+  await expect(page.getByText("Saldo a conciliar: R$ 1.450,00", { exact: true })).toBeVisible();
+  await page.getByLabel(`Valor para Gráfica ${code} · Saldo`, { exact: true }).fill("1450,00");
+  await page.getByRole("checkbox", { name: "Conferi os títulos e valores e confirmo a conciliação.", exact: true }).check();
+  await page.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+  await expect(page.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirmar conciliação", exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+  await page.goto(jobUrl);
   await page.getByRole("combobox", { name: "Próxima etapa", exact: true }).selectOption("in_production");
   await page.getByRole("button", { name: "Registrar etapa", exact: true }).click();
   await expect(page.getByText("Em produção", { exact: true })).toBeVisible();

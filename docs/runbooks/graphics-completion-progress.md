@@ -17,7 +17,7 @@ Branch de trabalho: `codex/graphics-completion`, criada de `development` e acres
 - GRF-013: pendente — importação com staging, dry-run, proveniência, pendências e relatório.
 - GRF-014: pendente — E2E completo e revisão de usabilidade.
 
-Dependências a completar/verificar: contrato compartilhado de anexos DOC-001/002 e UI/DAL de conciliação FIN-005. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
+Dependências: UI/DAL de conciliação FIN-005 implementada e validada nesta branch; contrato compartilhado de anexos DOC-001/002 ainda a completar/verificar. Reutilizar Financeiro existente e manter autorização de liquidação separada da Gráfica.
 
 ## Gate final
 
@@ -55,3 +55,11 @@ Usabilidade: próxima ação explícita; cadastro acessível de fornecedor compa
 - Migrações 0035/0036 aplicadas nos bancos local e de testes; tabelas imutáveis, RLS forçada e FKs por organização.
 - Typecheck, lint, build e diff-check aprovados; 348 testes unitários, 153 testes de banco e 4 E2E aprovados. Cobertura inclui concorrência, rollback, acesso cross-tenant, upgrade e preservação do formulário após soma inválida.
 
+## Evidência FIN-005 — dependência da GRF-010 — 21/09/2026
+
+- Tela de conciliação acessível pelas movimentações, busca por descrição/código/contraparte, títulos sugeridos por contraparte sem confirmação automática, valores parciais e múltiplos títulos. Até 200 candidatos por busca; lote limitado a 100 alocações.
+- Reutiliza a transação e os limites de alocação existentes. Confirmação exige finance.settle, sessão, validação estrita, limite persistente de conciliação e saldo esperado. Envios concorrentes ou repetidos com saldo antigo são rejeitados.
+- Nova movimentação cria pendência na mesma transação; conciliação parcial preserva a pendência; integral resolve com auditoria. Movimentações antigas continuam acessíveis e sua pendência é sincronizada quando recebem alocações; nenhum histórico foi reinterpretado por backfill.
+- Não amplia automaticamente concessões de finance.settle: administração de acesso mantém a concessão explícita. Nenhuma permissão de liquidação é concedida à Gráfica.
+- Typecheck, lint, build e diff-check aprovados; 350 testes unitários, 154 de banco e 4 E2E aprovados. E2E testa valor acima do título, preservação dos campos, sinal/saldo e persistência após recarga. Correções de seletores cobrem indicador de campo obrigatório e anúncio de rota do Next.js.
+- Sem migration ou backfill nesta dependência. Worktree sec-002 preexistente preservada; Git gerenciado manualmente nesta branch.

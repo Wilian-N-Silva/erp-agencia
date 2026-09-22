@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
+import { confirmReconciliation, getReconciliation } from "@/features/finance-allocations/reconciliation";
+import { createFinancialTransactionRecord } from "@/features/finance-transactions/dal";
 import { FinancialAllocationError } from "@/features/finance-allocations/rules";
 import { getFinancialExpenseEffectiveStatus } from "@/features/finance/rules";
 import { createDatabase, createWithTenantDb, type Database } from "@/lib/db";
@@ -68,6 +70,36 @@ afterAll(async () => {
 });
 
 describe("FIN-004 atomic many-to-many allocations", () => {
+  it("keeps a single pending work item until full reconciliation and rejects stale concurrent submissions", async () => {
+    const first = id(401), second = id(402);
+    await adminDb.execute(sql`insert into financial_entries (id, organization_id, description, amount, due_date, competence, responsible_user_id) values
+      (${first}, ${orgA}, 'Reconciliation first', 40, '2026-09-10', '2026-09', ${contextA.userId}),
+      (${second}, ${orgA}, 'Reconciliation second', 60, '2026-09-10', '2026-09', ${contextA.userId})`);
+    const movement = await createFinancialTransactionRecord(contextA, { accountId: accountA, amount: "100.00", direction: "in", occurredAt: new Date(), clientId: null, supplierId: null, counterpartyName: null, reference: "FIN005", method: "PIX" });
+    const read = await getReconciliation(contextA, { transactionId: movement.id, query: "Reconciliation" });
+    expect(read?.candidates.map(row => row.id)).toEqual([first, second]);
+    expect(read?.remaining).toBe("100.00");
+    const payload = { transactionId: movement.id, expectedRemaining: "100.00", allocations: [{ targetId: first, targetType: "receivable", amount: "40.00" }] };
+    const attempts = await Promise.allSettled([confirmReconciliation(contextA, payload), confirmReconciliation(contextA, payload)]);
+    expect(attempts.filter(row => row.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter(row => row.status === "rejected")).toHaveLength(1);
+    let items = await adminDb.execute(sql`select status from work_items where organization_id = ${orgA} and source_id = ${movement.id}`);
+    expect(items.rows).toEqual([{ status: "open" }]);
+    const partial = await getReconciliation(contextA, { transactionId: movement.id, query: "Reconciliation" });
+    expect(partial?.remaining).toBe("60.00");
+    expect(partial?.allocations).toHaveLength(1);
+    expect(partial?.candidates.map(row => row.id)).toEqual([second]);
+    await expect(confirmReconciliation({ ...contextA, permissions: ["finance.read"] }, { ...payload, expectedRemaining: "60.00" })).rejects.toBeInstanceOf(AccessDeniedError);
+    await expect(getReconciliation({ ...contextA, permissions: ["graphics.read"] }, { transactionId: movement.id })).rejects.toBeInstanceOf(AccessDeniedError);
+    expect(await getReconciliation({ ...contextA, organizationId: orgB, userId: "fin-004-user-b" }, { transactionId: movement.id })).toBeNull();
+    await confirmReconciliation(contextA, { ...payload, expectedRemaining: "60.00", allocations: [{ targetId: second, targetType: "receivable", amount: "60.00" }] });
+    items = await adminDb.execute(sql`select status from work_items where organization_id = ${orgA} and source_id = ${movement.id}`);
+    expect(items.rows).toEqual([{ status: "resolved" }]);
+    const complete = await getReconciliation(contextA, { transactionId: movement.id });
+    expect(complete?.remaining).toBe("0.00");
+    expect(complete?.allocations).toHaveLength(2);
+    expect(complete?.candidates).toEqual([]);
+  });
   it("allocates one transaction to multiple receivables and recalculates every status", async () => {
     const result = await createFinancialAllocations(contextA, {
       allocations: [
@@ -480,6 +512,7 @@ async function allocationCounts(transactionId: string) {
 }
 
 async function cleanup() {
+  await adminDb.execute(sql`delete from work_items where organization_id in (${orgA}, ${orgB})`);
   if (!adminDb) return;
   await adminDb.execute(sql`delete from audit_logs where organization_id in (${orgA}, ${orgB})`);
   await adminDb.transaction(async (transaction) => {
