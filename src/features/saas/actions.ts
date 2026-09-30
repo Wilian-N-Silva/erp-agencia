@@ -17,6 +17,8 @@ import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput } from "@/features/finance/rules";
+import { enforceAuthenticatedRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
+import { removeMistakenSaasSubscription, SaasRemovalError } from "./removal";
 
 import {
   canReadSaasCost,
@@ -211,6 +213,24 @@ async function cancelSaasSubscriptionAction(formData: FormData) {
   await updateSaasStatus(context, input.id, "cancelled");
 }
 
+export async function removeSaasSubscriptionAction(_state: { error: string } | null, formData: FormData) {
+  try {
+    const context = await requireSaasWriterContext();
+    await enforceAuthenticatedRateLimit("common_mutation", context);
+    await removeMistakenSaasSubscription(context, formDataToObject(formData));
+  } catch (error) {
+    if (error instanceof SaasRemovalError) return { error: error.message };
+    if (error instanceof z.ZodError) return { error: "Informe um motivo de 5 a 500 caracteres e confirme a remoção." };
+    if (error instanceof AccessDeniedError) return { error: "Assinatura indisponível ou acesso não permitido." };
+    if (error instanceof RateLimitExceededError) return { error: "Limite de tentativas atingido. Aguarde antes de tentar novamente." };
+    throw error;
+  }
+  // Redirect only after the removal and its audit transaction have committed.
+  revalidateSaasPaths();
+  revalidatePath("/app/assinaturas/[id]", "page");
+  redirect("/app/assinaturas");
+}
+
 async function updateSaasStatus(
   context: AuthorizedContext,
   id: string,
@@ -266,6 +286,7 @@ async function getSaasSubscriptionForWrite(id: string, organizationId: string) {
     .select()
     .from(saasSubscriptions)
     .where(and(eq(saasSubscriptions.id, id), eq(saasSubscriptions.organizationId, organizationId), isNull(saasSubscriptions.deletedAt)))
+    .for("update")
     .limit(1);
 
   if (!row) {

@@ -34,6 +34,7 @@ import {
 import { formatDate, formatMoney } from "@/features/finance/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
+import { RemoveSubscriptionForm } from "../remove-subscription-form";
 
 export const dynamic = "force-dynamic";
 
@@ -526,6 +527,12 @@ function ContratoTab({
       <p className="fg-empty-desc">
         Documento de contrato ainda não vinculado a esta assinatura.
       </p>
+      {canWrite ? (
+        <ActionSheet title="Remover cadastro incorreto" description={`Remover ${subscription.name} do sistema operacional.`}
+          trigger={<span className="fg-btn fg-btn-outline fg-btn-sm">Remover cadastro incorreto</span>}>
+          <RemoveSubscriptionForm id={subscription.id} />
+        </ActionSheet>
+      ) : null}
     </Card>
   );
 }
