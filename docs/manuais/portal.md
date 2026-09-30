@@ -53,6 +53,13 @@ A indicação de aprovado não confirma transferência bancária.
 
 ## Férias, pausas e informações pessoais
 
+Atualização de 30/09/2026: toda a equipe real é PJ. A regra interna confirmada é
+usufruto remunerado em blocos de 15 dias, com possibilidade de venda autorizada
+pela Jaci e valor incluído na próxima NF. **O sistema ainda não implementa essa
+regra completa**: a tela de pausas não tem venda de dias nem integração com NF.
+Não use a aprovação atual de uma pausa como autorização registrada de venda.
+Veja a [política confirmada e pontos pendentes](../decisions/pj-timeoff-policy.md).
+
 Em **Férias/Pausas**, consulte as solicitações e registre período e motivo conforme
 o formulário. O nome e as opções dependem do vínculo: CLT vê férias; PJ vê pausas.
 Solicitação enviada não é autorização para se ausentar. Aguarde a aprovação do RH.

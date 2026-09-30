@@ -31,6 +31,8 @@ e responsabilidades; não representa usuários cadastrados nem permissões aplic
 | Dereck | Social Media e Designer | Portal |
 | Paula | Responsável pela Gráfica | Gráfica e Portal |
 
-O cargo de head não concede acesso total automaticamente. O vínculo CLT/PJ também
-não foi informado por pessoa: o RH deve defini-lo corretamente antes de liberar
-notas fiscais ou férias. O portal de NFs é específico para PJ.
+O cargo de head não concede acesso total automaticamente. Em 30/09/2026, o
+responsável confirmou que todos os 13 integrantes são PJ. Isso é uma definição
+da equipe real, não uma alteração dos cadastros fictícios CLT usados nos testes.
+O portal de NFs é específico para PJ. A política interna de férias/pausas e venda
+de dias está registrada em [política PJ](../decisions/pj-timeoff-policy.md).
