@@ -10,19 +10,20 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
   if (!["localhost", "127.0.0.1"].includes(new URL(connectionString).hostname)) throw new Error("Fixture permitida apenas no banco local de demonstração.");
   const admin = new Client({ connectionString }); await admin.connect();
   const marker = `QA-PJ-${Date.now()}`;
-  const ownId = randomUUID(), reviewerId = randomUUID(), employeeId = randomUUID();
+  const ownId = randomUUID(), reviewerId = randomUUID(), financeId = randomUUID(), employeeId = randomUUID();
   const ownEmail = `${ownId}@formula.local`, reviewerEmail = `${reviewerId}@formula.local`;
   const template = (await admin.query('select u.id,u.organization_id,e.area_id,e.position_id from "user" u join employees e on e.user_id=u.id where u.email=$1', ["pj.exemplo@formula.local"])).rows[0];
   const org = template.organization_id;
   const prior = (await admin.query("select value from app_settings where organization_id=$1 and key='pj_timeoff_approver'", [org])).rows[0];
-  const credentials = [{ id: ownId, email: ownEmail, name: marker, template: "pj.exemplo@formula.local" }, { id: reviewerId, email: reviewerEmail, name: `Jaci demo ${marker}`, template: "todos.perfis@formula.local" }];
+  const financeEmail = `${financeId}@formula.local`;
+  const credentials = [{ id: ownId, email: ownEmail, name: marker, template: "pj.exemplo@formula.local" }, { id: reviewerId, email: reviewerEmail, name: `Jaci demo ${marker}`, template: "todos.perfis@formula.local" }, { id: financeId, email: financeEmail, name: `Financeiro ${marker}`, template: "financeiro@formula.local" }];
   for (const item of credentials) {
     await admin.query('insert into "user" (id,organization_id,name,email,email_verified,access_status,is_active) values ($1,$2,$3,$4,true,\'active\',true)', [item.id, org, item.name, item.email]);
     await admin.query('insert into account (id,user_id,account_id,provider_id,password) select $1,$2,$2,\'credential\',a.password from account a join "user" u on u.id=a.user_id where u.email=$3 and a.provider_id=\'credential\'', [randomUUID(), item.id, item.template]);
     await admin.query('insert into user_roles (user_id,role_id) select $1,ur.role_id from user_roles ur join "user" u on u.id=ur.user_id where u.email=$2', [item.id, item.template]);
   }
   await admin.query("insert into employees (id,organization_id,user_id,registration_number,full_name,area_id,position_id,employment_type,start_date,current_compensation,recurring_cost_allowance) values ($1,$2,$3,$4,$4,$5,$6,'pj','2020-01-01',3900,300)", [employeeId, org, ownId, marker, template.area_id, template.position_id]);
-  const ownSession = await browser.newContext(), reviewSession = await browser.newContext();
+  const ownSession = await browser.newContext(), reviewSession = await browser.newContext(), financeSession = await browser.newContext();
   const own = await ownSession.newPage(), reviewer = await reviewSession.newPage();
   const login = async (page: Page, email: string) => {
     const response = await page.request.post("/api/auth/sign-in/email", { data: { email, password: process.env.DEMO_USER_PASSWORD } });
@@ -68,6 +69,23 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     await own.locator(".fg-input-wrap").filter({ has: own.locator('[name="issuedAmount"]') }).locator('input[type="text"]').fill("6150,00");
     await own.getByRole("button", { name: /Enviar NF/ }).click();
     await expect(own.locator("body")).toContainText("Enviada");
+    const finance = await financeSession.newPage();
+    await login(finance, financeEmail);
+    await finance.goto("/app/nfs");
+    await finance.getByRole("tab", { name: /^Todas/ }).click();
+    await finance.getByPlaceholder("Buscar PJ, matricula ou area...").fill(marker);
+    await finance.getByRole("row").filter({ hasText: marker }).click();
+    const downloaded = finance.waitForEvent("download");
+    await finance.getByRole("button", { name: "Baixar PDF", exact: true }).click();
+    const pdf = await downloaded;
+    expect(pdf.suggestedFilename()).toBe(`${marker}.pdf`);
+    expect(await pdf.failure()).toBeNull();
+    const uploaded = (await admin.query("select d.id from documents d join invoice_requests i on i.file_id=d.file_id where i.employee_id=$1", [employeeId])).rows[0];
+    const downloadedResponse = await finance.request.get(`/app/documentos/${uploaded.id}/download`);
+    expect(downloadedResponse.status()).toBe(200);
+    expect((await downloadedResponse.body()).subarray(0, 5).toString()).toBe("%PDF-");
+    expect(downloadedResponse.headers()["cache-control"]).toContain("no-store");
+    expect((await finance.request.get(`/app/documentos/${randomUUID()}/download`)).status()).toBe(404);
     const count = await admin.query("select count(*)::int n from invoice_request_items i join time_off_requests t on t.id=i.source_time_off_id where t.employee_id=$1", [employeeId]);
     expect(count.rows[0].n).toBe(1);
     await own.goto("/portal/ferias");
@@ -100,6 +118,6 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
   } finally {
     if (prior) await admin.query("update app_settings set value=$1 where organization_id=$2 and key='pj_timeoff_approver' and value=$3::jsonb", [JSON.stringify(prior.value), org, JSON.stringify(reviewerId)]);
     else await admin.query("delete from app_settings where organization_id=$1 and key='pj_timeoff_approver' and value=$2::jsonb", [org, JSON.stringify(reviewerId)]);
-    await admin.end(); await ownSession.close(); await reviewSession.close();
+    await admin.end(); await ownSession.close(); await reviewSession.close(); await financeSession.close();
   }
 });

@@ -95,6 +95,7 @@ import {
 } from "@/features/finance/rules";
 import { createTimeOffRequestAction } from "@/features/timeoff/actions";
 import { isIsoDate, isIsoMonth } from "@/lib/validation";
+import { AccessDeniedError } from "@/lib/rbac";
 
 const context = {
   employeeId: "30000000-0000-4000-8000-000000000001",
@@ -228,6 +229,38 @@ describe("route and export input validation", () => {
     expect(mocks.getDocumentForAccess).not.toHaveBeenCalled();
     expect(mocks.getStorageObject).not.toHaveBeenCalled();
     expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic 404 for denied documents without reading storage", async () => {
+    const id = "30000000-0000-4000-8000-000000000005";
+    mocks.getDocumentForAccess.mockRejectedValueOnce(new AccessDeniedError());
+    const response = await downloadDocument(createRequest(`/app/documentos/${id}/download`), { params: Promise.resolve({ id }) });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: { code: "DOCUMENT_NOT_FOUND", message: "Documento nao encontrado." } });
+    expect(mocks.getStorageObject).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("returns a controlled response when the storage object is unavailable", async () => {
+    const id = "30000000-0000-4000-8000-000000000005";
+    mocks.getDocumentForAccess.mockResolvedValueOnce({ id, storageKey: "private.pdf", storageProvider: "local" });
+    mocks.getStorageObject.mockRejectedValueOnce(new Error("ENOENT private path"));
+    const response = await downloadDocument(createRequest(`/app/documentos/${id}/download`), { params: Promise.resolve({ id }) });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("private path");
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("audits authorized downloads and prevents caching of private PDFs", async () => {
+    const id = "30000000-0000-4000-8000-000000000005";
+    mocks.getDocumentForAccess.mockResolvedValueOnce({ id, fileId: id, bucket: null, storageKey: "private.pdf", storageProvider: "local", originalName: "nota.pdf", mimeType: "application/pdf" });
+    mocks.getStorageObject.mockResolvedValueOnce(Buffer.from("%PDF-1.4"));
+    const response = await downloadDocument(createRequest(`/app/documentos/${id}/download`), { params: Promise.resolve({ id }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(await response.text()).toBe("%PDF-1.4");
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(context, expect.objectContaining({ action: "sensitive_read", entityId: id }));
   });
 });
 

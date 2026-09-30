@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getDocumentForAccess } from "@/features/documents/dal";
 import { getRequestAuditMetadata, writeAuditLog } from "@/lib/audit";
 import { getCurrentAccessContext } from "@/lib/dal";
+import { AccessDeniedError } from "@/lib/rbac";
 import { getStorageObject, type StorageProvider } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +36,21 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const document = await getDocumentForAccess(context, parsedId.data);
-  const body = await getStorageObject({
+  let document;
+  try {
+    document = await getDocumentForAccess(context, parsedId.data);
+  } catch (error) {
+    if (!(error instanceof AccessDeniedError)) throw error;
+    return NextResponse.json({ error: { code: "DOCUMENT_NOT_FOUND", message: "Documento nao encontrado." } }, { status: 404 });
+  }
+  let body;
+  try { body = await getStorageObject({
     bucket: document.bucket,
     key: document.storageKey,
     provider: document.storageProvider as StorageProvider,
-  });
+  }); } catch {
+    return NextResponse.json({ error: { code: "DOCUMENT_UNAVAILABLE", message: "Arquivo indisponível. Tente novamente ou solicite o reenvio." } }, { status: 503, headers: { "cache-control": "private, no-store" } });
+  }
   const auditMetadata = getRequestAuditMetadata(request.headers);
 
   await writeAuditLog(context, {
@@ -57,6 +67,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   return new NextResponse(body, {
     headers: {
+      "cache-control": "private, no-store",
       "content-disposition": `attachment; filename="${encodeHeaderValue(document.originalName)}"`,
       "content-type": document.mimeType,
     },

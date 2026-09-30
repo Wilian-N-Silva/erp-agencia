@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
 import {
   areas,
+  documents,
   employees,
   invoiceRequestItems,
   invoiceRequests,
@@ -55,6 +56,7 @@ export type InvoiceRequestListItem = {
   suggestedDescription: string;
   status: InvoiceRequestStatus;
   fileId: string | null;
+  documentId: string | null;
   approvedAt: Date | null;
   paidAt: Date | null;
   items: InvoiceRequestItem[];
@@ -148,10 +150,12 @@ async function listInvoiceRequests(
       suggestedDescription: invoiceRequests.suggestedDescription,
       status: invoiceRequests.status,
       fileId: invoiceRequests.fileId,
+      documentId: documents.id,
       approvedAt: invoiceRequests.approvedAt,
       paidAt: invoiceRequests.paidAt,
     })
     .from(invoiceRequests)
+    .leftJoin(documents, and(eq(documents.fileId, invoiceRequests.fileId), eq(documents.organizationId, organizationId), eq(documents.ownerType, "invoice_request"), eq(documents.ownerId, sql`${invoiceRequests.id}::text`), eq(documents.documentType, "invoice"), isNull(documents.deletedAt)))
     .innerJoin(employees, eq(invoiceRequests.employeeId, employees.id))
     .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(and(eq(invoiceRequests.organizationId, organizationId), isNull(invoiceRequests.deletedAt)))

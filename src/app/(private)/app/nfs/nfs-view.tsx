@@ -258,7 +258,8 @@ export function NfsView({
               {
                 label: "Baixar PDF",
                 icon: <Download size={13} />,
-                disabled: !invoice.fileId,
+                disabled: !invoice.documentId,
+                onClick: () => { if (invoice.documentId) window.location.assign(`/app/documentos/${invoice.documentId}/download`); },
               },
             ]}
           />
@@ -516,7 +517,7 @@ function InvoiceDetailSheet({
                   {invoice.paidAt ? formatDate(invoice.paidAt) : "-"}
                 </strong>
               </div>
-              <Button type="button" variant="outline" size="sm" icon={<Download size={13} />} disabled>
+              <Button type="button" variant="outline" size="sm" icon={<Download size={13} />} disabled={!invoice.documentId} onClick={() => { if (invoice.documentId) window.location.assign(`/app/documentos/${invoice.documentId}/download`); }}>
                 Baixar PDF
               </Button>
             </div>
@@ -614,4 +615,3 @@ function dateKeyToUtc(dateKey: string) {
   const [year, month, day] = dateKey.split("-").map(Number);
   return Date.UTC(year, month - 1, day);
 }
-

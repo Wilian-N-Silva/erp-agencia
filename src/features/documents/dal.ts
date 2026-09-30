@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
-import { documents, employees, files } from "@/lib/db/schema";
+import { documents, employees, files, invoiceRequests } from "@/lib/db/schema";
+import { canReadInvoiceRequest } from "@/features/portal/rules";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
@@ -115,6 +116,9 @@ async function getDocumentForAccess(context: AccessContext, id: string) {
   const [row] = await db
     .select({
       id: documents.id,
+      ownerType: documents.ownerType,
+      ownerId: documents.ownerId,
+      documentType: documents.documentType,
       fileId: documents.fileId,
       ownerEmployeeId: files.ownerEmployeeId,
       sensitivity: files.sensitivity,
@@ -126,7 +130,7 @@ async function getDocumentForAccess(context: AccessContext, id: string) {
       originalName: files.originalName,
     })
     .from(documents)
-    .innerJoin(files, eq(documents.fileId, files.id))
+    .innerJoin(files, and(eq(documents.fileId, files.id), eq(files.organizationId, organizationId), isNull(files.deletedAt)))
     .where(and(eq(documents.id, id), eq(documents.organizationId, organizationId), isNull(documents.deletedAt)))
     .limit(1);
 
@@ -141,7 +145,14 @@ async function getDocumentForAccess(context: AccessContext, id: string) {
   };
 
   if (!canReadDocument(context, target) && !canReadOwnDocument(context, target)) {
-    throw new AccessDeniedError();
+    // Invoice access grants only its actual attached PDF, never all employee documents.
+    const [invoice] = row.ownerType === "invoice_request" && row.documentType === "invoice"
+      ? await db.select({ employeeId: invoiceRequests.employeeId }).from(invoiceRequests)
+        .where(and(eq(invoiceRequests.organizationId, organizationId), eq(invoiceRequests.id, row.ownerId), eq(invoiceRequests.fileId, row.fileId), isNull(invoiceRequests.deletedAt))).limit(1)
+      : [];
+    if (!invoice || invoice.employeeId !== row.ownerEmployeeId || !canReadInvoiceRequest(context, invoice)) {
+      throw new AccessDeniedError();
+    }
   }
 
   return row;
