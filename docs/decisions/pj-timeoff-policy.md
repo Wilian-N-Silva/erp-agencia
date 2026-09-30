@@ -35,8 +35,7 @@ e aprovado. Não classificar automaticamente o colaborador como em férias nem
 criar uma solicitação ao atingir a referência.
 
 O cadastro já possui início e fim de vínculo (`employees.startDate/endDate`).
-A periodicidade e a data-base da referência ainda aguardam confirmação: foi
-perguntado se o ciclo é de 12 meses desde o início ou usa outra data acordada.
+A periodicidade foi confirmada: **a cada 12 meses desde o início do vínculo**.
 Não reaproveitar automaticamente o prazo concessivo CLT para os PJs.
 
 ## Decisões ainda abertas

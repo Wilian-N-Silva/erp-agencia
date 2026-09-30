@@ -13,6 +13,8 @@ import { getCurrentAccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
 
 import { FeriasView } from "./ferias-view";
+import { listPjTenureReferences } from "@/features/timeoff/pj-reference-dal";
+import { PjReferencePanel } from "@/features/timeoff/pj-reference-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,7 @@ export default async function TimeOffPage() {
   }
 
   const requests = await listTimeOffRequests(context);
+  const references = await listPjTenureReferences(context);
 
   const rowActions: Record<string, ReactNode> = {};
   const detailActions: Record<string, ReactNode> = {};
@@ -103,6 +106,7 @@ export default async function TimeOffPage() {
   return (
     <FeriasView
       requests={requests}
+      referencePanel={<PjReferencePanel references={references} />}
       canCreate={false}
       rowActions={rowActions}
       detailActions={detailActions}

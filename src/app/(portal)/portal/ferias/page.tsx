@@ -18,6 +18,8 @@ import {
   type TimeOffType,
 } from "@/features/timeoff/rules";
 import { formatDate } from "@/features/finance/rules";
+import { listPjTenureReferences } from "@/features/timeoff/pj-reference-dal";
+import { PjReferencePanel } from "@/features/timeoff/pj-reference-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function PortalTimeOffPage() {
   ]);
 
   const activeBalance = balances.find((b) => b.status === "active") ?? null;
+  const references = !isCLT ? await listPjTenureReferences(context, true) : [];
 
   return (
     <>
@@ -47,6 +50,7 @@ export default async function PortalTimeOffPage() {
       </div>
 
       {activeBalance ? <VacationHero balance={activeBalance} /> : null}
+      <PjReferencePanel references={references} />
 
       {requests.length === 0 ? (
         <Card>
