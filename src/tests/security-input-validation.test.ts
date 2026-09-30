@@ -37,6 +37,7 @@ vi.mock("@/lib/audit", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   db: {
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ employmentType: "clt" }] }) }) }),
     insert: mocks.insert,
   },
 }));

@@ -6,8 +6,11 @@ registra a regra comercial do sistema, sem inferir regime CLT.
 
 ## Confirmado
 
-- Férias/pausas remuneradas em blocos de 15 dias, com possibilidade de vender
-  um bloco de 15 dias mediante autorização da Jaci.
+- Férias/pausas remuneradas em dias corridos. **15 dias é o padrão inicial**,
+  mas a quantidade pode ser alterada conforme combinado (por exemplo, 10 dias).
+  Venda e descanso dependem da autorização da Jaci.
+- Cada 12 meses completos desde o início do vínculo geram 30 dias, com saldo
+  não utilizado acumulado para os períodos seguintes.
 - A sugestão considera a **remuneração mensal base vigente**, mesmo quando o
   contrato não foi atualizado. Não usar automaticamente o valor antigo do contrato.
 - Fórmula: **remuneração mensal base vigente ÷ 30 × dias vendidos**.
@@ -40,16 +43,34 @@ Não reaproveitar automaticamente o prazo concessivo CLT para os PJs.
 
 ## Decisões ainda abertas
 
-Saldo anual, aquisição de saldo, dias corridos ou úteis para o intervalo de
-descanso, limites de venda além do bloco de 15 e tratamento da NF já emitida
-ainda não foram detalhados. Não presumir essas regras nem gerar um adicional
+Tratamento da NF já emitida ainda não foi detalhado. Não gerar um adicional
 automático por simples usufruto de pausa remunerada. A confirmação acima
 substitui o registro anterior de fórmula pendente.
 
-## Implementação pendente
+## Implementação em validação na branch `codex/pj-sale-estimate`
 
-O portal atual recebe início/fim e tipo da pausa, mas não a venda de dias e seu
-valor. O saldo aquisitivo existente é exclusivo de CLT. Ainda faltam validação
-dos blocos PJ, sugestão documentada, autorização do valor e vínculo idempotente
-entre venda aprovada e item da próxima NF. O campo isolado `soldDays` não comprova
-esse fluxo. Exigir autorização server-side, tenant/RLS, auditoria e transação.
+O portal recebe descanso ou venda, inicia em 15 dias e permite outra quantidade
+com o combinado descrito. Pedidos pendentes reservam saldo acumulado; aprovação
+move a reserva para descanso aprovado/venda, e recusa devolve a reserva. Ausências
+continuam em formulário separado e não consomem o saldo de férias PJ.
+
+Um administrador configura a conta da responsável em `/app/ferias`. A identificação
+usa o ID da conta, nunca apenas o nome "Jaci". Aprovação exige essa conta e a
+permissão `timeoff.write`; venda exige também `compensation.read`. A base e a
+sugestão são recalculadas na aprovação; o valor autorizado é preenchido explicitamente
+e divergência exige justificativa. Operações são auditadas em transações tenant-aware,
+com lock do colaborador para proteger reservas concorrentes.
+
+A venda aprovada é vinculada uma única vez à primeira composição aberta, sem PDF,
+de competência igual ou posterior ao mês da aprovação. Se não existir composição
+elegível, aguarda a próxima criação. NF já enviada não é modificada. O envio posterior
+do PDF preserva o item e o total. Descanso não adiciona remuneração extra à NF.
+
+A migration aditiva `0045_worried_wallow.sql` preserva solicitações antigas e não
+atribui valor ou autorização retroativa a `soldDays` legado. Esses registros precisam
+de conferência operacional caso devam ser pagos. O vínculo novo usa chave única
+no item da NF. As policies RLS existentes continuam protegendo as tabelas.
+
+Esta entrega não conclui a integração NF → contas a pagar → conciliação (INV-001..004),
+nem o fluxo de cancelamento/reabertura de férias (VAC-003). Não marcar esses cards
+como concluídos pelo resultado dos testes de venda e envio do PDF.

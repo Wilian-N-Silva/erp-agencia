@@ -316,6 +316,13 @@
       "when": 1790082538396,
       "tag": "0044_graphics_waiting_reason_required",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790777344992,
+      "tag": "0045_worried_wallow",
+      "breakpoints": true
     }
   ]
 }

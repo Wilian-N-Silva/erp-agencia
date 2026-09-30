@@ -20,6 +20,8 @@ import {
 import { formatDate } from "@/features/finance/rules";
 import { listPjTenureReferences } from "@/features/timeoff/pj-reference-dal";
 import { PjReferencePanel } from "@/features/timeoff/pj-reference-panel";
+import { getOwnPjPolicy } from "@/features/timeoff/pj-policy";
+import { PjOwnPanel } from "@/features/timeoff/pj-forms";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,7 @@ export default async function PortalTimeOffPage() {
 
   const activeBalance = balances.find((b) => b.status === "active") ?? null;
   const references = !isCLT ? await listPjTenureReferences(context, true) : [];
+  const pjPolicy = !isCLT ? await getOwnPjPolicy(context) : null;
 
   return (
     <>
@@ -51,8 +54,9 @@ export default async function PortalTimeOffPage() {
 
       {activeBalance ? <VacationHero balance={activeBalance} /> : null}
       <PjReferencePanel references={references} />
+      {pjPolicy ? <PjOwnPanel policy={pjPolicy} /> : null}
 
-      {requests.length === 0 ? (
+      {requests.filter(request => request.type !== "sale").length === 0 ? (
         <Card>
           <EmptyState
             icon={<Umbrella size={32} />}
@@ -63,7 +67,7 @@ export default async function PortalTimeOffPage() {
       ) : (
         <Card title="Histórico de solicitações" padding={false}>
           <ul className="fg-portal-list" style={{ padding: 12 }}>
-            {requests.map((request) => (
+            {requests.filter(request => request.type !== "sale").map((request) => (
               <TimeOffRow
                 key={request.id}
                 request={request}
@@ -138,7 +142,7 @@ function TimeOffRow({
       </div>
       <div className="fg-portal-item-body">
         <div className="fg-portal-item-title">
-          {labelForType(request.type, employmentType)} · {request.businessDays} dias úteis
+          {labelForType(request.type, employmentType)} · {employmentType === "pj" ? `${Math.floor((Date.parse(request.endDate) - Date.parse(request.startDate)) / 86_400_000) + 1} dias corridos` : `${request.businessDays} dias úteis`}
         </div>
         <div className="fg-portal-item-sub">
           {formatDate(request.startDate)} → {formatDate(request.endDate)}
@@ -159,7 +163,7 @@ function NewTimeOffSheet({ employmentType }: { employmentType: string }) {
 
   return (
     <ActionSheet
-      title={isCLT ? "Solicitar férias" : "Solicitar pausa"}
+      title={isCLT ? "Solicitar férias" : "Programar ausência"}
       description="Sua solicitação será encaminhada para aprovação do gestor."
       width={520}
       trigger={
@@ -177,11 +181,11 @@ function NewTimeOffSheet({ employmentType }: { employmentType: string }) {
             Tipo<span className="fg-required">*</span>
           </label>
           <div className="fg-input-wrap">
-            <select className="fg-input fg-select" name="type" required defaultValue="">
+            <select className="fg-input fg-select" name="type" required defaultValue={isCLT ? "" : "absence"}>
               <option value="" disabled>
                 Selecionar
               </option>
-              {Object.entries(timeOffTypeLabels).map(([value, label]) => (
+              {Object.entries(timeOffTypeLabels).filter(([value]) => isCLT || value === "absence").map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

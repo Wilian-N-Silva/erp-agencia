@@ -45,6 +45,7 @@ import {
   type FileSensitivity,
 } from "@/features/documents/rules";
 import { normalizeMoneyInput } from "@/features/finance/rules";
+import { attachPjSalesToNextInvoice, lockPjEmployee } from "@/features/timeoff/pj-policy";
 
 import {
   buildSuggestedInvoiceDescription,
@@ -120,7 +121,7 @@ async function createInvoiceRequestFormAction(
   formData: FormData,
 ): Promise<InvoiceRequestFormState> {
   try {
-    await createInvoiceRequestAction(formData);
+    await tenantCreateInvoiceRequestAction(formData);
     return { ok: true };
   } catch (error) {
     if (error instanceof AccessDeniedError) {
@@ -144,7 +145,6 @@ async function createInvoiceRequestFormAction(
           error: "Já existe uma composição de NF para esse colaborador e competência.",
         };
       }
-      return { ok: false, error: error.message };
     }
 
     return { ok: false, error: "Não foi possível publicar a composição. Tente novamente." };
@@ -155,6 +155,7 @@ async function createInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = createInvoiceRequestSchema.parse(formDataToObject(formData));
   const employee = await getInvoiceEmployeeForWrite(input.employeeId, organizationId);
+  await lockPjEmployee(context, employee.id);
   const existing = await getInvoiceByEmployeeCompetence(
     input.employeeId,
     input.competence,
@@ -210,6 +211,7 @@ async function createInvoiceRequestAction(formData: FormData) {
     },
   });
 
+  await attachPjSalesToNextInvoice(context, employee.id);
   revalidateInvoicePaths();
 }
 
@@ -816,6 +818,7 @@ async function getInvoiceForWrite(id: string, organizationId: string | null) {
         isNull(invoiceRequests.deletedAt),
       ),
     )
+    .for("update")
     .limit(1);
 
   if (!invoice) {
@@ -1113,9 +1116,8 @@ export {
   tenantMarkReimbursementPaidAction as markReimbursementPaidAction,
 };
 
-const tenantCreateInvoiceRequestFormAction = bindCurrentTenantContext(
-  createInvoiceRequestFormAction,
-);
+// Convert errors to form state only after the tenant transaction has rolled back.
+const tenantCreateInvoiceRequestFormAction = createInvoiceRequestFormAction;
 const tenantCreateInvoiceRequestAction = bindCurrentTenantContext(
   createInvoiceRequestAction,
 );

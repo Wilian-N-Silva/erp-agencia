@@ -15,6 +15,7 @@ import { canAny } from "@/lib/rbac";
 import { FeriasView } from "./ferias-view";
 import { listPjTenureReferences } from "@/features/timeoff/pj-reference-dal";
 import { PjReferencePanel } from "@/features/timeoff/pj-reference-panel";
+import { PjReviewPanel } from "@/features/timeoff/pj-review-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function TimeOffPage() {
   const detailActions: Record<string, ReactNode> = {};
 
   for (const request of requests) {
+    if (request.employmentType === "pj" && request.type !== "absence") continue;
     const canApprove = canApproveTimeOff(context, {
       employeeId: request.employeeId,
       managerEmployeeId: request.managerEmployeeId,
@@ -105,8 +107,8 @@ export default async function TimeOffPage() {
 
   return (
     <FeriasView
-      requests={requests}
-      referencePanel={<PjReferencePanel references={references} />}
+      requests={requests.filter(request => request.type !== "sale")}
+      referencePanel={<><PjReferencePanel references={references} /><PjReviewPanel context={context} /></>}
       canCreate={false}
       rowActions={rowActions}
       detailActions={detailActions}

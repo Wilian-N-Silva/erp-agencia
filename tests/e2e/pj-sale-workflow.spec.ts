@@ -1,0 +1,105 @@
+import { randomUUID } from "node:crypto";
+import { loadEnvFile } from "node:process";
+import { Client } from "pg";
+import { expect, test, type Page } from "@playwright/test";
+
+test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor uma vez", async ({ browser }) => {
+  test.setTimeout(120_000);
+  loadEnvFile(".env");
+  const connectionString = process.env.DATABASE_DIRECT_URL!;
+  if (!["localhost", "127.0.0.1"].includes(new URL(connectionString).hostname)) throw new Error("Fixture permitida apenas no banco local de demonstração.");
+  const admin = new Client({ connectionString }); await admin.connect();
+  const marker = `QA-PJ-${Date.now()}`;
+  const ownId = randomUUID(), reviewerId = randomUUID(), employeeId = randomUUID();
+  const ownEmail = `${ownId}@formula.local`, reviewerEmail = `${reviewerId}@formula.local`;
+  const template = (await admin.query('select u.id,u.organization_id,e.area_id,e.position_id from "user" u join employees e on e.user_id=u.id where u.email=$1', ["pj.exemplo@formula.local"])).rows[0];
+  const org = template.organization_id;
+  const prior = (await admin.query("select value from app_settings where organization_id=$1 and key='pj_timeoff_approver'", [org])).rows[0];
+  const credentials = [{ id: ownId, email: ownEmail, name: marker, template: "pj.exemplo@formula.local" }, { id: reviewerId, email: reviewerEmail, name: `Jaci demo ${marker}`, template: "todos.perfis@formula.local" }];
+  for (const item of credentials) {
+    await admin.query('insert into "user" (id,organization_id,name,email,email_verified,access_status,is_active) values ($1,$2,$3,$4,true,\'active\',true)', [item.id, org, item.name, item.email]);
+    await admin.query('insert into account (id,user_id,account_id,provider_id,password) select $1,$2,$2,\'credential\',a.password from account a join "user" u on u.id=a.user_id where u.email=$3 and a.provider_id=\'credential\'', [randomUUID(), item.id, item.template]);
+    await admin.query('insert into user_roles (user_id,role_id) select $1,ur.role_id from user_roles ur join "user" u on u.id=ur.user_id where u.email=$2', [item.id, item.template]);
+  }
+  await admin.query("insert into employees (id,organization_id,user_id,registration_number,full_name,area_id,position_id,employment_type,start_date,current_compensation,recurring_cost_allowance) values ($1,$2,$3,$4,$4,$5,$6,'pj','2020-01-01',3900,300)", [employeeId, org, ownId, marker, template.area_id, template.position_id]);
+  const ownSession = await browser.newContext(), reviewSession = await browser.newContext();
+  const own = await ownSession.newPage(), reviewer = await reviewSession.newPage();
+  const login = async (page: Page, email: string) => {
+    const response = await page.request.post("/api/auth/sign-in/email", { data: { email, password: process.env.DEMO_USER_PASSWORD } });
+    expect(response.ok()).toBe(true);
+  };
+  try {
+    await login(reviewer, reviewerEmail); await login(own, ownEmail);
+    await reviewer.goto("/app/ferias");
+    await reviewer.getByLabel("Usuária responsável pelas aprovações PJ (Jaci)").selectOption(reviewerId);
+    await reviewer.getByRole("button", { name: "Salvar responsável PJ", exact: true }).click();
+    await expect(reviewer.getByRole("status").filter({ hasText: "Alteração salva." })).toBeVisible();
+    await own.goto("/portal/ferias");
+    await own.getByRole("combobox", { name: "Solicitação", exact: true }).selectOption("sale");
+    await expect(own.getByLabel("Quantidade de dias")).toHaveValue("15");
+    await own.getByRole("button", { name: "Ver cálculo da sugestão", exact: true }).click();
+    await expect(own.getByText(/3.900,00.*30.*15.*1.950,00/)).toBeVisible();
+    await own.getByRole("button", { name: "Fechar", exact: true }).click();
+    await own.getByLabel("Combinado / observações").fill(`Venda ${marker}`);
+    await own.getByRole("button", { name: "Solicitar à Jaci", exact: true }).click();
+    await expect(own.getByRole("status").filter({ hasText: "dias reservados" })).toBeVisible();
+    await reviewer.reload();
+    const section = reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: `${marker} · Venda de 15 dias`, exact: true }) });
+    await section.locator(".fg-input-wrap").filter({ has: reviewer.locator('[name="amount"]') }).locator('input[type="text"]').fill("1950,00");
+    await section.getByRole("button", { name: "Aprovar solicitação", exact: true }).click();
+    await expect(section.getByRole("alert")).toHaveCount(0);
+    await expect(section).toHaveCount(0);
+    await reviewer.goto("/app/nfs");
+    await reviewer.locator('button[type="button"]').filter({ hasText: /^Nova composição$/ }).click();
+    const form = reviewer.locator("form").filter({ has: reviewer.locator('[name="baseAmount"]') });
+    await form.locator('[name="employeeId"]').selectOption(employeeId);
+    const competence = new Date().toISOString().slice(0, 7);
+    await form.locator('[name="competence"]').fill(competence);
+    await form.locator('[name="dueDate"]').fill(`${competence}-28`);
+    for (const [name, amount] of [["baseAmount", "3900,00"], ["allowanceAmount", "300,00"]]) {
+      await form.locator(".fg-input-wrap").filter({ has: reviewer.locator(`[name="${name}"]`) }).locator('input[type="text"]').fill(amount);
+    }
+    await form.locator('button[type="submit"]').click();
+    await expect(reviewer.getByRole("row").filter({ hasText: marker })).toContainText("6.150,00");
+    await own.goto("/portal/nfs");
+    await expect(own.getByText("Venda de 15 dias de férias PJ autorizada", { exact: true })).toBeVisible();
+    await expect(own.locator("body")).toContainText("6.150,00");
+    await own.locator('input[type="file"]').setInputFiles({ name: `${marker}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF") });
+    await own.locator(".fg-input-wrap").filter({ has: own.locator('[name="issuedAmount"]') }).locator('input[type="text"]').fill("6150,00");
+    await own.getByRole("button", { name: /Enviar NF/ }).click();
+    await expect(own.locator("body")).toContainText("Enviada");
+    const count = await admin.query("select count(*)::int n from invoice_request_items i join time_off_requests t on t.id=i.source_time_off_id where t.employee_id=$1", [employeeId]);
+    expect(count.rows[0].n).toBe(1);
+    await own.goto("/portal/ferias");
+    await own.getByLabel("Quantidade de dias").fill("10");
+    await own.getByLabel("Início do descanso").fill("2090-10-01");
+    await expect(own.getByLabel("Fim do descanso (dias corridos)")).toHaveValue("2090-10-10");
+    await own.getByLabel("Combinado / observações").fill(`Descanso de dez dias ${marker}`);
+    await own.getByRole("button", { name: "Solicitar à Jaci", exact: true }).click();
+    await expect(own.getByRole("status").filter({ hasText: "dias reservados" })).toBeVisible();
+    await reviewer.goto("/app/ferias");
+    const rest = reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: `${marker} · Descanso de 10 dias corridos`, exact: true }) });
+    await rest.getByRole("button", { name: "Aprovar solicitação", exact: true }).click();
+    await expect(rest).toHaveCount(0);
+    await own.reload(); await expect(own.locator("body")).toContainText("Descanso aprovado: 10");
+    await own.getByRole("combobox", { name: "Solicitação", exact: true }).selectOption("sale");
+    await own.getByLabel("Quantidade de dias").fill("1");
+    await own.getByLabel("Combinado / observações").fill(`Pedido para recusar ${marker}`);
+    await own.getByRole("button", { name: "Solicitar à Jaci", exact: true }).click();
+    await expect(own.getByRole("status").filter({ hasText: "dias reservados" })).toBeVisible();
+    await reviewer.reload();
+    const refused = reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: `${marker} · Venda de 1 dias`, exact: true }) });
+    await refused.getByRole("button", { name: "Recusar solicitação", exact: true }).click();
+    await expect(refused).toHaveCount(0);
+    await own.reload();
+    await expect(own.locator("body")).toContainText("Venda de 1 dias · Recusada");
+    await expect(own.locator("body")).toContainText("Reservados: 0");
+  } catch (error) {
+    console.error("Estado da solicitação de teste:", await reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: new RegExp(marker) }) }).allTextContents());
+    throw error;
+  } finally {
+    if (prior) await admin.query("update app_settings set value=$1 where organization_id=$2 and key='pj_timeoff_approver' and value=$3::jsonb", [JSON.stringify(prior.value), org, JSON.stringify(reviewerId)]);
+    else await admin.query("delete from app_settings where organization_id=$1 and key='pj_timeoff_approver' and value=$2::jsonb", [org, JSON.stringify(reviewerId)]);
+    await admin.end(); await ownSession.close(); await reviewSession.close();
+  }
+});

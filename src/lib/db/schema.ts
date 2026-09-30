@@ -1546,9 +1546,11 @@ export const invoiceRequestItems = pgTable(
     kind: text("kind").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     sourceReimbursementId: uuid("source_reimbursement_id"),
+    sourceTimeOffId: uuid("source_time_off_id").references(() => timeOffRequests.id),
   },
   (table) => ({
     invoiceIdx: index("invoice_request_items_invoice_idx").on(table.invoiceRequestId),
+    sourceTimeOffIdx: uniqueIndex("invoice_request_items_time_off_idx").on(table.sourceTimeOffId),
     sourceReimbursementIdx: index("invoice_request_items_reimbursement_idx").on(
       table.sourceReimbursementId,
     ),
@@ -1602,6 +1604,11 @@ export const timeOffRequests = pgTable(
     endDate: date("end_date").notNull(),
     businessDays: integer("business_days").notNull(),
     soldDays: integer("sold_days").notNull().default(0),
+    saleBaseAmount: numeric("sale_base_amount", { precision: 12, scale: 2 }),
+    saleSuggestedAmount: numeric("sale_suggested_amount", { precision: 12, scale: 2 }),
+    saleApprovedAmount: numeric("sale_approved_amount", { precision: 12, scale: 2 }),
+    saleApprovalNote: text("sale_approval_note"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     status: timeOffStatusEnum("status").notNull().default("requested"),
     requestedByUserId: text("requested_by_user_id")
       .notNull()
