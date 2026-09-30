@@ -19,6 +19,7 @@ import {
 import type { DataTableColumn } from "@/components/fg/data-table";
 import type { SaasSubscriptionListItem } from "@/features/saas/dal";
 import {
+  getSaasCurrentCosts,
   saasSubscriptionStatusLabels,
   type SaasSubscriptionStatus,
 } from "@/features/saas/rules";
@@ -109,13 +110,7 @@ export function SaasView({
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const totalMonthly = canSeeCosts
-    ? subscriptions.reduce((sum, s) => {
-        if (s.costHidden) return sum;
-        const n = Number.parseFloat(s.monthlyCost ?? "0");
-        return sum + (Number.isFinite(n) ? n : 0);
-      }, 0)
-    : null;
+  const currentCosts = canSeeCosts ? getSaasCurrentCosts(subscriptions) : null;
 
   // Critical license: a "terminated" employee still holds an active license.
   const terminatedLicensesBySub = useMemo(() => {
@@ -271,15 +266,15 @@ export function SaasView({
       <div className="fg-grid fg-grid-kpis" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <KpiCard
           label="Custo mensal"
-          value={totalMonthly !== null ? formatMoney(String(totalMonthly.toFixed(2))) : "Restrito"}
-          secondary="visíveis ao perfil"
+          value={currentCosts ? formatMoney(currentCosts.monthly) : "Restrito"}
+          secondary="visíveis ao perfil · exclui canceladas"
           accent
         />
         <KpiCard
           label="Custo anualizado"
           value={
-            totalMonthly !== null
-              ? formatMoney(String((totalMonthly * 12).toFixed(2)))
+            currentCosts
+              ? formatMoney(currentCosts.annualized)
               : "Restrito"
           }
           secondary="estimativa 12 meses"
