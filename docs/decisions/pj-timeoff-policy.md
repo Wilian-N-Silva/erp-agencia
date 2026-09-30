@@ -26,6 +26,19 @@ Exemplos: R$ 3.900,00 ÷ 30 × 15 = R$ 1.950,00. Com remuneração atual de
 R$ 4.500,00, a sugestão é R$ 2.250,00, ainda que o contrato registre R$ 3.900,00.
 R$ 300,00 de ajuda de custo e R$ 200,00 de reembolso continuam itens separados.
 
+## Tempo de vínculo e referência de férias
+
+A gestão deve visualizar o tempo atualizado de vínculo de cada PJ e quando
+chega a referência de férias. Essa referência não obriga o descanso naquela data:
+mostrar separadamente a data de referência e o período efetivamente solicitado
+e aprovado. Não classificar automaticamente o colaborador como em férias nem
+criar uma solicitação ao atingir a referência.
+
+O cadastro já possui início e fim de vínculo (`employees.startDate/endDate`).
+A periodicidade e a data-base da referência ainda aguardam confirmação: foi
+perguntado se o ciclo é de 12 meses desde o início ou usa outra data acordada.
+Não reaproveitar automaticamente o prazo concessivo CLT para os PJs.
+
 ## Decisões ainda abertas
 
 Saldo anual, aquisição de saldo, dias corridos ou úteis para o intervalo de
