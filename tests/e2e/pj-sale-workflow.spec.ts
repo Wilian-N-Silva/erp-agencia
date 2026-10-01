@@ -88,6 +88,8 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     expect((await finance.request.get(`/app/documentos/${randomUUID()}/download`)).status()).toBe(404);
     const count = await admin.query("select count(*)::int n from invoice_request_items i join time_off_requests t on t.id=i.source_time_off_id where t.employee_id=$1", [employeeId]);
     expect(count.rows[0].n).toBe(1);
+    await finance.locator(".fg-sheet-root.open").getByRole("button", { name: "Aprovar", exact: true }).click();
+    await expect.poll(async () => (await admin.query("select i.status, i.expected_amount, e.amount, e.paid_amount from invoice_requests i join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id where i.employee_id=$1", [employeeId])).rows[0]).toEqual({ status: "approved", expected_amount: "6150.00", amount: "6150.00", paid_amount: "0.00" });
     await own.goto("/portal/ferias");
     await own.getByLabel("Quantidade de dias").fill("10");
     await own.getByLabel("Início do descanso").fill("2090-10-01");

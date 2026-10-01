@@ -279,10 +279,36 @@ async function approveInvoiceRequestAction(formData: FormData) {
     throw new Error("Invoice request cannot be approved from current status.");
   }
 
+  if (!before.fileId || !before.issuedAmount || hasInvoiceDivergence(before.expectedAmount, before.issuedAmount)) {
+    throw new Error("Confira o PDF e solicite ajuste: o valor emitido deve corresponder à composição antes da aprovação.");
+  }
+  if (before.financialExpenseId) throw new Error("Esta NF já possui uma conta a pagar vinculada.");
+  const [pdf] = await db.select({ id: files.id }).from(files).where(and(
+    eq(files.id, before.fileId), eq(files.organizationId, organizationId),
+    eq(files.ownerEmployeeId, before.employeeId), isNull(files.deletedAt),
+  )).limit(1);
+  if (!pdf) throw new AccessDeniedError();
+  const [employee] = await db.select({ name: employees.fullName }).from(employees)
+    .where(and(eq(employees.id, before.employeeId), eq(employees.organizationId, organizationId))).limit(1);
+  if (!employee) throw new AccessDeniedError();
+  const [payable] = await db.insert(financialExpenses).values({
+    organizationId,
+    supplier: employee.name,
+    category: "nota_fiscal_pj",
+    description: `NF ${before.competence} · ${employee.name}`,
+    amount: before.expectedAmount,
+    dueDate: before.dueDate,
+    competence: before.competence,
+    status: "planned",
+    recurring: false,
+    responsibleUserId: context.userId,
+  }).returning();
+
   const [after] = await db
     .update(invoiceRequests)
     .set({
       approvedByUserId: context.userId,
+      financialExpenseId: payable.id,
       approvedAt: new Date(),
       status: "approved",
       updatedAt: new Date(),
@@ -290,18 +316,7 @@ async function approveInvoiceRequestAction(formData: FormData) {
     .where(eq(invoiceRequests.id, input.id))
     .returning();
 
-  await db.insert(financialExpenses).values({
-    organizationId,
-    supplier: `PJ ${before.employeeId}`,
-    category: "nota_fiscal_pj",
-    description: `NF ${before.competence}`,
-    amount: before.expectedAmount,
-    dueDate: before.dueDate,
-    competence: before.competence,
-    status: "planned",
-    recurring: false,
-    responsibleUserId: context.userId,
-  });
+  await writeAuditLog(context, { action: "create", entityType: "financial_expense", entityId: payable.id, after: payable, metadata: { invoiceRequestId: before.id } });
 
   await writeAuditLog(context, {
     action: "approve",
@@ -311,11 +326,13 @@ async function approveInvoiceRequestAction(formData: FormData) {
     after,
     metadata: {
       generatedFinancialExpense: true,
+      financialExpenseId: payable.id,
     },
   });
 
   revalidateInvoicePaths();
   revalidatePath("/app/financeiro");
+  revalidatePath("/app/financeiro/saidas");
 }
 
 async function rejectInvoiceRequestAction(formData: FormData) {
