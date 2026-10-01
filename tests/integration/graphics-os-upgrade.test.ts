@@ -34,7 +34,21 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
-  it("installs all migrations through 0045 on an empty schema and accepts minimum graphic fixtures", async () => {
+  it("installs all migrations through 0046 on an empty schema and accepts minimum graphic fixtures", async () => {
+    await dropUpgradeSchema();
+    try {
+      await adminDb.transaction(async transaction => {
+        await transaction.execute(sql.raw("create schema " + schemaName));
+        await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
+        for (let i = 0; i <= 46; i++) await applyMigration(transaction, i);
+        await createPreMigrationFixtures(transaction);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+      });
+    } finally { await dropUpgradeSchema(); }
+  }, 30_000);
+  it("upgrades 0045 without inventing invoice/payable links or changing legacy amounts", async () => {
     await dropUpgradeSchema();
     try {
       await adminDb.transaction(async transaction => {
@@ -42,9 +56,11 @@ describe("OS migration upgrade 0025 -> 0028", () => {
         await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
         for (let i = 0; i <= 45; i++) await applyMigration(transaction, i);
         await createPreMigrationFixtures(transaction);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+        await transaction.execute(sql`insert into invoice_requests (organization_id,employee_id,competence,due_date,expected_amount,suggested_description,status,created_by_user_id) values (${ids.orgA},${ids.employeeA},'2026-09','2026-09-30',1000,'Legacy','paid',${userA})`);
+        const before = (await transaction.execute(sql`select id,status,expected_amount from invoice_requests`)).rows;
+        await applyMigration(transaction, 46);
+        expect((await transaction.execute(sql`select id,status,expected_amount from invoice_requests`)).rows).toEqual(before);
+        expect((await transaction.execute(sql`select financial_expense_id from invoice_requests`)).rows).toEqual([{ financial_expense_id: null }]);
       });
     } finally { await dropUpgradeSchema(); }
   }, 30_000);

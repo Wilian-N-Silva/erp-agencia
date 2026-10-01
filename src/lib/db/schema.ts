@@ -1514,6 +1514,7 @@ export const invoiceRequests = pgTable(
     issuedAmount: numeric("issued_amount", { precision: 12, scale: 2 }),
     suggestedDescription: text("suggested_description").notNull(),
     status: invoiceRequestStatusEnum("status").notNull().default("draft"),
+    financialExpenseId: uuid("financial_expense_id"),
     fileId: uuid("file_id").references(() => files.id),
     approvedByUserId: text("approved_by_user_id").references(() => users.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -1531,6 +1532,12 @@ export const invoiceRequests = pgTable(
       table.competence,
     ),
     statusIdx: index("invoice_requests_status_idx").on(table.organizationId, table.status),
+    payableIdx: uniqueIndex("invoice_requests_payable_idx").on(table.financialExpenseId),
+    payableTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialExpenseId],
+      foreignColumns: [financialExpenses.organizationId, financialExpenses.id],
+      name: "invoice_requests_payable_tenant_fk",
+    }),
   }),
 );
 
