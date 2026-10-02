@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { retryDelay, signInWithRetry } from "./helpers/auth";
+
+test.setTimeout(150_000);
 
 const demoPassword = process.env.DEMO_USER_PASSWORD ?? "Formula@123";
 
@@ -23,7 +26,16 @@ test("demo user signs in through the form and opens a client without billing", a
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill("todos.perfis@formula.local");
   await page.getByLabel("Senha", { exact: true }).fill(demoPassword);
-  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pending = page.waitForResponse(response => response.url().includes("/api/auth/sign-in/email") && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    const response = await pending;
+    if (response.status() !== 429 || attempt === 2) {
+      expect(response.ok()).toBe(true);
+      break;
+    }
+    await page.waitForTimeout(retryDelay(response.headers()["retry-after"]));
+  }
   await expect(page).toHaveURL(/\/app$/);
   await page.getByRole("link", { name: "Clientes", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Clientes", exact: true })).toBeVisible();
@@ -35,14 +47,6 @@ test("demo user signs in through the form and opens a client without billing", a
 });
 
 async function signIn(page: Page, email: string, password: string, callbackURL: string) {
-  const response = await page.request.post("/api/auth/sign-in/email", {
-    data: {
-      email,
-      password,
-      rememberMe: true,
-    },
-  });
-
-  expect(response.ok(), `${response.status()} ${await response.text()}`).toBe(true);
+  await signInWithRetry(page, email, password);
   await page.goto(callbackURL);
 }

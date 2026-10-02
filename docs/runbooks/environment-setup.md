@@ -30,9 +30,11 @@ com seed demo e fixtures exigidas pelos testes. Apenas configurar
 Pré-requisitos: Node.js com `process.loadEnvFile` (22 recomendado), npm e Docker
 Compose. O Compose sobe **somente PostgreSQL 17**; a aplicação roda com Node no host.
 
-1. Execute `npm ci` e `docker compose up -d postgres`.
-2. Se não houver `.env`, copie `.env.example` para `.env`. Acesse PostgreSQL pelo
-   host `127.0.0.1:55432`; internamente o container usa `5432`. O Compose atual não
+1. Execute `npm ci`. Se não houver `.env`, copie `.env.example` para `.env`.
+2. Configure `POSTGRES_PORT` (padrão `55432`; use `15432` se a porta estiver reservada
+   no Windows) e execute `docker compose up -d postgres`. Acesse PostgreSQL pelo
+   host `127.0.0.1` nessa porta; internamente o container usa `5432`. Use a mesma
+   porta nas duas URLs PostgreSQL. O Compose atual não
    restringe o bind ao loopback; use-o apenas no ambiente local.
 3. Provisione `erp_migrator` e `erp_app` conforme [database-roles.md](database-roles.md).
    O usuário `erp` do Compose é bootstrap administrativo local, não runtime.

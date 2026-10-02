@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { Client } from "pg";
 import { expect, test, type Page } from "@playwright/test";
+import { signInWithRetry } from "./helpers/auth";
 
 test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor uma vez", async ({ browser }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   loadEnvFile(".env");
   const connectionString = process.env.DATABASE_DIRECT_URL!;
   if (!["localhost", "127.0.0.1"].includes(new URL(connectionString).hostname)) throw new Error("Fixture permitida apenas no banco local de demonstração.");
@@ -27,8 +28,7 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
   const own = await ownSession.newPage(), reviewer = await reviewSession.newPage();
   ownSession.setDefaultTimeout(15_000); reviewSession.setDefaultTimeout(15_000); financeSession.setDefaultTimeout(15_000);
   const login = async (page: Page, email: string) => {
-    const response = await page.request.post("/api/auth/sign-in/email", { data: { email, password: process.env.DEMO_USER_PASSWORD } });
-    expect(response.ok()).toBe(true);
+    await signInWithRetry(page, email, process.env.DEMO_USER_PASSWORD!);
   };
   try {
     await login(reviewer, reviewerEmail); await login(own, ownEmail);

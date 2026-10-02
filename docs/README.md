@@ -1,6 +1,11 @@
 # Documentação oficial — Sistema Interno FG
 
+Manuais por público: [Gestão, Gráfica e Portal](manuais/README.md), acompanhados
+da [validação e limitações dos fluxos](runbooks/user-workflows-validation.md).
+
 Esta pasta é a fonte de verdade atual para evolução do ERP da agência.
+
+Entrega consolidada: [MVP de outubro — instalação, escopo e limites](runbooks/mvp-october-delivery.md).
 
 ## Produto
 
