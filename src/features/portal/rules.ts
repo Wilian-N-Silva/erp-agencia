@@ -29,6 +29,7 @@ export const reimbursementStatusLabels = {
 } as const;
 
 export const invoiceItemKindLabels = {
+  timeoff_sale: "Venda de dias PJ autorizada",
   base: "Remuneracao base",
   transport: "Transporte",
   allowance: "Ajuda de custo",

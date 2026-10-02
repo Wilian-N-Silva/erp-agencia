@@ -17,6 +17,9 @@ import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 import { formDataToObject, isIsoDate, isoDateSchema } from "@/lib/validation";
 
 import { normalizeMoneyInput } from "@/features/finance/rules";
+import { enforceAuthenticatedRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
+import { removeMistakenSaasSubscription, SaasRemovalError } from "./removal";
+import { estimateSaasBilling, saasBillingSchema } from "./billing-rules";
 
 import {
   canReadSaasCost,
@@ -42,7 +45,7 @@ const saasBaseSchema = z.strictObject({
   status: saasStatusSchema,
   notes: optionalTextSchema(1000),
 });
-const createSaasSubscriptionSchema = saasBaseSchema;
+const createSaasSubscriptionSchema = saasBaseSchema.extend(saasBillingSchema.shape);
 const updateSaasSubscriptionSchema = saasBaseSchema.extend({
   id: z.string().uuid(),
 });
@@ -60,7 +63,9 @@ const idSchema = z.strictObject({
 
 async function createSaasSubscriptionAction(formData: FormData) {
   const context = await requireSaasWriterContext();
+  await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = createSaasSubscriptionSchema.parse(formDataToObject(formData));
+  const billing = canReadSaasCost(context) ? normalizeBilling(input) : undefined;
   const [created] = await db
     .insert(saasSubscriptions)
     .values({
@@ -68,7 +73,8 @@ async function createSaasSubscriptionAction(formData: FormData) {
       name: input.name,
       category: input.category,
       provider: input.provider,
-      monthlyCost: canReadSaasCost(context) ? input.monthlyCost : null,
+      monthlyCost: canReadSaasCost(context) && billing?.billingCurrency === "BRL" && billing.billingCycle === "monthly" && !billing.cycleAmount ? input.monthlyCost : null,
+      ...billing,
       renewalDate: input.renewalDate,
       responsibleUserId: context.userId,
       status: input.status,
@@ -84,6 +90,31 @@ async function createSaasSubscriptionAction(formData: FormData) {
   });
 
   revalidateSaasPaths();
+}
+
+function normalizeBilling(input: unknown) {
+  const billing = saasBillingSchema.parse(input);
+  if (billing.billingCurrency === "BRL") {
+    billing.estimatedExchangeRate = null;
+    billing.exchangeRateDate = null;
+    billing.exchangeRateSource = null;
+  }
+  estimateSaasBilling(billing);
+  return billing;
+}
+
+async function updateSaasBillingAction(formData: FormData) {
+  const context = await requireSaasWriterContext();
+  assertCanAny(["finance.read"], context);
+  await enforceAuthenticatedRateLimit("common_mutation", context);
+  const input = z.strictObject({ id: z.string().uuid(), ...saasBillingSchema.shape }).parse(formDataToObject(formData));
+  const billing = normalizeBilling(input);
+  const before = await getSaasSubscriptionForWrite(input.id, context.organizationId);
+  const [after] = await db.update(saasSubscriptions).set({ ...billing, monthlyCost: null, updatedAt: new Date() })
+    .where(and(eq(saasSubscriptions.id, before.id), eq(saasSubscriptions.organizationId, context.organizationId))).returning();
+  await writeAuditLog(context, { action: "update", entityType: "saas_subscription", entityId: before.id, before, after, metadata: { reason: "billing_estimate" } });
+  revalidateSaasPaths();
+  revalidatePath(`/app/assinaturas/${before.id}`);
 }
 
 async function updateSaasSubscriptionAction(formData: FormData) {
@@ -211,6 +242,24 @@ async function cancelSaasSubscriptionAction(formData: FormData) {
   await updateSaasStatus(context, input.id, "cancelled");
 }
 
+export async function removeSaasSubscriptionAction(_state: { error: string } | null, formData: FormData) {
+  try {
+    const context = await requireSaasWriterContext();
+    await enforceAuthenticatedRateLimit("common_mutation", context);
+    await removeMistakenSaasSubscription(context, formDataToObject(formData));
+  } catch (error) {
+    if (error instanceof SaasRemovalError) return { error: error.message };
+    if (error instanceof z.ZodError) return { error: "Informe um motivo de 5 a 500 caracteres e confirme a remoção." };
+    if (error instanceof AccessDeniedError) return { error: "Assinatura indisponível ou acesso não permitido." };
+    if (error instanceof RateLimitExceededError) return { error: "Limite de tentativas atingido. Aguarde antes de tentar novamente." };
+    throw error;
+  }
+  // Redirect only after the removal and its audit transaction have committed.
+  revalidateSaasPaths();
+  revalidatePath("/app/assinaturas/[id]", "page");
+  redirect("/app/assinaturas");
+}
+
 async function updateSaasStatus(
   context: AuthorizedContext,
   id: string,
@@ -266,6 +315,7 @@ async function getSaasSubscriptionForWrite(id: string, organizationId: string) {
     .select()
     .from(saasSubscriptions)
     .where(and(eq(saasSubscriptions.id, id), eq(saasSubscriptions.organizationId, organizationId), isNull(saasSubscriptions.deletedAt)))
+    .for("update")
     .limit(1);
 
   if (!row) {
@@ -343,6 +393,7 @@ function optionalMoneySchema() {
 }
 
 export {
+  tenantUpdateSaasBillingAction as updateSaasBillingAction,
   tenantCreateSaasSubscriptionAction as createSaasSubscriptionAction,
   tenantUpdateSaasSubscriptionAction as updateSaasSubscriptionAction,
   tenantLinkEmployeeToSaasSubscriptionAction as linkEmployeeToSaasSubscriptionAction,
@@ -350,6 +401,8 @@ export {
   tenantMarkSaasSubscriptionRenewedAction as markSaasSubscriptionRenewedAction,
   tenantCancelSaasSubscriptionAction as cancelSaasSubscriptionAction,
 };
+
+const tenantUpdateSaasBillingAction = bindCurrentTenantContext(updateSaasBillingAction);
 
 const tenantCreateSaasSubscriptionAction = bindCurrentTenantContext(
   createSaasSubscriptionAction,
@@ -369,3 +422,21 @@ const tenantMarkSaasSubscriptionRenewedAction = bindCurrentTenantContext(
 const tenantCancelSaasSubscriptionAction = bindCurrentTenantContext(
   cancelSaasSubscriptionAction,
 );
+
+async function billingFormResult(operation: () => Promise<unknown>) {
+  try {
+    await operation();
+    return { ok: true, message: "Estimativa salva. Confira a cobrança efetiva na fatura." };
+  } catch (error) {
+    if (error instanceof z.ZodError) return { ok: false, message: error.issues[0]?.message ?? "Confira os campos informados." };
+    if (error instanceof RateLimitExceededError) return { ok: false, message: "Aguarde antes de tentar novamente." };
+    if (error instanceof AccessDeniedError) return { ok: false, message: "Assinatura indisponível ou acesso não permitido." };
+    return { ok: false, message: "Não foi possível salvar. Confira os valores e tente novamente." };
+  }
+}
+export async function createSaasFormAction(_state: { message: string; ok: boolean } | null, data: FormData) {
+  return billingFormResult(() => tenantCreateSaasSubscriptionAction(data));
+}
+export async function updateSaasBillingFormAction(_state: { message: string; ok: boolean } | null, data: FormData) {
+  return billingFormResult(() => tenantUpdateSaasBillingAction(data));
+}

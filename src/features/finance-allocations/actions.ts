@@ -22,6 +22,11 @@ export async function reconcileMovementAction(data: FormData) {
     revalidatePath(`/app/financeiro/movimentacoes/${input.transactionId}`);
     revalidatePath("/app/financeiro/entradas");
     revalidatePath("/app/financeiro/saidas");
+    revalidatePath("/app/nfs");
+    revalidatePath("/portal/nfs");
+    revalidatePath("/app/reembolsos");
+    revalidatePath("/portal/reembolsos");
+    revalidatePath("/portal");
     revalidatePath("/app/grafica", "layout");
     revalidatePath("/app/alertas");
     return { ok: true, message: "Conciliação registrada. Os saldos e a pendência foram atualizados." };

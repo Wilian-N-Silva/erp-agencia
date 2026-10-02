@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: erp
       POSTGRES_PASSWORD: erp
     ports:
-      - "55432:5432"
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - erp_agencia_postgres_data:/var/lib/postgresql/data
     healthcheck:

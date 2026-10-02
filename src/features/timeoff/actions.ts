@@ -19,6 +19,7 @@ import {
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { formDataToObject, isoDateSchema } from "@/lib/validation";
+import { requestPjTimeOff, reviewPjTimeOff } from "./pj-policy";
 
 import {
   calculateBusinessDays,
@@ -65,6 +66,17 @@ async function createTimeOffRequestAction(formData: FormData) {
   }
 
   const input = createTimeOffSchema.parse(formDataToObject(formData));
+  const [owner] = await db.select({ employmentType: employees.employmentType }).from(employees)
+    .where(and(eq(employees.id, context.employeeId), eq(employees.organizationId, context.organizationId))).limit(1);
+  if (owner?.employmentType === "pj") {
+    if (input.soldDays) throw new Error("Solicite a venda de dias pelo formulário específico de venda PJ.");
+    if (input.type !== "absence") {
+      await enforceAuthenticatedRateLimit("common_mutation", context);
+      await requestPjTimeOff(context, { kind: "rest", startDate: input.startDate, endDate: input.endDate, notes: input.notes ?? "" });
+      revalidateTimeOffPaths();
+      return;
+    }
+  }
   const businessDays = calculateBusinessDays(input.startDate, input.endDate);
   const [request] = await db
     .insert(timeOffRequests)
@@ -98,6 +110,12 @@ async function approveTimeOffRequestAction(formData: FormData) {
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
 
+  if (before.employmentType === "pj" && before.type !== "absence") {
+    await reviewPjTimeOff(context, { id: input.id, decision: "approve" });
+    revalidateTimeOffPaths();
+    return;
+  }
+
   if (
     !canApproveTimeOff(context, {
       employeeId: before.employeeId,
@@ -116,6 +134,12 @@ async function rejectTimeOffRequestAction(formData: FormData) {
   await enforceAuthenticatedRateLimit("common_mutation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getTimeOffForWrite(input.id, context.organizationId);
+
+  if (before.employmentType === "pj" && before.type !== "absence") {
+    await reviewPjTimeOff(context, { id: input.id, decision: "reject" });
+    revalidateTimeOffPaths();
+    return;
+  }
 
   if (
     !canApproveTimeOff(context, {
@@ -153,6 +177,8 @@ async function getTimeOffForWrite(id: string, organizationId: string) {
       id: timeOffRequests.id,
       organizationId: timeOffRequests.organizationId,
       employeeId: timeOffRequests.employeeId,
+      employmentType: employees.employmentType,
+      type: timeOffRequests.type,
       managerEmployeeId: employees.managerEmployeeId,
       status: timeOffRequests.status,
     })

@@ -1,7 +1,7 @@
 import type { AccessContext } from "@/lib/dal";
 import { can, canAny } from "@/lib/rbac";
 
-import { addDaysToDateKey, toDateKey } from "@/features/finance/rules";
+import { addDaysToDateKey, centsToMoney, moneyToCents, toDateKey } from "@/features/finance/rules";
 
 export const saasSubscriptionStatusLabels = {
   active: "Ativa",
@@ -20,6 +20,24 @@ export const saasUserStatusLabels = {
 export type SaasSubscriptionStatus = keyof typeof saasSubscriptionStatusLabels;
 export type SaasUserStatus = keyof typeof saasUserStatusLabels;
 export type SaasScope = "all" | "linked" | "none";
+
+export function getSaasCurrentCosts(subscriptions: readonly {
+  status: SaasSubscriptionStatus;
+  monthlyCost: string | null;
+  annualizedCost?: string | null;
+  costHidden: boolean;
+}[]) {
+  // Scheduled cancellation is still a current contract until actually cancelled.
+  const monthlyCents = subscriptions.reduce((total, subscription) => {
+    if (subscription.status === "cancelled" || subscription.costHidden) return total;
+    return total + moneyToCents(subscription.monthlyCost);
+  }, 0);
+
+  return {
+    monthly: centsToMoney(monthlyCents),
+    annualized: centsToMoney(subscriptions.reduce((total, s) => s.status === "cancelled" || s.costHidden ? total : total + (s.annualizedCost === undefined ? moneyToCents(s.monthlyCost) * 12 : moneyToCents(s.annualizedCost)), 0)),
+  };
+}
 
 export type SaasSubscriptionTarget = {
   linkedEmployeeIds: readonly string[];

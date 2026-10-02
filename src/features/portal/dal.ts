@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
 import {
   areas,
+  documents,
   employees,
   invoiceRequestItems,
   invoiceRequests,
@@ -11,6 +12,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
+import { deriveInvoicePayment, deriveReimbursementInvoicePayment } from "./invoice-payment-rules";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -55,6 +57,9 @@ export type InvoiceRequestListItem = {
   suggestedDescription: string;
   status: InvoiceRequestStatus;
   fileId: string | null;
+  documentId: string | null;
+  financialExpenseId: string | null;
+  payment: ReturnType<typeof deriveInvoicePayment>["payment"];
   approvedAt: Date | null;
   paidAt: Date | null;
   items: InvoiceRequestItem[];
@@ -76,6 +81,7 @@ export type ReimbursementListItem = {
   status: ReimbursementStatus;
   fileId: string | null;
   includedInvoiceRequestId: string | null;
+  invoicePaymentLabel: string | null;
   paidAt: Date | null;
   notes: string | null;
   createdAt: Date;
@@ -148,10 +154,13 @@ async function listInvoiceRequests(
       suggestedDescription: invoiceRequests.suggestedDescription,
       status: invoiceRequests.status,
       fileId: invoiceRequests.fileId,
+      documentId: documents.id,
+      financialExpenseId: invoiceRequests.financialExpenseId,
       approvedAt: invoiceRequests.approvedAt,
       paidAt: invoiceRequests.paidAt,
     })
     .from(invoiceRequests)
+    .leftJoin(documents, and(eq(documents.fileId, invoiceRequests.fileId), eq(documents.organizationId, organizationId), eq(documents.ownerType, "invoice_request"), eq(documents.ownerId, sql`${invoiceRequests.id}::text`), eq(documents.documentType, "invoice"), isNull(documents.deletedAt)))
     .innerJoin(employees, eq(invoiceRequests.employeeId, employees.id))
     .innerJoin(areas, eq(employees.areaId, areas.id))
     .where(and(eq(invoiceRequests.organizationId, organizationId), isNull(invoiceRequests.deletedAt)))
@@ -168,13 +177,40 @@ async function listInvoiceRequests(
   });
   const limitedRows = scopedRows.slice(0, options.limit);
   const itemsByRequest = await loadInvoiceItems(limitedRows.map((row) => row.id));
+  const payments = await loadInvoicePayments(organizationId, limitedRows);
 
   return limitedRows.map((row) => ({
     ...row,
-    status: row.status as InvoiceRequestStatus,
+    ...payments.get(`${row.id}:${row.employeeId}`)!,
     items: itemsByRequest.get(row.id) ?? [],
     divergence: hasInvoiceDivergence(row.expectedAmount, row.issuedAmount),
   }));
+}
+
+// Call only with IDs and employee IDs already scoped by the requesting DAL.
+async function loadInvoicePayments(organizationId: string, scopedInvoices: readonly { id: string; employeeId: string }[]) {
+    const payments = new Map<string, ReturnType<typeof deriveInvoicePayment>>();
+    if (scopedInvoices.length) {
+      const result = await db.execute(sql`select i.id,i.employee_id,i.status,i.paid_at,i.financial_expense_id,
+        e.amount as payable_amount,e.status as payable_status,
+        coalesce(sum(case when t.id is not null then a.amount else 0 end),0)::text as paid_amount,
+        max(t.occurred_at) as last_payment_at
+        from invoice_requests i
+        left join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id and e.deleted_at is null
+        left join financial_allocations a on a.financial_expense_id=e.id and a.organization_id=i.organization_id
+        left join financial_transactions t on t.id=a.transaction_id and t.organization_id=i.organization_id and t.status <> 'reversed' and t.direction='out'
+        where i.organization_id=${organizationId} and i.deleted_at is null
+        and (${sql.join(scopedInvoices.map(row => sql`(i.id=${row.id}::uuid and i.employee_id=${row.employeeId}::uuid)`),sql` or `)})
+        group by i.id,e.id`);
+      for (const row of result.rows) payments.set(`${row.id}:${row.employee_id}`, deriveInvoicePayment({
+        status: row.status as InvoiceRequestStatus, paidAt: row.paid_at ? new Date(String(row.paid_at)) : null,
+        financialExpenseId: row.financial_expense_id as string | null, payableAmount: row.payable_amount as string | null,
+        payableStatus: row.payable_status as string | null, paidAmount: String(row.paid_amount),
+        lastPaymentAt: row.last_payment_at ? new Date(String(row.last_payment_at)) : null,
+      }));
+    }
+
+  return payments;
 }
 
 async function listReimbursements(
@@ -245,6 +281,8 @@ async function listReimbursements(
     })
     .slice(0, options.limit);
 
+  const invoicePayments = await loadInvoicePayments(organizationId, scoped.flatMap(row =>
+    row.includedInvoiceRequestId ? [{ id: row.includedInvoiceRequestId, employeeId: row.employeeId }] : []));
   const approverIds = new Set<string>();
   for (const row of scoped) {
     if (row.managerApproverUserId) approverIds.add(row.managerApproverUserId);
@@ -265,7 +303,8 @@ async function listReimbursements(
 
   return scoped.map((row) => ({
     ...row,
-    status: row.status as ReimbursementStatus,
+    ...deriveReimbursementInvoicePayment(row.status as ReimbursementStatus, row.paidAt,
+      row.includedInvoiceRequestId, invoicePayments.get(`${row.includedInvoiceRequestId}:${row.employeeId}`)),
     managerApproverName: row.managerApproverUserId
       ? approverNameById.get(row.managerApproverUserId) ?? null
       : null,

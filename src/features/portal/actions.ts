@@ -45,6 +45,7 @@ import {
   type FileSensitivity,
 } from "@/features/documents/rules";
 import { normalizeMoneyInput } from "@/features/finance/rules";
+import { attachPjSalesToNextInvoice, lockPjEmployee } from "@/features/timeoff/pj-policy";
 
 import {
   buildSuggestedInvoiceDescription,
@@ -53,7 +54,6 @@ import {
   canApproveReimbursementByManager,
   canExcludeReimbursementFromInvoice,
   canIncludeReimbursementInInvoice,
-  canMarkInvoicePaid,
   canMarkReimbursementPaid,
   canReviewInvoice,
   canSubmitInvoiceRequest,
@@ -120,7 +120,7 @@ async function createInvoiceRequestFormAction(
   formData: FormData,
 ): Promise<InvoiceRequestFormState> {
   try {
-    await createInvoiceRequestAction(formData);
+    await tenantCreateInvoiceRequestAction(formData);
     return { ok: true };
   } catch (error) {
     if (error instanceof AccessDeniedError) {
@@ -144,7 +144,6 @@ async function createInvoiceRequestFormAction(
           error: "Já existe uma composição de NF para esse colaborador e competência.",
         };
       }
-      return { ok: false, error: error.message };
     }
 
     return { ok: false, error: "Não foi possível publicar a composição. Tente novamente." };
@@ -155,6 +154,7 @@ async function createInvoiceRequestAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = createInvoiceRequestSchema.parse(formDataToObject(formData));
   const employee = await getInvoiceEmployeeForWrite(input.employeeId, organizationId);
+  await lockPjEmployee(context, employee.id);
   const existing = await getInvoiceByEmployeeCompetence(
     input.employeeId,
     input.competence,
@@ -210,6 +210,7 @@ async function createInvoiceRequestAction(formData: FormData) {
     },
   });
 
+  await attachPjSalesToNextInvoice(context, employee.id);
   revalidateInvoicePaths();
 }
 
@@ -277,10 +278,36 @@ async function approveInvoiceRequestAction(formData: FormData) {
     throw new Error("Invoice request cannot be approved from current status.");
   }
 
+  if (!before.fileId || !before.issuedAmount || hasInvoiceDivergence(before.expectedAmount, before.issuedAmount)) {
+    throw new Error("Confira o PDF e solicite ajuste: o valor emitido deve corresponder à composição antes da aprovação.");
+  }
+  if (before.financialExpenseId) throw new Error("Esta NF já possui uma conta a pagar vinculada.");
+  const [pdf] = await db.select({ id: files.id }).from(files).where(and(
+    eq(files.id, before.fileId), eq(files.organizationId, organizationId),
+    eq(files.ownerEmployeeId, before.employeeId), isNull(files.deletedAt),
+  )).limit(1);
+  if (!pdf) throw new AccessDeniedError();
+  const [employee] = await db.select({ name: employees.fullName }).from(employees)
+    .where(and(eq(employees.id, before.employeeId), eq(employees.organizationId, organizationId))).limit(1);
+  if (!employee) throw new AccessDeniedError();
+  const [payable] = await db.insert(financialExpenses).values({
+    organizationId,
+    supplier: employee.name,
+    category: "nota_fiscal_pj",
+    description: `NF ${before.competence} · ${employee.name}`,
+    amount: before.expectedAmount,
+    dueDate: before.dueDate,
+    competence: before.competence,
+    status: "planned",
+    recurring: false,
+    responsibleUserId: context.userId,
+  }).returning();
+
   const [after] = await db
     .update(invoiceRequests)
     .set({
       approvedByUserId: context.userId,
+      financialExpenseId: payable.id,
       approvedAt: new Date(),
       status: "approved",
       updatedAt: new Date(),
@@ -288,18 +315,7 @@ async function approveInvoiceRequestAction(formData: FormData) {
     .where(eq(invoiceRequests.id, input.id))
     .returning();
 
-  await db.insert(financialExpenses).values({
-    organizationId,
-    supplier: `PJ ${before.employeeId}`,
-    category: "nota_fiscal_pj",
-    description: `NF ${before.competence}`,
-    amount: before.expectedAmount,
-    dueDate: before.dueDate,
-    competence: before.competence,
-    status: "planned",
-    recurring: false,
-    responsibleUserId: context.userId,
-  });
+  await writeAuditLog(context, { action: "create", entityType: "financial_expense", entityId: payable.id, after: payable, metadata: { invoiceRequestId: before.id } });
 
   await writeAuditLog(context, {
     action: "approve",
@@ -309,11 +325,13 @@ async function approveInvoiceRequestAction(formData: FormData) {
     after,
     metadata: {
       generatedFinancialExpense: true,
+      financialExpenseId: payable.id,
     },
   });
 
   revalidateInvoicePaths();
   revalidatePath("/app/financeiro");
+  revalidatePath("/app/financeiro/saidas");
 }
 
 async function rejectInvoiceRequestAction(formData: FormData) {
@@ -353,62 +371,9 @@ async function markInvoicePaidAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
-  const before = await getInvoiceForWrite(input.id, organizationId);
-
-  if (!canMarkInvoicePaid(before.status as InvoiceRequestStatus)) {
-    throw new Error("Invoice request cannot be marked paid from current status.");
-  }
-
-  const [after] = await db
-    .update(invoiceRequests)
-    .set({
-      paidAt: new Date(),
-      status: "paid",
-      updatedAt: new Date(),
-    })
-    .where(eq(invoiceRequests.id, input.id))
-    .returning();
-
-  const paidReimbursements = await db
-    .update(reimbursementRequests)
-    .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(reimbursementRequests.includedInvoiceRequestId, input.id),
-        eq(reimbursementRequests.status, "included_in_invoice"),
-      ),
-    )
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "invoice_request",
-    entityId: input.id,
-    before,
-    after,
-    metadata: {
-      status: "paid",
-      cascadedReimbursementIds: paidReimbursements.map((row) => row.id),
-    },
-  });
-
-  for (const reimbursement of paidReimbursements) {
-    await writeAuditLog(context, {
-      action: "status_change",
-      entityType: "reimbursement_request",
-      entityId: reimbursement.id,
-      metadata: {
-        status: "paid",
-        reason: "invoice_paid_cascade",
-        invoiceRequestId: input.id,
-      },
-    });
-  }
-
-  revalidateInvoicePaths();
-  revalidateReimbursementPaths();
+  await getInvoiceForWrite(input.id, organizationId);
+  throw new Error("Registre o pagamento e concilie a conta a pagar no Financeiro. A NF acompanha essa liquidação automaticamente.");
 }
-
 async function createReimbursementAction(formData: FormData) {
   const context = await requireCurrentContext();
 
@@ -682,9 +647,14 @@ async function excludeReimbursementFromInvoiceAction(formData: FormData) {
 
 async function markReimbursementPaidAction(formData: FormData) {
   const context = await requireCurrentContext();
+  assertCan("reimbursements.approve_finance", context);
   await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
+
+  if (before.includedInvoiceRequestId) {
+    throw new Error("Este reembolso acompanha a quitação da NF no Financeiro.");
+  }
 
   if (
     !canMarkReimbursementPaid(context, {
@@ -816,6 +786,7 @@ async function getInvoiceForWrite(id: string, organizationId: string | null) {
         isNull(invoiceRequests.deletedAt),
       ),
     )
+    .for("update")
     .limit(1);
 
   if (!invoice) {
@@ -842,6 +813,7 @@ async function getReimbursementForWrite(id: string, organizationId: string | nul
     .from(reimbursementRequests)
     .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))
     .where(and(eq(reimbursementRequests.id, id), eq(reimbursementRequests.organizationId, organizationId)))
+    .for("update", { of: reimbursementRequests })
     .limit(1);
 
   if (!row) {
@@ -1113,9 +1085,8 @@ export {
   tenantMarkReimbursementPaidAction as markReimbursementPaidAction,
 };
 
-const tenantCreateInvoiceRequestFormAction = bindCurrentTenantContext(
-  createInvoiceRequestFormAction,
-);
+// Convert errors to form state only after the tenant transaction has rolled back.
+const tenantCreateInvoiceRequestFormAction = createInvoiceRequestFormAction;
 const tenantCreateInvoiceRequestAction = bindCurrentTenantContext(
   createInvoiceRequestAction,
 );

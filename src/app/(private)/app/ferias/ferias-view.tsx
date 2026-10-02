@@ -55,6 +55,7 @@ function getTimeOffDisplayType(employmentType: string, requestedType: TimeOffTyp
 }
 
 export interface FeriasViewProps {
+  referencePanel?: ReactNode;
   requests: TimeOffListItem[];
   canCreate: boolean;
   newRequestAction?: ReactNode;
@@ -63,6 +64,7 @@ export interface FeriasViewProps {
 }
 
 export function FeriasView({
+  referencePanel,
   requests,
   canCreate,
   newRequestAction,
@@ -218,6 +220,7 @@ export function FeriasView({
         }
       />
 
+      {referencePanel}
       <div className="fg-grid fg-grid-4">
         <KpiCard
           label="Aprovadas"

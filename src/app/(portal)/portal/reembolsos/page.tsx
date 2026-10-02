@@ -69,6 +69,9 @@ function ReimbursementCard({ reimbursement }: { reimbursement: ReimbursementList
           <span className="fg-tabular">{formatMoney(reimbursement.amount)}</span>
         </div>
         <div className="fg-portal-item-sub">{reimbursement.title}</div>
+        {reimbursement.invoicePaymentLabel ? (
+          <div className="fg-portal-item-sub">{reimbursement.invoicePaymentLabel}</div>
+        ) : null}
         <div className="fg-portal-item-meta">
           <span className="fg-tabular">{formatDate(reimbursement.expenseDate)}</span>
           {reimbursement.fileId ? (

@@ -29,6 +29,7 @@ import {
 import type { DataTableColumn } from "@/components/fg/data-table";
 import type { InvoiceRequestListItem } from "@/features/portal/dal";
 import type { InvoiceRequestStatus } from "@/features/portal/rules";
+import { invoicePaymentLabels } from "@/features/portal/invoice-payment-rules";
 
 const invoiceRequestStatusLabels: Record<InvoiceRequestStatus, string> = {
   draft: "Rascunho",
@@ -258,7 +259,8 @@ export function NfsView({
               {
                 label: "Baixar PDF",
                 icon: <Download size={13} />,
-                disabled: !invoice.fileId,
+                disabled: !invoice.documentId,
+                onClick: () => { if (invoice.documentId) window.location.assign(`/app/documentos/${invoice.documentId}/download`); },
               },
             ]}
           />
@@ -513,10 +515,12 @@ function InvoiceDetailSheet({
               <div className="fg-pdf-line">
                 <span>Pagamento</span>
                 <strong className="fg-tabular">
-                  {invoice.paidAt ? formatDate(invoice.paidAt) : "-"}
+                  {invoicePaymentLabels[invoice.payment.state]}
                 </strong>
               </div>
-              <Button type="button" variant="outline" size="sm" icon={<Download size={13} />} disabled>
+              {invoice.payment.paid !== null ? <div className="fg-pdf-line"><span>Conciliado / saldo</span><strong>{formatMoney(invoice.payment.paid)} / {invoice.payment.remaining === null ? "Indisponível" : formatMoney(invoice.payment.remaining)}</strong></div> : null}
+              {invoice.paidAt ? <p className="text-sm">{invoice.payment.state === "legacy" ? "Data histórica" : "Último pagamento"}: {formatDate(invoice.paidAt)}</p> : null}
+              <Button type="button" variant="outline" size="sm" icon={<Download size={13} />} disabled={!invoice.documentId} onClick={() => { if (invoice.documentId) window.location.assign(`/app/documentos/${invoice.documentId}/download`); }}>
                 Baixar PDF
               </Button>
             </div>
@@ -614,4 +618,3 @@ function dateKeyToUtc(dateKey: string) {
   const [year, month, day] = dateKey.split("-").map(Number);
   return Date.UTC(year, month - 1, day);
 }
-

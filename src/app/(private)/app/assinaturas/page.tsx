@@ -1,10 +1,12 @@
 import { Ban, Boxes, Link2, Plus, RefreshCw, Unlink } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { ActionSheet, Button, MoneyInput } from "@/components/fg";
+import { ActionSheet, Button } from "@/components/fg";
+import { SaasBillingFields } from "@/features/saas/billing-fields";
+import { SaasActionForm } from "@/features/saas/billing-action-form";
 import {
   cancelSaasSubscriptionAction,
-  createSaasSubscriptionAction,
+  createSaasFormAction,
   linkEmployeeToSaasSubscriptionAction,
   markSaasSubscriptionRenewedAction,
   unlinkEmployeeFromSaasSubscriptionAction,
@@ -86,7 +88,7 @@ export default async function SaasSubscriptionsPage({ searchParams }: PageProps)
 
 function SaasSubscriptionForm({ canSeeCosts }: { canSeeCosts: boolean }) {
   return (
-    <form action={createSaasSubscriptionAction} className="fg-form">
+    <SaasActionForm action={createSaasFormAction}>
       <div className="fg-form-row">
         <div className="fg-field">
           <label className="fg-label">
@@ -126,12 +128,6 @@ function SaasSubscriptionForm({ canSeeCosts }: { canSeeCosts: boolean }) {
         </div>
       </div>
       <div className="fg-form-row">
-        {canSeeCosts ? (
-          <div className="fg-field">
-            <label className="fg-label">Custo mensal</label>
-            <MoneyInput name="monthlyCost" />
-          </div>
-        ) : null}
         <div className="fg-field">
           <label className="fg-label">Renovação</label>
           <div className="fg-input-wrap">
@@ -143,6 +139,7 @@ function SaasSubscriptionForm({ canSeeCosts }: { canSeeCosts: boolean }) {
           </div>
         </div>
       </div>
+      {canSeeCosts ? <SaasBillingFields /> : null}
       <div className="fg-field">
         <label className="fg-label">Observação</label>
         <textarea
@@ -158,7 +155,7 @@ function SaasSubscriptionForm({ canSeeCosts }: { canSeeCosts: boolean }) {
           <span>Cadastrar assinatura</span>
         </button>
       </div>
-    </form>
+    </SaasActionForm>
   );
 }
 

@@ -1,0 +1,3 @@
+ALTER TABLE "invoice_requests" ADD COLUMN "financial_expense_id" uuid;--> statement-breakpoint
+ALTER TABLE "invoice_requests" ADD CONSTRAINT "invoice_requests_payable_tenant_fk" FOREIGN KEY ("organization_id","financial_expense_id") REFERENCES "public"."financial_expenses"("organization_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "invoice_requests_payable_idx" ON "invoice_requests" USING btree ("financial_expense_id");

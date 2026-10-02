@@ -192,10 +192,13 @@ export function ReembolsosView({
       key: "status",
       label: "Status",
       render: (r) => (
-        <StatusBadge
-          status={mapReimbursementStatus(r.status)}
-          label={reimbursementStatusLabels[r.status]}
-        />
+        <div>
+          <StatusBadge
+            status={mapReimbursementStatus(r.status)}
+            label={reimbursementStatusLabels[r.status]}
+          />
+          {r.invoicePaymentLabel ? <p className="fg-muted">{r.invoicePaymentLabel}</p> : null}
+        </div>
       ),
     },
     {
@@ -431,6 +434,12 @@ function ReimbursementDetailSheet({
                 <dd>{reimbursement.notes}</dd>
               </div>
             ) : null}
+            {reimbursement.invoicePaymentLabel ? (
+              <div className="full">
+                <dt>Pagamento pela NF</dt>
+                <dd>{reimbursement.invoicePaymentLabel}</dd>
+              </div>
+            ) : null}
           </dl>
 
           <div className="fg-section" style={{ marginTop: 18 }}>
@@ -590,4 +599,3 @@ function formatDayMonth(value: string | Date | null | undefined) {
   const [, month, day] = toDateKey(value).split("-");
   return month && day ? `${day}/${month}` : formatDate(value);
 }
-

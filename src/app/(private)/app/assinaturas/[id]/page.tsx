@@ -34,6 +34,10 @@ import {
 import { formatDate, formatMoney } from "@/features/finance/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { canAny } from "@/lib/rbac";
+import { RemoveSubscriptionForm } from "../remove-subscription-form";
+import { SaasBillingFields } from "@/features/saas/billing-fields";
+import { updateSaasBillingFormAction } from "@/features/saas/actions";
+import { SaasActionForm } from "@/features/saas/billing-action-form";
 
 export const dynamic = "force-dynamic";
 
@@ -100,10 +104,10 @@ export default async function SaasDetailPage({ params, searchParams }: PageProps
   const terminatedHoldingLicense = activeLicenses.filter(
     (u) => u.employeeStatus === "terminated",
   );
-  const monthlyCostNum = subscription.costHidden
+  const monthlyCostNum = subscription.costHidden || subscription.monthlyCost === null
     ? null
     : Number.parseFloat(subscription.monthlyCost ?? "0");
-  const annualNum = monthlyCostNum !== null ? monthlyCostNum * 12 : null;
+  const annualNum = subscription.annualizedCost === null ? null : Number(subscription.annualizedCost);
   const renewal = RENEWAL_TONE[subscription.renewalState];
 
   return (
@@ -148,7 +152,7 @@ export default async function SaasDetailPage({ params, searchParams }: PageProps
               label={
                 subscription.costHidden
                   ? "Custo restrito"
-                  : `${formatMoney(subscription.monthlyCost)}/mês`
+                  : subscription.monthlyCost === null ? "Estimativa pendente" : `${formatMoney(subscription.monthlyCost)}/mês estimado`
               }
               withDot={false}
             />
@@ -286,7 +290,7 @@ function ResumoTab({
           value={
             monthlyCostNum !== null
               ? formatMoney(String(monthlyCostNum.toFixed(2)))
-              : "Restrito"
+              : subscription.costHidden ? "Restrito" : "Estimativa pendente"
           }
           secondary="por mês"
           accent
@@ -294,7 +298,7 @@ function ResumoTab({
         <KpiCard
           label="Custo anualizado"
           value={
-            annualNum !== null ? formatMoney(String(annualNum.toFixed(2))) : "Restrito"
+            annualNum !== null ? formatMoney(String(annualNum.toFixed(2))) : subscription.costHidden ? "Restrito" : "Estimativa pendente"
           }
           secondary="estimativa 12m"
         />
@@ -342,7 +346,7 @@ function ResumoTab({
 
         <Card
           title="Conexão com financeiro"
-          description="Esta assinatura aparece em Saídas / Provisões do módulo financeiro."
+          description="O cadastro registra uma estimativa. Ainda não gera automaticamente contas a pagar ou provisões. Confira a cobrança efetiva e seus encargos no Financeiro."
         >
           <dl className="fg-deflist">
             <div>
@@ -351,7 +355,7 @@ function ResumoTab({
             </div>
             <div>
               <dt>Periodicidade</dt>
-              <dd>Mensal</dd>
+              <dd>{subscription.billing ? subscription.billing.billingCycle === "annual" ? "Anual" : "Mensal" : "Restrito"}</dd>
             </div>
           </dl>
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -526,6 +530,22 @@ function ContratoTab({
       <p className="fg-empty-desc">
         Documento de contrato ainda não vinculado a esta assinatura.
       </p>
+      {subscription.billing ? <>
+        <p>Valor por ciclo: {subscription.billing.billingCurrency} {subscription.billing.cycleAmount ?? "não informado"} · {subscription.billing.billingCycle === "annual" ? "Anual" : "Mensal"}</p>
+        <p>Estimativa do ciclo em reais: {subscription.cycleEstimate === null ? "Pendente" : formatMoney(subscription.cycleEstimate)} (sem IOF e tarifas).</p>
+        {subscription.billing.estimatedExchangeRate ? <p>Cotação: {subscription.billing.estimatedExchangeRate} BRL por unidade · {formatDate(subscription.billing.exchangeRateDate)} · Fonte: {subscription.billing.exchangeRateSource}</p> : null}
+        {canWrite ? <SaasActionForm action={updateSaasBillingFormAction}>
+          <input type="hidden" name="id" value={subscription.id} />
+          <SaasBillingFields billing={subscription.billing} />
+          <Button type="submit">Salvar estimativa</Button>
+        </SaasActionForm> : null}
+      </> : null}
+      {canWrite ? (
+        <ActionSheet title="Remover cadastro incorreto" description={`Remover ${subscription.name} do sistema operacional.`}
+          trigger={<span className="fg-btn fg-btn-outline fg-btn-sm">Remover cadastro incorreto</span>}>
+          <RemoveSubscriptionForm id={subscription.id} />
+        </ActionSheet>
+      ) : null}
     </Card>
   );
 }

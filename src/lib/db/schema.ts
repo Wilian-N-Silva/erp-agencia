@@ -1514,6 +1514,7 @@ export const invoiceRequests = pgTable(
     issuedAmount: numeric("issued_amount", { precision: 12, scale: 2 }),
     suggestedDescription: text("suggested_description").notNull(),
     status: invoiceRequestStatusEnum("status").notNull().default("draft"),
+    financialExpenseId: uuid("financial_expense_id"),
     fileId: uuid("file_id").references(() => files.id),
     approvedByUserId: text("approved_by_user_id").references(() => users.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -1531,6 +1532,12 @@ export const invoiceRequests = pgTable(
       table.competence,
     ),
     statusIdx: index("invoice_requests_status_idx").on(table.organizationId, table.status),
+    payableIdx: uniqueIndex("invoice_requests_payable_idx").on(table.financialExpenseId),
+    payableTenantFk: foreignKey({
+      columns: [table.organizationId, table.financialExpenseId],
+      foreignColumns: [financialExpenses.organizationId, financialExpenses.id],
+      name: "invoice_requests_payable_tenant_fk",
+    }),
   }),
 );
 
@@ -1546,9 +1553,11 @@ export const invoiceRequestItems = pgTable(
     kind: text("kind").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     sourceReimbursementId: uuid("source_reimbursement_id"),
+    sourceTimeOffId: uuid("source_time_off_id").references(() => timeOffRequests.id),
   },
   (table) => ({
     invoiceIdx: index("invoice_request_items_invoice_idx").on(table.invoiceRequestId),
+    sourceTimeOffIdx: uniqueIndex("invoice_request_items_time_off_idx").on(table.sourceTimeOffId),
     sourceReimbursementIdx: index("invoice_request_items_reimbursement_idx").on(
       table.sourceReimbursementId,
     ),
@@ -1602,6 +1611,11 @@ export const timeOffRequests = pgTable(
     endDate: date("end_date").notNull(),
     businessDays: integer("business_days").notNull(),
     soldDays: integer("sold_days").notNull().default(0),
+    saleBaseAmount: numeric("sale_base_amount", { precision: 12, scale: 2 }),
+    saleSuggestedAmount: numeric("sale_suggested_amount", { precision: 12, scale: 2 }),
+    saleApprovedAmount: numeric("sale_approved_amount", { precision: 12, scale: 2 }),
+    saleApprovalNote: text("sale_approval_note"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     status: timeOffStatusEnum("status").notNull().default("requested"),
     requestedByUserId: text("requested_by_user_id")
       .notNull()
@@ -1717,6 +1731,12 @@ export const saasSubscriptions = pgTable(
     category: text("category").notNull(),
     provider: text("provider"),
     monthlyCost: numeric("monthly_cost", { precision: 12, scale: 2 }),
+    billingCurrency: text("billing_currency").notNull().default("BRL"),
+    billingCycle: text("billing_cycle").notNull().default("monthly"),
+    cycleAmount: numeric("cycle_amount", { precision: 12, scale: 2 }),
+    estimatedExchangeRate: numeric("estimated_exchange_rate", { precision: 12, scale: 6 }),
+    exchangeRateDate: date("exchange_rate_date"),
+    exchangeRateSource: text("exchange_rate_source"),
     renewalDate: date("renewal_date"),
     status: text("status").notNull().default("active"),
     responsibleUserId: text("responsible_user_id").references(() => users.id),
@@ -1728,6 +1748,10 @@ export const saasSubscriptions = pgTable(
   (table) => ({
     statusIdx: index("saas_status_idx").on(table.organizationId, table.status),
     renewalIdx: index("saas_renewal_idx").on(table.organizationId, table.renewalDate),
+    billingCurrencyCheck: check("saas_billing_currency_check", sql`${table.billingCurrency} in ('BRL','USD','EUR')`),
+    billingCycleCheck: check("saas_billing_cycle_check", sql`${table.billingCycle} in ('monthly','annual')`),
+    billingAmountCheck: check("saas_billing_amount_check", sql`${table.cycleAmount} is null or ${table.cycleAmount} > 0`),
+    billingRateCheck: check("saas_billing_rate_check", sql`${table.estimatedExchangeRate} is null or (${table.estimatedExchangeRate} > 0 and ${table.exchangeRateDate} is not null and ${table.exchangeRateSource} is not null and length(trim(${table.exchangeRateSource})) > 0)`),
   }),
 );
 

@@ -1,3 +1,4 @@
+import { invoicePaymentLabels } from "@/features/portal/invoice-payment-rules";
 import { CheckCircle2, FileText, Upload } from "lucide-react";
 
 import {
@@ -207,6 +208,7 @@ function HistoryCard({ invoices }: { invoices: InvoiceRequestListItem[] }) {
             <th>Valor</th>
             <th>Status</th>
             <th>Aprovação</th>
+            <th>Pagamento</th>
           </tr>
         </thead>
         <tbody>
@@ -225,6 +227,7 @@ function HistoryCard({ invoices }: { invoices: InvoiceRequestListItem[] }) {
               <td className="fg-tabular fg-muted">
                 {invoice.approvedAt ? formatDate(invoice.approvedAt) : "—"}
               </td>
+              <td>{invoicePaymentLabels[invoice.payment.state]}{invoice.payment.paid !== null ? <p className="text-xs">Conciliado: {formatMoney(invoice.payment.paid)} · Saldo: {invoice.payment.remaining === null ? "Indisponível" : formatMoney(invoice.payment.remaining)}</p> : null}</td>
             </tr>
           ))}
         </tbody>
