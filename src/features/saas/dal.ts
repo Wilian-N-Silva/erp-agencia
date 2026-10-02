@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { bindTenantContext, db } from "@/lib/db";
 import { employees, saasSubscriptionUsers, saasSubscriptions, users } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
+import { estimateSaasBilling, type SaasBilling } from "./billing-rules";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -28,6 +29,9 @@ export type SaasLinkedUser = {
 };
 
 export type SaasSubscriptionListItem = {
+  billing: SaasBilling | null;
+  annualizedCost: string | null;
+  cycleEstimate: string | null;
   id: string;
   name: string;
   category: string;
@@ -69,6 +73,12 @@ async function listSaasSubscriptions(
       category: saasSubscriptions.category,
       provider: saasSubscriptions.provider,
       monthlyCost: saasSubscriptions.monthlyCost,
+      billingCurrency: saasSubscriptions.billingCurrency,
+      billingCycle: saasSubscriptions.billingCycle,
+      cycleAmount: saasSubscriptions.cycleAmount,
+      estimatedExchangeRate: saasSubscriptions.estimatedExchangeRate,
+      exchangeRateDate: saasSubscriptions.exchangeRateDate,
+      exchangeRateSource: saasSubscriptions.exchangeRateSource,
       renewalDate: saasSubscriptions.renewalDate,
       status: saasSubscriptions.status,
       responsibleUserName: users.name,
@@ -88,10 +98,16 @@ async function listSaasSubscriptions(
       .map((row) => {
         const linkedUsers = linksBySubscription.get(row.id) ?? [];
         const status = row.status as SaasSubscriptionStatus;
+        const { billingCurrency, billingCycle, cycleAmount, estimatedExchangeRate, exchangeRateDate, exchangeRateSource, ...publicRow } = row;
+        const billing: SaasBilling = { billingCurrency: billingCurrency as SaasBilling["billingCurrency"], billingCycle: billingCycle as SaasBilling["billingCycle"], cycleAmount: cycleAmount ?? (billingCurrency === "BRL" && billingCycle === "monthly" ? row.monthlyCost : null), estimatedExchangeRate, exchangeRateDate, exchangeRateSource };
+        const estimate = canReadCost ? estimateSaasBilling(billing) : null;
 
         return {
-          ...row,
-          monthlyCost: canReadCost ? row.monthlyCost : null,
+          ...publicRow,
+          billing: canReadCost ? billing : null,
+          monthlyCost: estimate?.monthly ?? null,
+          annualizedCost: estimate?.annualized ?? null,
+          cycleEstimate: estimate?.cycleEstimate ?? null,
           costHidden: !canReadCost,
           linkedUsers,
           renewalState: getSaasRenewalState({

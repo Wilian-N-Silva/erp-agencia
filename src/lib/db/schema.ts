@@ -1731,6 +1731,12 @@ export const saasSubscriptions = pgTable(
     category: text("category").notNull(),
     provider: text("provider"),
     monthlyCost: numeric("monthly_cost", { precision: 12, scale: 2 }),
+    billingCurrency: text("billing_currency").notNull().default("BRL"),
+    billingCycle: text("billing_cycle").notNull().default("monthly"),
+    cycleAmount: numeric("cycle_amount", { precision: 12, scale: 2 }),
+    estimatedExchangeRate: numeric("estimated_exchange_rate", { precision: 12, scale: 6 }),
+    exchangeRateDate: date("exchange_rate_date"),
+    exchangeRateSource: text("exchange_rate_source"),
     renewalDate: date("renewal_date"),
     status: text("status").notNull().default("active"),
     responsibleUserId: text("responsible_user_id").references(() => users.id),
@@ -1742,6 +1748,10 @@ export const saasSubscriptions = pgTable(
   (table) => ({
     statusIdx: index("saas_status_idx").on(table.organizationId, table.status),
     renewalIdx: index("saas_renewal_idx").on(table.organizationId, table.renewalDate),
+    billingCurrencyCheck: check("saas_billing_currency_check", sql`${table.billingCurrency} in ('BRL','USD','EUR')`),
+    billingCycleCheck: check("saas_billing_cycle_check", sql`${table.billingCycle} in ('monthly','annual')`),
+    billingAmountCheck: check("saas_billing_amount_check", sql`${table.cycleAmount} is null or ${table.cycleAmount} > 0`),
+    billingRateCheck: check("saas_billing_rate_check", sql`${table.estimatedExchangeRate} is null or (${table.estimatedExchangeRate} > 0 and ${table.exchangeRateDate} is not null and ${table.exchangeRateSource} is not null and length(trim(${table.exchangeRateSource})) > 0)`),
   }),
 );
 

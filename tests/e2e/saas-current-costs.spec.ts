@@ -21,12 +21,11 @@ test("cancelamento retira custo dos indicadores e preserva o contrato", async ({
   const annualBefore = cents(await kpi("Custo anualizado").innerText());
   const marker = `QA-custo-cancelamento-${Date.now()}`;
   await page.locator("button:not([type=submit])").filter({ hasText: /^Cadastrar assinatura$/ }).click();
-  const form = page.locator("form").filter({ has: page.locator('[name="monthlyCost"]') });
+  const form = page.locator("form").filter({ has: page.locator('[name="cycleAmount"]') });
   await form.locator('[name="name"]').fill(marker);
   await form.locator('[name="category"]').fill("Validação fictícia");
   await form.locator('[name="provider"]').fill("Fornecedor QA");
-  await form.locator(".fg-input-wrap").filter({ has: page.locator('[name="monthlyCost"]') })
-    .locator('input[type="text"]').fill("87,65");
+  await form.locator('[name="cycleAmount"]').fill("87,65");
   await form.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();
   await expect.poll(async () => cents(await kpi("Custo mensal").innerText())).toBe(monthlyBefore + 8765);
   await expect.poll(async () => cents(await kpi("Custo anualizado").innerText())).toBe(annualBefore + 8765 * 12);

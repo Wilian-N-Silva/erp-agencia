@@ -202,7 +202,7 @@ export function SaasView({
           {r.costHidden ? (
             <span className="fg-muted">Restrito</span>
           ) : (
-            formatMoney(r.monthlyCost)
+            r.monthlyCost === null ? "Estimativa pendente" : formatMoney(r.monthlyCost)
           )}
         </span>
       ),
@@ -267,7 +267,7 @@ export function SaasView({
         <KpiCard
           label="Custo mensal"
           value={currentCosts ? formatMoney(currentCosts.monthly) : "Restrito"}
-          secondary="visíveis ao perfil · exclui canceladas"
+          secondary={`estimativa · exclui canceladas · ${subscriptions.filter(s => !s.costHidden && s.status !== "cancelled" && s.monthlyCost === null).length} sem estimativa`}
           accent
         />
         <KpiCard
@@ -352,7 +352,7 @@ export function SaasView({
                     </div>
                     <div className="fg-saas-cost">
                       <span className="fg-saas-cost-val fg-tabular">
-                        {s.costHidden ? "Restrito" : formatMoney(s.monthlyCost)}
+                        {s.costHidden ? "Restrito" : s.monthlyCost === null ? "Estimativa pendente" : formatMoney(s.monthlyCost)}
                       </span>
                       {!s.costHidden && <span className="fg-saas-cost-unit">/mês</span>}
                     </div>

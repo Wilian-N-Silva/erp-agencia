@@ -34,7 +34,21 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
-  it("installs all migrations through 0046 on an empty schema and accepts minimum graphic fixtures", async () => {
+  it("installs all migrations through 0047 on an empty schema and accepts minimum graphic fixtures", async () => {
+    await dropUpgradeSchema();
+    try {
+      await adminDb.transaction(async transaction => {
+        await transaction.execute(sql.raw("create schema " + schemaName));
+        await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
+        for (let i = 0; i <= 47; i++) await applyMigration(transaction, i);
+        await createPreMigrationFixtures(transaction);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+      });
+    } finally { await dropUpgradeSchema(); }
+  }, 30_000);
+  it("upgrades 0046 preserving legacy SaaS costs and forced tenant policies", async () => {
     await dropUpgradeSchema();
     try {
       await adminDb.transaction(async transaction => {
@@ -42,9 +56,10 @@ describe("OS migration upgrade 0025 -> 0028", () => {
         await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
         for (let i = 0; i <= 46; i++) await applyMigration(transaction, i);
         await createPreMigrationFixtures(transaction);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+        await transaction.execute(sql`insert into saas_subscriptions (organization_id,name,category,monthly_cost) values (${ids.orgA},'Legacy','QA',123.45)`);
+        await applyMigration(transaction, 47);
+        expect((await transaction.execute(sql`select monthly_cost,billing_currency,billing_cycle,cycle_amount,estimated_exchange_rate from saas_subscriptions`)).rows).toEqual([{ monthly_cost: "123.45", billing_currency: "BRL", billing_cycle: "monthly", cycle_amount: null, estimated_exchange_rate: null }]);
+        expect((await transaction.execute(sql.raw("select relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='" + schemaName + "' and c.relname='saas_subscriptions'"))).rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
       });
     } finally { await dropUpgradeSchema(); }
   }, 30_000);

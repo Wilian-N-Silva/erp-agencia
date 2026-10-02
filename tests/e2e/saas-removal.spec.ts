@@ -14,7 +14,7 @@ test("remove cadastro errado e mantém cancelamento como operação distinta", a
   await page.goto("/app/assinaturas");
   const marker = `QA-remover-erro-${Date.now()}`;
   await page.locator("button:not([type=submit])").filter({ hasText: /^Cadastrar assinatura$/ }).click();
-  const form = page.locator("form").filter({ has: page.locator('[name="monthlyCost"]') });
+  const form = page.locator("form").filter({ has: page.locator('[name="cycleAmount"]') });
   await form.locator('[name="name"]').fill(marker);
   await form.locator('[name="category"]').fill("Validação fictícia");
   await form.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();

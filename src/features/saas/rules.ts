@@ -24,6 +24,7 @@ export type SaasScope = "all" | "linked" | "none";
 export function getSaasCurrentCosts(subscriptions: readonly {
   status: SaasSubscriptionStatus;
   monthlyCost: string | null;
+  annualizedCost?: string | null;
   costHidden: boolean;
 }[]) {
   // Scheduled cancellation is still a current contract until actually cancelled.
@@ -34,7 +35,7 @@ export function getSaasCurrentCosts(subscriptions: readonly {
 
   return {
     monthly: centsToMoney(monthlyCents),
-    annualized: centsToMoney(monthlyCents * 12),
+    annualized: centsToMoney(subscriptions.reduce((total, s) => s.status === "cancelled" || s.costHidden ? total : total + (s.annualizedCost === undefined ? moneyToCents(s.monthlyCost) * 12 : moneyToCents(s.annualizedCost)), 0)),
   };
 }
 

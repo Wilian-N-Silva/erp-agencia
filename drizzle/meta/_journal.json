@@ -330,6 +330,13 @@
       "when": 1790817560202,
       "tag": "0046_salty_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790944901789,
+      "tag": "0047_chubby_bastion",
+      "breakpoints": true
     }
   ]
 }
