@@ -1201,8 +1201,32 @@ export const provisions = pgTable(
   },
   (table) => ({
     categoryIdx: index("provisions_category_idx").on(table.organizationId, table.category),
+    tenantIdIdx: uniqueIndex("provisions_tenant_id_idx").on(table.organizationId, table.id),
   }),
 );
+
+export const provisionCycles = pgTable("provision_cycles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  provisionId: uuid("provision_id").notNull(),
+  competence: text("competence").notNull(),
+  estimatedAmount: numeric("estimated_amount", { precision: 12, scale: 2 }).notNull(),
+  dueDate: date("due_date").notNull(),
+  status: text("status").notNull().default("planned"),
+  financialExpenseId: uuid("financial_expense_id"),
+  cancellationReason: text("cancellation_reason"),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  provisionFk: foreignKey({ columns: [table.organizationId, table.provisionId], foreignColumns: [provisions.organizationId, provisions.id], name: "provision_cycles_provision_tenant_fk" }),
+  payableFk: foreignKey({ columns: [table.organizationId, table.financialExpenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "provision_cycles_payable_tenant_fk" }),
+  occurrenceIdx: uniqueIndex("provision_cycles_occurrence_idx").on(table.organizationId, table.provisionId, table.competence),
+  payableIdx: uniqueIndex("provision_cycles_payable_idx").on(table.financialExpenseId),
+  amountCheck: check("provision_cycles_amount_check", sql`${table.estimatedAmount} > 0`),
+  competenceCheck: check("provision_cycles_competence_check", sql`${table.competence} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+  stateCheck: check("provision_cycles_state_check", sql`(${table.status} = 'planned' and ${table.financialExpenseId} is null and ${table.cancellationReason} is null) or (${table.status} = 'realized' and ${table.financialExpenseId} is not null and ${table.cancellationReason} is null) or (${table.status} = 'cancelled' and ${table.financialExpenseId} is null and length(trim(${table.cancellationReason})) >= 5 and ${table.cancellationReason} is not null)`),
+}));
 
 export const files = pgTable(
   "files",

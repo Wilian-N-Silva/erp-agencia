@@ -337,6 +337,20 @@
       "when": 1790944901789,
       "tag": "0047_chubby_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790947094523,
+      "tag": "0048_common_microchip",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790963880498,
+      "tag": "0049_provision-policy-name",
+      "breakpoints": true
     }
   ]
 }

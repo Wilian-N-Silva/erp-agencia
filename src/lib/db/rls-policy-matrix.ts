@@ -38,6 +38,7 @@ export const directTenantPolicyTables = [
   "lifecycle_checklists",
   "positions",
   "provisions",
+  "provision_cycles",
   "reimbursement_requests",
   "saas_subscriptions",
   "suppliers",
