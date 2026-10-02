@@ -34,8 +34,9 @@ Não foram aplicadas na base de uso local. Não há segredo nos arquivos version
 1. Concluir FIN-007: ações autenticadas com rate limit, UI, recorrência/próxima
    ocorrência e leitura de previsto versus realizado sem dupla contagem no
    dashboard/exportações. O DAL novo ainda não é chamado por nenhuma tela.
-2. Cobrir migrations 0048/0049 em banco vazio e upgrade com preservação de dados.
-   O teste histórico de fresh DB ainda termina em 0047.
+2. Migrations 0048/0049 já cobertas em banco vazio e upgrade desde 0047, com
+   preservação das provisões e AP legadas, sem inventar ciclos ou obrigações,
+   e conferência da policy RLS final. Revalidar se o schema mudar novamente.
 3. Revalidar build/E2E e atualizar manuais. Não anunciar realização de provisões
    disponível ao usuário antes da conexão da interface e dos relatórios.
 4. Só então avançar para SAA-004 e cobranças efetivas, com cotação da cobrança e
@@ -59,3 +60,7 @@ também passou.
 Build e E2E não foram executados nesta branch em andamento. As worktrees de
 validação e SEC-002 foram preservadas. O stash de protótipo/apresentação continua
 local, fora desta branch, conforme escopo anterior do usuário.
+
+Atualização de publicação: typecheck, lint, 408 testes unitários e **206 testes
+de banco** passaram após acrescentar a cobertura de instalação/upgrade.
+Comando de banco: `npm run test:db -- --fileParallelism=false`.

@@ -34,7 +34,22 @@ afterAll(async () => {
 });
 
 describe("OS migration upgrade 0025 -> 0028", () => {
-  it("installs all migrations through 0047 on an empty schema and accepts minimum graphic fixtures", async () => {
+  it("installs all migrations through 0049 on an empty schema and accepts minimum graphic fixtures", async () => {
+    await dropUpgradeSchema();
+    try {
+      await adminDb.transaction(async transaction => {
+        await transaction.execute(sql.raw("create schema " + schemaName));
+        await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
+        for (let i = 0; i <= 49; i++) await applyMigration(transaction, i);
+        await createPreMigrationFixtures(transaction);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql`select count(*)::int n from provision_cycles`)).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+      });
+    } finally { await dropUpgradeSchema(); }
+  }, 30_000);
+  it("upgrades 0047 without inventing cycles or payables and preserves legacy provision values", async () => {
     await dropUpgradeSchema();
     try {
       await adminDb.transaction(async transaction => {
@@ -42,9 +57,17 @@ describe("OS migration upgrade 0025 -> 0028", () => {
         await transaction.execute(sql.raw("set local search_path to " + schemaName + ", public"));
         for (let i = 0; i <= 47; i++) await applyMigration(transaction, i);
         await createPreMigrationFixtures(transaction);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_jobs"))).rows).toEqual([{ n: 1 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from graphic_import_rows"))).rows).toEqual([{ n: 0 }]);
-        expect((await transaction.execute(sql.raw("select count(*)::int n from permissions where key in ('graphics.import','graphics.supplier_write','graphics.finance_read')"))).rows).toEqual([{ n: 3 }]);
+        await transaction.execute(sql`insert into provisions (organization_id,name,category,estimated_monthly_amount,recurring,status) values (${ids.orgA},'Legacy active','SaaS',123.45,true,'active'),(${ids.orgA},'Legacy inactive','Other',50,false,'inactive')`);
+        await transaction.execute(sql`insert into financial_expenses (organization_id,supplier,category,description,amount,paid_amount,due_date,competence,status,responsible_user_id) values (${ids.orgA},'Legacy supplier','SaaS','Legacy payable',123.45,23.45,'2026-10-20','2026-10','planned',${userA})`);
+        const before = (await transaction.execute(sql`select id,name,estimated_monthly_amount,recurring,status from provisions order by id`)).rows;
+        const payablesBefore = (await transaction.execute(sql`select id,amount,paid_amount,status from financial_expenses order by id`)).rows;
+        await applyMigration(transaction, 48);
+        await applyMigration(transaction, 49);
+        expect((await transaction.execute(sql`select id,name,estimated_monthly_amount,recurring,status from provisions order by id`)).rows).toEqual(before);
+        expect((await transaction.execute(sql`select id,amount,paid_amount,status from financial_expenses order by id`)).rows).toEqual(payablesBefore);
+        expect((await transaction.execute(sql`select count(*)::int n from provision_cycles`)).rows).toEqual([{ n: 0 }]);
+        expect((await transaction.execute(sql`select relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=${schemaName} and c.relname='provision_cycles'`)).rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
+        expect((await transaction.execute(sql`select policyname,cmd,qual,with_check from pg_policies where schemaname=${schemaName} and tablename='provision_cycles'`)).rows).toEqual([expect.objectContaining({ policyname: "provision_cycles_tenant_isolation", cmd: "ALL", qual: expect.stringContaining("app.organization_id"), with_check: expect.stringContaining("app.organization_id") })]);
       });
     } finally { await dropUpgradeSchema(); }
   }, 30_000);
