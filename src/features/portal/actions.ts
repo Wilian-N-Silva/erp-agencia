@@ -54,7 +54,6 @@ import {
   canApproveReimbursementByManager,
   canExcludeReimbursementFromInvoice,
   canIncludeReimbursementInInvoice,
-  canMarkInvoicePaid,
   canMarkReimbursementPaid,
   canReviewInvoice,
   canSubmitInvoiceRequest,
@@ -372,62 +371,9 @@ async function markInvoicePaidAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceApproverContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
-  const before = await getInvoiceForWrite(input.id, organizationId);
-
-  if (!canMarkInvoicePaid(before.status as InvoiceRequestStatus)) {
-    throw new Error("Invoice request cannot be marked paid from current status.");
-  }
-
-  const [after] = await db
-    .update(invoiceRequests)
-    .set({
-      paidAt: new Date(),
-      status: "paid",
-      updatedAt: new Date(),
-    })
-    .where(eq(invoiceRequests.id, input.id))
-    .returning();
-
-  const paidReimbursements = await db
-    .update(reimbursementRequests)
-    .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(reimbursementRequests.includedInvoiceRequestId, input.id),
-        eq(reimbursementRequests.status, "included_in_invoice"),
-      ),
-    )
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "invoice_request",
-    entityId: input.id,
-    before,
-    after,
-    metadata: {
-      status: "paid",
-      cascadedReimbursementIds: paidReimbursements.map((row) => row.id),
-    },
-  });
-
-  for (const reimbursement of paidReimbursements) {
-    await writeAuditLog(context, {
-      action: "status_change",
-      entityType: "reimbursement_request",
-      entityId: reimbursement.id,
-      metadata: {
-        status: "paid",
-        reason: "invoice_paid_cascade",
-        invoiceRequestId: input.id,
-      },
-    });
-  }
-
-  revalidateInvoicePaths();
-  revalidateReimbursementPaths();
+  await getInvoiceForWrite(input.id, organizationId);
+  throw new Error("Registre o pagamento e concilie a conta a pagar no Financeiro. A NF acompanha essa liquidação automaticamente.");
 }
-
 async function createReimbursementAction(formData: FormData) {
   const context = await requireCurrentContext();
 

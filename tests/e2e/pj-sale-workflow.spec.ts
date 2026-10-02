@@ -25,6 +25,7 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
   await admin.query("insert into employees (id,organization_id,user_id,registration_number,full_name,area_id,position_id,employment_type,start_date,current_compensation,recurring_cost_allowance) values ($1,$2,$3,$4,$4,$5,$6,'pj','2020-01-01',3900,300)", [employeeId, org, ownId, marker, template.area_id, template.position_id]);
   const ownSession = await browser.newContext(), reviewSession = await browser.newContext(), financeSession = await browser.newContext();
   const own = await ownSession.newPage(), reviewer = await reviewSession.newPage();
+  ownSession.setDefaultTimeout(15_000); reviewSession.setDefaultTimeout(15_000); financeSession.setDefaultTimeout(15_000);
   const login = async (page: Page, email: string) => {
     const response = await page.request.post("/api/auth/sign-in/email", { data: { email, password: process.env.DEMO_USER_PASSWORD } });
     expect(response.ok()).toBe(true);
@@ -90,6 +91,26 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     expect(count.rows[0].n).toBe(1);
     await finance.locator(".fg-sheet-root.open").getByRole("button", { name: "Aprovar", exact: true }).click();
     await expect.poll(async () => (await admin.query("select i.status, i.expected_amount, e.amount, e.paid_amount from invoice_requests i join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id where i.employee_id=$1", [employeeId])).rows[0]).toEqual({ status: "approved", expected_amount: "6150.00", amount: "6150.00", paid_amount: "0.00" });
+    await expect(finance.getByRole("button", { name: "Marcar pago", exact: true })).toHaveCount(0);
+    for (const [index, amount] of ["2000,00", "4150,00"].entries()) {
+      await reviewer.goto("/app/financeiro/movimentacoes");
+      await reviewer.getByRole("combobox", { name: /^Conta financeira/ }).selectOption({ label: "Conta Gráfica QA" });
+      await reviewer.getByRole("combobox", { name: /^Direção/ }).selectOption("out");
+      await reviewer.getByRole("textbox", { name: /^Valor/ }).fill(amount);
+      await reviewer.getByLabel("Referência", { exact: true }).fill(`${marker}-${index}`);
+      await reviewer.getByRole("button", { name: "Registrar movimentação", exact: true }).click();
+      await reviewer.getByRole("row").filter({ has: reviewer.getByRole("cell", { name: `${marker}-${index}`, exact: true }) }).getByRole("link", { name: "Conciliar", exact: true }).click();
+      await reviewer.getByLabel("Buscar por descrição, código do trabalho ou contraparte", { exact: true }).fill(marker);
+      await reviewer.getByRole("button", { name: "Buscar títulos", exact: true }).click();
+      await reviewer.getByLabel(new RegExp(`Valor para NF .*${marker}`)).fill(amount);
+      await reviewer.getByRole("checkbox", { name: "Conferi os títulos e valores e confirmo a conciliação.", exact: true }).check();
+      await reviewer.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+      await expect(reviewer.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+      await own.goto("/portal/nfs");
+      const payment = own.getByRole("cell").filter({ hasText: index === 0 ? /^Pagamento parcial/ : /^Pago e conciliado/ });
+      await expect(payment).toBeVisible();
+      await expect(payment).toContainText(index === 0 ? "Conciliado: R$ 2.000,00 · Saldo: R$ 4.150,00" : "Conciliado: R$ 6.150,00 · Saldo: R$ 0,00");
+    }
     await own.goto("/portal/ferias");
     await own.getByLabel("Quantidade de dias").fill("10");
     await own.getByLabel("Início do descanso").fill("2090-10-01");
@@ -115,11 +136,13 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     await expect(own.locator("body")).toContainText("Venda de 1 dias · Recusada");
     await expect(own.locator("body")).toContainText("Reservados: 0");
   } catch (error) {
-    console.error("Estado da solicitação de teste:", await reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: new RegExp(marker) }) }).allTextContents());
+    console.error("Financeiro:", await financeSession.pages()[0]?.locator("main").innerText({ timeout: 1000 }).catch(() => "indisponível"));
+    console.error("Estado da solicitação de teste:", await reviewer.locator("section").filter({ has: reviewer.getByRole("heading", { name: new RegExp(marker) }) }).allTextContents().catch(() => []));
     throw error;
   } finally {
     if (prior) await admin.query("update app_settings set value=$1 where organization_id=$2 and key='pj_timeoff_approver' and value=$3::jsonb", [JSON.stringify(prior.value), org, JSON.stringify(reviewerId)]);
     else await admin.query("delete from app_settings where organization_id=$1 and key='pj_timeoff_approver' and value=$2::jsonb", [org, JSON.stringify(reviewerId)]);
-    await admin.end(); await ownSession.close(); await reviewSession.close(); await financeSession.close();
+    await admin.end();
+    await Promise.all([ownSession.close(), reviewSession.close(), financeSession.close()]);
   }
 });

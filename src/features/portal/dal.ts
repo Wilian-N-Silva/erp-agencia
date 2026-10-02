@@ -12,6 +12,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
+import { deriveInvoicePayment } from "./invoice-payment-rules";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -57,6 +58,8 @@ export type InvoiceRequestListItem = {
   status: InvoiceRequestStatus;
   fileId: string | null;
   documentId: string | null;
+  financialExpenseId: string | null;
+  payment: ReturnType<typeof deriveInvoicePayment>["payment"];
   approvedAt: Date | null;
   paidAt: Date | null;
   items: InvoiceRequestItem[];
@@ -150,7 +153,8 @@ async function listInvoiceRequests(
       suggestedDescription: invoiceRequests.suggestedDescription,
       status: invoiceRequests.status,
       fileId: invoiceRequests.fileId,
-      documentId: documents.id,
+        documentId: documents.id,
+        financialExpenseId: invoiceRequests.financialExpenseId,
       approvedAt: invoiceRequests.approvedAt,
       paidAt: invoiceRequests.paidAt,
     })
@@ -171,11 +175,30 @@ async function listInvoiceRequests(
     });
   });
   const limitedRows = scopedRows.slice(0, options.limit);
-  const itemsByRequest = await loadInvoiceItems(limitedRows.map((row) => row.id));
+    const itemsByRequest = await loadInvoiceItems(limitedRows.map((row) => row.id));
+    const payments = new Map<string, ReturnType<typeof deriveInvoicePayment>>();
+    if (limitedRows.length) {
+      const result = await db.execute(sql`select i.id,i.status,i.paid_at,i.financial_expense_id,
+        e.amount as payable_amount,e.status as payable_status,
+        coalesce(sum(case when t.id is not null then a.amount else 0 end),0)::text as paid_amount,
+        max(t.occurred_at) as last_payment_at
+        from invoice_requests i
+        left join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id and e.deleted_at is null
+        left join financial_allocations a on a.financial_expense_id=e.id and a.organization_id=i.organization_id
+        left join financial_transactions t on t.id=a.transaction_id and t.organization_id=i.organization_id and t.status <> 'reversed' and t.direction='out'
+        where i.organization_id=${organizationId} and i.id in (${sql.join(limitedRows.map(row => sql`${row.id}::uuid`),sql`,`)})
+        group by i.id,e.id`);
+      for (const row of result.rows) payments.set(String(row.id), deriveInvoicePayment({
+        status: row.status as InvoiceRequestStatus, paidAt: row.paid_at ? new Date(String(row.paid_at)) : null,
+        financialExpenseId: row.financial_expense_id as string | null, payableAmount: row.payable_amount as string | null,
+        payableStatus: row.payable_status as string | null, paidAmount: String(row.paid_amount),
+        lastPaymentAt: row.last_payment_at ? new Date(String(row.last_payment_at)) : null,
+      }));
+    }
 
   return limitedRows.map((row) => ({
     ...row,
-    status: row.status as InvoiceRequestStatus,
+    ...payments.get(row.id)!,
     items: itemsByRequest.get(row.id) ?? [],
     divergence: hasInvoiceDivergence(row.expectedAmount, row.issuedAmount),
   }));

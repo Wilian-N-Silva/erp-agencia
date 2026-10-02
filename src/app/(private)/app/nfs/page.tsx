@@ -1,11 +1,10 @@
-import { Ban, Check, DollarSign, RefreshCw } from "lucide-react";
+import { Ban, Check, RefreshCw } from "lucide-react";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Button, RateLimitedActionForm } from "@/components/fg";
 import {
   approveInvoiceRequestAction,
-  markInvoicePaidAction,
   rejectInvoiceRequestAction,
 } from "@/features/portal/actions";
 import {
@@ -15,7 +14,6 @@ import {
 } from "@/features/portal/dal";
 import {
   canCreateInvoiceRequest,
-  canMarkInvoicePaid,
   canReviewInvoice,
 } from "@/features/portal/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
@@ -131,23 +129,7 @@ function buildRowActions({
           </RateLimitedActionForm>
         </>
       ) : null}
-      {canMarkInvoicePaid(invoice.status) ? (
-        <RateLimitedActionForm
-          action={markInvoicePaidAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={invoice.id} />
-          <Button
-            type="submit"
-            variant="primary"
-            size="sm"
-            icon={<DollarSign size={13} />}
-            title="Marcar pago"
-          >
-            Marcar pago
-          </Button>
-        </RateLimitedActionForm>
-      ) : null}
+
     </span>
   );
 }
