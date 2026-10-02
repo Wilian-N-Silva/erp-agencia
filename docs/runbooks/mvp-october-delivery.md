@@ -97,3 +97,6 @@ Gates aprovados em 02/10/2026:
 O build e os E2Es usaram uma worktree isolada para não disputar `.next` com o
 servidor local. O código runtime foi comparado com o checkout de entrega.
 Os testes locais não comprovam provisionamento ou disponibilidade de hospedagem remota.
+
+Validação complementar: [vários títulos e recebimentos](finance-multiple-receipts-validation.md),
+com saldo parcial, quitação e histórico do cliente verificados pela interface.
