@@ -1,5 +1,5 @@
 import { centsToMoney, moneyToCents } from "@/features/finance/rules";
-import type { InvoiceRequestStatus } from "./rules";
+import type { InvoiceRequestStatus, ReimbursementStatus } from "./rules";
 
 export function deriveInvoicePayment(input: {
   status: InvoiceRequestStatus; paidAt: Date | null; financialExpenseId: string | null;
@@ -25,3 +25,30 @@ export const invoicePaymentLabels = {
   unavailable: "Conta a pagar indisponível ou cancelada — verificar no Financeiro",
   settled: "Pago e conciliado", partial: "Pagamento parcial", open: "Aguardando pagamento",
 };
+
+export function deriveReimbursementInvoicePayment(
+  status: ReimbursementStatus,
+  paidAt: Date | null,
+  linkedInvoiceId: string | null,
+  invoice: ReturnType<typeof deriveInvoicePayment> | undefined,
+) {
+  if (!linkedInvoiceId) return { status, paidAt, invoicePaymentLabel: null };
+  if (!invoice || invoice.payment.state === "unavailable") return {
+    status: status === "paid" ? "included_in_invoice" as const : status,
+    paidAt: null,
+    invoicePaymentLabel: "NF ou conta a pagar indisponível — verificar no Financeiro",
+  };
+  if (invoice.payment.state === "legacy") return {
+    status, paidAt, invoicePaymentLabel: "NF sem vínculo financeiro — requer conferência",
+  };
+  const paid = invoice.status === "paid" && invoice.payment.state === "settled";
+  return {
+    status: ["paid", "included_in_invoice"].includes(status)
+      ? paid ? "paid" as const : "included_in_invoice" as const
+      : status,
+    paidAt: paid ? invoice.paidAt : null,
+    invoicePaymentLabel: paid ? "Pago pela quitação da NF"
+      : invoice.payment.state === "partial" ? "NF parcialmente paga — aguardando quitação"
+      : "Pagamento acompanha a quitação da NF",
+  };
+}

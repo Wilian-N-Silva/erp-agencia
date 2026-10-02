@@ -68,7 +68,7 @@ export default async function ReimbursementsPage() {
     };
     const canManagerApprove = canApproveReimbursementByManager(context, target);
     const canFinanceApprove = canApproveReimbursementByFinance(context, target);
-    const canPay = canMarkReimbursementPaid(context, target);
+    const canPay = !reimbursement.includedInvoiceRequestId && canMarkReimbursementPaid(context, target);
     const eligibleInvoices = (openInvoicesByEmployee.get(reimbursement.employeeId) ?? []).filter(
       (invoice) =>
         canIncludeReimbursementInInvoice(

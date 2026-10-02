@@ -63,11 +63,23 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     }
     await form.locator('button[type="submit"]').click();
     await expect(reviewer.getByRole("row").filter({ hasText: marker })).toContainText("6.150,00");
+    // Approved reimbursement fixture; inclusion and settlement use the real UI.
+    const reimbursementId = randomUUID();
+    await admin.query("insert into reimbursement_requests (id,organization_id,employee_id,title,category,amount,expense_date,status) values ($1,$2,$3,$4,'Outros',100,$5,'finance_approved')", [reimbursementId, org, employeeId, `Reembolso ${marker}`, `${competence}-01`]);
+    await reviewer.goto("/app/reembolsos");
+    await reviewer.getByRole("tab", { name: /^Todos/ }).click();
+    await reviewer.getByPlaceholder("Buscar colaborador, descrição ou área...").fill(marker);
+    await reviewer.getByRole("row").filter({ hasText: marker }).click();
+    await reviewer.locator("button").filter({ hasText: /^Incluir em NF$/ }).click();
+    await reviewer.getByRole("radio").check();
+    await reviewer.getByRole("button", { name: "Incluir na NF", exact: true }).click();
+    await expect.poll(async () => (await admin.query("select included_invoice_request_id from reimbursement_requests where id=$1", [reimbursementId])).rows[0].included_invoice_request_id).toBeTruthy();
     await own.goto("/portal/nfs");
     await expect(own.getByText("Venda de 15 dias de férias PJ autorizada", { exact: true })).toBeVisible();
-    await expect(own.locator("body")).toContainText("6.150,00");
+    await expect(own.locator("body")).toContainText("6.250,00");
+    await expect(own.getByText(`Reembolso ${marker}`, { exact: true })).toBeVisible();
     await own.locator('input[type="file"]').setInputFiles({ name: `${marker}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF") });
-    await own.locator(".fg-input-wrap").filter({ has: own.locator('[name="issuedAmount"]') }).locator('input[type="text"]').fill("6150,00");
+    await own.locator(".fg-input-wrap").filter({ has: own.locator('[name="issuedAmount"]') }).locator('input[type="text"]').fill("6250,00");
     await own.getByRole("button", { name: /Enviar NF/ }).click();
     await expect(own.locator("body")).toContainText("Enviada");
     const finance = await financeSession.newPage();
@@ -90,9 +102,9 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
     const count = await admin.query("select count(*)::int n from invoice_request_items i join time_off_requests t on t.id=i.source_time_off_id where t.employee_id=$1", [employeeId]);
     expect(count.rows[0].n).toBe(1);
     await finance.locator(".fg-sheet-root.open").getByRole("button", { name: "Aprovar", exact: true }).click();
-    await expect.poll(async () => (await admin.query("select i.status, i.expected_amount, e.amount, e.paid_amount from invoice_requests i join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id where i.employee_id=$1", [employeeId])).rows[0]).toEqual({ status: "approved", expected_amount: "6150.00", amount: "6150.00", paid_amount: "0.00" });
+    await expect.poll(async () => (await admin.query("select i.status, i.expected_amount, e.amount, e.paid_amount from invoice_requests i join financial_expenses e on e.id=i.financial_expense_id and e.organization_id=i.organization_id where i.employee_id=$1", [employeeId])).rows[0]).toEqual({ status: "approved", expected_amount: "6250.00", amount: "6250.00", paid_amount: "0.00" });
     await expect(finance.getByRole("button", { name: "Marcar pago", exact: true })).toHaveCount(0);
-    for (const [index, amount] of ["2000,00", "4150,00"].entries()) {
+    for (const [index, amount] of ["2000,00", "4250,00"].entries()) {
       await reviewer.goto("/app/financeiro/movimentacoes");
       await reviewer.getByRole("combobox", { name: /^Conta financeira/ }).selectOption({ label: "Conta Gráfica QA" });
       await reviewer.getByRole("combobox", { name: /^Direção/ }).selectOption("out");
@@ -109,7 +121,16 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
       await own.goto("/portal/nfs");
       const payment = own.getByRole("cell").filter({ hasText: index === 0 ? /^Pagamento parcial/ : /^Pago e conciliado/ });
       await expect(payment).toBeVisible();
-      await expect(payment).toContainText(index === 0 ? "Conciliado: R$ 2.000,00 · Saldo: R$ 4.150,00" : "Conciliado: R$ 6.150,00 · Saldo: R$ 0,00");
+      await expect(payment).toContainText(index === 0 ? "Conciliado: R$ 2.000,00 · Saldo: R$ 4.250,00" : "Conciliado: R$ 6.250,00 · Saldo: R$ 0,00");
+      await own.goto("/portal/reembolsos");
+      const reimbursementCard = own.locator("article").filter({ hasText: `Reembolso ${marker}` });
+      await expect(reimbursementCard).toContainText(index === 0 ? "NF parcialmente paga — aguardando quitação" : "Pago pela quitação da NF");
+      await reviewer.goto("/app/reembolsos");
+      await reviewer.getByRole("tab", { name: /^Todos/ }).click();
+      await reviewer.getByPlaceholder("Buscar colaborador, descrição ou área...").fill(marker);
+      const reimbursementRow = reviewer.getByRole("row").filter({ hasText: marker });
+      await expect(reimbursementRow).toContainText(index === 0 ? "NF parcialmente paga" : "Pago pela quitação da NF");
+      await expect(reimbursementRow.getByRole("button", { name: "Marcar pago", exact: true })).toHaveCount(0);
     }
     await own.goto("/portal/ferias");
     await own.getByLabel("Quantidade de dias").fill("10");

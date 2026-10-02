@@ -647,9 +647,14 @@ async function excludeReimbursementFromInvoiceAction(formData: FormData) {
 
 async function markReimbursementPaidAction(formData: FormData) {
   const context = await requireCurrentContext();
+  assertCan("reimbursements.approve_finance", context);
   await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
+
+  if (before.includedInvoiceRequestId) {
+    throw new Error("Este reembolso acompanha a quitação da NF no Financeiro.");
+  }
 
   if (
     !canMarkReimbursementPaid(context, {
@@ -808,6 +813,7 @@ async function getReimbursementForWrite(id: string, organizationId: string | nul
     .from(reimbursementRequests)
     .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))
     .where(and(eq(reimbursementRequests.id, id), eq(reimbursementRequests.organizationId, organizationId)))
+    .for("update", { of: reimbursementRequests })
     .limit(1);
 
   if (!row) {

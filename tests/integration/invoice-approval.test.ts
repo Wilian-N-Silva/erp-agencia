@@ -18,8 +18,8 @@ vi.mock("@/lib/audit", async original => {
     return actual.writeAuditLog(...args);
   } };
 });
-import { approveInvoiceRequestAction, markInvoicePaidAction } from "@/features/portal/actions";
-import { listInvoiceRequests } from "@/features/portal/dal";
+import { approveInvoiceRequestAction, markInvoicePaidAction, markReimbursementPaidAction } from "@/features/portal/actions";
+import { listInvoiceRequests, listReimbursements } from "@/features/portal/dal";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOnIdle: true });
 const org = randomUUID(), other = randomUUID(), employee = randomUUID(), area = randomUUID(), position = randomUUID(), file = randomUUID();
@@ -40,7 +40,7 @@ afterAll(async () => {
     await tx.execute(sql`delete from financial_allocations where organization_id=${org}`);
     await tx.execute(sql`alter table financial_allocations enable trigger financial_allocations_immutable_guard`);
   });
-  for (const table of ["audit_logs", "work_items", "financial_transactions", "financial_accounts", "invoice_requests", "financial_expenses", "files", "employees", "areas", "positions", "user"]) await admin.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
+  for (const table of ["audit_logs", "work_items", "financial_transactions", "financial_accounts", "reimbursement_requests", "invoice_requests", "financial_expenses", "files", "employees", "areas", "positions", "user"]) await admin.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
   await admin.execute(sql`delete from organizations where id in (${org},${other})`);
   await admin.$client.end(); await getDb().$client.end();
 });
@@ -88,6 +88,14 @@ it("shows only reconciled payments to the owner, reopens after a reversal and de
   const id = await invoice();
   await approveInvoiceRequestAction(form(id));
   const payable = (await read(id)).financial_expense_id;
+  const reimbursement = randomUUID();
+  await admin.execute(sql`insert into reimbursement_requests (id,organization_id,employee_id,title,category,amount,expense_date,status,included_invoice_request_id) values (${reimbursement},${org},${employee},'QA reembolso na NF','Outros',100,'2026-09-30','included_in_invoice',${id})`);
+  const reimbursementOwner: AccessContext = { ...context, employeeId: employee, permissions: ["reimbursements.read_own"] };
+  const reimbursementView = async () => (await listReimbursements(reimbursementOwner)).find(row => row.id === reimbursement)!;
+  expect(await reimbursementView()).toMatchObject({ status: "included_in_invoice", paidAt: null });
+  current.mockReturnValue({ ...context, permissions: ["reimbursements.approve_finance"] });
+  await expect(markReimbursementPaidAction(form(reimbursement))).rejects.toThrow("quitação da NF");
+  current.mockReturnValue(context);
   await expect(markInvoicePaidAction(form(id))).rejects.toThrow("concilie");
   const own: AccessContext = { ...context, employeeId: employee, permissions: ["invoices.read_own"] };
   const view = async () => (await listInvoiceRequests(own)).find(row => row.id === id)!;
@@ -100,12 +108,24 @@ it("shows only reconciled payments to the owner, reopens after a reversal and de
     await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'out',${amount},'2026-09-30T12:00:00Z',${user})`);
     await createFinancialAllocations({ ...context, permissions: ["finance.settle"] }, { transactionId: movement, allocations: [{ targetType: "payable", targetId: payable, amount }] });
     expect((await view()).payment.state).toBe(amount === "2000.00" ? "partial" : "settled");
+    expect((await reimbursementView()).status).toBe(amount === "2000.00" ? "included_in_invoice" : "paid");
   }
   expect((await view()).status).toBe("paid");
+  expect((await reimbursementView()).paidAt).toEqual(new Date("2026-09-30T12:00:00Z"));
+  expect((await admin.execute(sql`select status,paid_at from reimbursement_requests where id=${reimbursement}`)).rows[0]).toEqual({ status: "included_in_invoice", paid_at: null });
   // Model a persisted reversal; the full reversal command is a separate FIN-006 task.
   await admin.execute(sql`update financial_transactions set status='reversed' where id=${movements[1]}`);
   expect(await view()).toMatchObject({ status: "approved", paidAt: null, payment: { state: "partial", paid: "2000.00", remaining: "4150.00" } });
   expect((await read(id)).status).toBe("approved");
+  expect(await reimbursementView()).toMatchObject({ status: "included_in_invoice", paidAt: null, invoicePaymentLabel: "NF parcialmente paga — aguardando quitação" });
+  expect(await listReimbursements({ ...reimbursementOwner, employeeId: randomUUID() })).toEqual([]);
+  expect(await listReimbursements({ ...reimbursementOwner, organizationId: other })).toEqual([]);
+  const differentEmployee = randomUUID();
+  await admin.execute(sql`insert into employees (id,organization_id,registration_number,full_name,area_id,position_id,employment_type,start_date,current_compensation) values (${differentEmployee},${org},${differentEmployee},'Other PJ',${area},${position},'pj','2020-01-01',3900)`);
+  await admin.execute(sql`insert into reimbursement_requests (organization_id,employee_id,title,category,amount,expense_date,status,included_invoice_request_id) values (${org},${differentEmployee},'Wrong employee link','Outros',100,'2026-09-30','included_in_invoice',${id})`);
+  const all = await listReimbursements({ ...context, permissions: ["reimbursements.read"] });
+  expect(all.find(row => row.employeeId === differentEmployee)?.invoicePaymentLabel).toContain("indisponível");
+  expect(all.find(row => row.employeeId === employee)?.invoicePaymentLabel).toContain("parcialmente");
   expect(await listInvoiceRequests({ ...own, employeeId: randomUUID() })).toEqual([]);
   expect(await listInvoiceRequests({ ...own, organizationId: other })).toEqual([]);
 });

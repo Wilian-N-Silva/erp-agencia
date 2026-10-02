@@ -24,6 +24,8 @@ export async function reconcileMovementAction(data: FormData) {
     revalidatePath("/app/financeiro/saidas");
     revalidatePath("/app/nfs");
     revalidatePath("/portal/nfs");
+    revalidatePath("/app/reembolsos");
+    revalidatePath("/portal/reembolsos");
     revalidatePath("/portal");
     revalidatePath("/app/grafica", "layout");
     revalidatePath("/app/alertas");
