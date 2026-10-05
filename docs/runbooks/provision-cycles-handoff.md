@@ -89,7 +89,25 @@ e vencimento deslocado. Nenhuma nova migration/backfill neste ajuste.
 As migrations 0048/0049 continuam obrigatórias antes deste runtime; ainda não
 foram aplicadas na base de uso local. Esta branch continua fora da release.
 
-Pendente: formulário/ações com rate limit, gestão de ciclos, apresentação dos
+Pendente: formulário, gestão de ciclos, apresentação dos
 estados e valores por ocorrência na tabela de provisões, confirmação visual e
 E2E completo. O resumo de cadastro mensal/anualizado da tabela ainda descreve
 as regras cadastradas, não o total de ocorrências previstas.
+
+## Ações de servidor — 05/10/2026
+
+`src/features/provisions/actions.ts` conecta planejamento, realização e
+cancelamento ao DAL. Exige sessão, organização e `finance.write` antes de consumir
+o limite `common_mutation`; valida payload estrito e mantém autorização/validação
+também no DAL. Revalida o layout financeiro somente após commit. Erros inesperados
+não expõem detalhes internos e reenvios exibem o estado retornado do ciclo.
+
+Doze testes de fronteira verificam os três endpoints: sessão ausente, permissão
+somente leitura, organização ausente, limite excedido sem write, adulteração de
+campos/IDs, erro interno sem vazamento e atualização após sucesso. Typecheck e
+lint passaram; 424 testes unitários passaram. Os 206 testes de banco da etapa
+anterior permanecem como evidência do DAL. Build de produção aprovado nesta etapa.
+Os testes de banco da etapa
+anterior cobrem o DAL inalterado, não foram repetidos para este ajuste de ações.
+A conexão do formulário e o E2E completo ainda estão pendentes; não integrar
+esta branch como funcionalidade pronta.
