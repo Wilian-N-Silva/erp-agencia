@@ -361,7 +361,7 @@ describe("finance status rules", () => {
     expect(csv).toContain("Tipo;Descricao;Contraparte;Categoria");
     expect(csv).toContain('"Fee; mensal";"Acme ""BR"""');
     expect(csv).toContain("05/2026;12/05/2026;12/05/2026;Liquidado;");
-    expect(csv).toContain("Provisao;Folha;;folha;;Dia 30;;active;");
+    expect(csv).toContain("Provisao prevista;Folha;;folha;05/2026;Dia 30;;active;");
   });
 
   it("escapes CSV cells with separators, quotes, or line breaks", () => {

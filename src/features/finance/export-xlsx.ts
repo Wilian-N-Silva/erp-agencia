@@ -7,6 +7,7 @@ import {
   formatCompetence,
   formatDate,
   formatMoney,
+  provisionExpectedAmount,
 } from "./rules";
 
 const headers = [
@@ -63,15 +64,15 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
 
   for (const provision of dashboard.provisions) {
     sheet.addRow([
-      "Provisao",
+      "Provisao prevista",
       provision.name,
       "",
       provision.category,
-      "",
+      formatCompetence(dashboard.competence),
       provision.expectedDay ? `Dia ${provision.expectedDay}` : "",
       "",
       provision.status,
-      formatMoney(provision.estimatedMonthlyAmount),
+      formatMoney(provisionExpectedAmount(provision, dashboard.competence)),
       provision.recurring ? "Sim" : "Nao",
     ]);
   }

@@ -33,7 +33,8 @@ Não foram aplicadas na base de uso local. Não há segredo nos arquivos version
 
 1. Concluir FIN-007: ações autenticadas com rate limit, UI, recorrência/próxima
    ocorrência e leitura de previsto versus realizado sem dupla contagem no
-   dashboard/exportações. O DAL novo ainda não é chamado por nenhuma tela.
+   dashboard/exportações. O planejamento e a realização ainda não possuem tela.
+   O dashboard já consulta os ciclos para calcular previsão sem dupla contagem.
 2. Migrations 0048/0049 já cobertas em banco vazio e upgrade desde 0047, com
    preservação das provisões e AP legadas, sem inventar ciclos ou obrigações,
    e conferência da policy RLS final. Revalidar se o schema mudar novamente.
@@ -64,3 +65,31 @@ local, fora desta branch, conforme escopo anterior do usuário.
 Atualização de publicação: typecheck, lint, 408 testes unitários e **206 testes
 de banco** passaram após acrescentar a cobertura de instalação/upgrade.
 Comando de banco: `npm run test:db -- --fileParallelism=false`.
+
+## Atualização de leitura financeira — 05/10/2026
+
+O DAL financeiro agora carrega os ciclos com escopo de organização. A estimativa
+explícita substitui a recorrência da mesma competência; realização/cancelamento
+retiram aquela previsão. Meses seguintes mantêm a recorrência ativa. Uma ocorrência
+explicitamente planejada permanece até ser realizada/cancelada, mesmo se a regra
+de recorrência for desativada; desativar o cadastro interrompe previsões implícitas.
+
+O fluxo de caixa considera o vencimento real do ciclo, inclusive quando estiver
+fora da competência, e conta cada ocorrência do horizonte uma vez. Datas mensais
+são ajustadas ao último dia do mês. AP realizada entra pelo saldo ainda em aberto.
+CSV/XLSX usam a previsão da competência e a identificam na coluna correspondente,
+sem exportar o valor padrão como previsão de uma ocorrência já realizada.
+
+Testes: 412 unitários e 206 de banco aprovados; typecheck e lint aprovados.
+`npm run build` aprovado no checkout principal. E2E não executado nesta etapa;
+isso não conclui a homologação da funcionalidade.
+Integração confere o dashboard antes/depois da realização e o CSV; testes puros
+cobrem cancelamento, dois meses no horizonte, fevereiro, provisão não recorrente
+e vencimento deslocado. Nenhuma nova migration/backfill neste ajuste.
+As migrations 0048/0049 continuam obrigatórias antes deste runtime; ainda não
+foram aplicadas na base de uso local. Esta branch continua fora da release.
+
+Pendente: formulário/ações com rate limit, gestão de ciclos, apresentação dos
+estados e valores por ocorrência na tabela de provisões, confirmação visual e
+E2E completo. O resumo de cadastro mensal/anualizado da tabela ainda descreve
+as regras cadastradas, não o total de ocorrências previstas.

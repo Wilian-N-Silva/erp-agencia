@@ -6,6 +6,7 @@ import {
   financialEntries,
   financialExpenses,
   provisions,
+  provisionCycles,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
@@ -23,6 +24,7 @@ import {
   type FinanceFilters,
   type FinancialEntryStatus,
   type FinancialExpenseStatus,
+  type ProvisionCycleRecord,
 } from "./rules";
 
 export type FinanceEntryListItem = {
@@ -72,6 +74,7 @@ export type ProvisionListItem = {
   expectedDay: number | null;
   recurring: boolean;
   status: string;
+  cycles?: ProvisionCycleRecord[];
 };
 
 export type FinanceDashboard = {
@@ -92,7 +95,7 @@ async function getFinanceDashboard(
   const asOf = options.asOf ?? new Date();
   const filters = options.filters ?? {};
 
-  const [entryRows, expenseRows, provisionRows] = await Promise.all([
+  const [entryRows, expenseRows, provisionRows, cycleRows] = await Promise.all([
     db
       .select({
         id: financialEntries.id,
@@ -159,10 +162,17 @@ async function getFinanceDashboard(
       .from(provisions)
       .where(and(eq(provisions.organizationId, organizationId), isNull(provisions.deletedAt)))
       .orderBy(asc(provisions.category), asc(provisions.name)),
+    db.select().from(provisionCycles).where(eq(provisionCycles.organizationId, organizationId)),
   ]);
   const filteredEntryRows = applyFinanceEntryFilters(entryRows, filters, asOf);
   const filteredExpenseRows = applyFinanceExpenseFilters(expenseRows, filters, asOf);
-  const filteredProvisionRows = applyProvisionFilters(provisionRows, filters);
+  const cyclesByProvision = new Map<string, ProvisionCycleRecord[]>();
+  for (const cycle of cycleRows) {
+    const rows = cyclesByProvision.get(cycle.provisionId) ?? [];
+    rows.push({ competence: cycle.competence, dueDate: cycle.dueDate, estimatedAmount: cycle.estimatedAmount, status: cycle.status });
+    cyclesByProvision.set(cycle.provisionId, rows);
+  }
+  const filteredProvisionRows = applyProvisionFilters(provisionRows.map(row => ({ ...row, cycles: cyclesByProvision.get(row.id) ?? [] })), filters);
 
   const computed = computeFinanceDashboard({
     entries: filteredEntryRows,

@@ -13,6 +13,8 @@ vi.mock("@/lib/audit", async original => {
   } };
 });
 import { cancelProvisionCycle, listProvisionCycles, planProvisionCycle, realizeProvisionCycle } from "@/features/provisions/dal";
+import { getFinanceDashboard } from "@/features/finance/dal";
+import { buildFinanceCsv } from "@/features/finance/export";
 const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOnIdle: true });
 const org = randomUUID(), other = randomUUID(), user = randomUUID(), supplier = randomUUID(), foreignSupplier = randomUUID();
 const context: AccessContext = { organizationId: org, userId: user, employeeId: null, roles: [], permissions: ["finance.write", "finance.read"] };
@@ -39,6 +41,7 @@ it("serializes repeated planning and realization, preserving estimate and creati
   const provisionId = await provision();
   const cycles = await Promise.all([planProvisionCycle(context, plan(provisionId)), planProvisionCycle(context, plan(provisionId))]);
   expect(cycles[0].id).toBe(cycles[1].id);
+  expect((await getFinanceDashboard(context, { asOf: new Date("2026-10-01T12:00:00Z") })).totals).toMatchObject({ provisionsExpected: "100.00", expensesExpected: "0.00" });
   const realized = await Promise.all([realizeProvisionCycle(context, realize(cycles[0].id)), realizeProvisionCycle(context, realize(cycles[0].id))]);
   expect(realized[0].financialExpenseId).toBe(realized[1].financialExpenseId);
   expect(realized[0]).toMatchObject({ status: "realized", estimatedAmount: "100.00" });
@@ -46,6 +49,12 @@ it("serializes repeated planning and realization, preserving estimate and creati
   expect((await admin.execute(sql`select count(*)::int n from financial_expenses where organization_id=${org}`)).rows[0].n).toBe(1);
   expect((await admin.execute(sql`select count(*)::int n from financial_transactions where organization_id=${org}`)).rows[0].n).toBe(0);
   expect((await planProvisionCycle(context, plan(provisionId))).status).toBe("realized");
+  const dashboard = await getFinanceDashboard(context, { asOf: new Date("2026-10-01T12:00:00Z") });
+  expect(dashboard.totals).toMatchObject({ provisionsExpected: "0.00", expensesExpected: "123.45" });
+  const csv = buildFinanceCsv(dashboard);
+  const provisionRow = csv.split("\r\n").find(row => row.startsWith("Provisao prevista;"));
+  expect(provisionRow).toContain("10/2026");
+  expect(provisionRow).toMatch(/0,00;Sim$/);
   await expect(cancelProvisionCycle(context, { id: cycles[0].id, reason: "Cancelamento tardio" })).rejects.toThrow("conta a pagar");
 });
 it("cancels a single occurrence without affecting the next cycle or deleting history", async () => {

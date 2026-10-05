@@ -5,6 +5,7 @@ import {
   formatCompetence,
   formatDate,
   formatMoney,
+  provisionExpectedAmount,
 } from "./rules";
 
 const csvHeaders = [
@@ -48,15 +49,15 @@ export function buildFinanceCsv(dashboard: FinanceDashboard) {
       expense.recurring ? "Sim" : "Nao",
     ]),
     ...dashboard.provisions.map((provision) => [
-      "Provisao",
+      "Provisao prevista",
       provision.name,
       "",
       provision.category,
-      "",
+      formatCompetence(dashboard.competence),
       provision.expectedDay ? `Dia ${provision.expectedDay}` : "",
       "",
       provision.status,
-      formatMoney(provision.estimatedMonthlyAmount),
+      formatMoney(provisionExpectedAmount(provision, dashboard.competence)),
       provision.recurring ? "Sim" : "Nao",
     ]),
   ];

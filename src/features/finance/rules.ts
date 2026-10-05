@@ -44,7 +44,34 @@ export type ProvisionRecord = {
   expectedDay?: number | null;
   recurring: boolean;
   status: string;
+  cycles?: readonly ProvisionCycleRecord[];
 };
+
+export type ProvisionCycleRecord = {
+  competence: string;
+  estimatedAmount: string;
+  dueDate: string;
+  status: string;
+};
+
+export function provisionExpectedAmount(provision: ProvisionRecord, competence: string) {
+  const cycle = provision.cycles?.find(item => item.competence === competence);
+  if (cycle) return cycle.status === "planned" ? cycle.estimatedAmount : "0.00";
+  return provision.recurring && provision.status === "active" ? provision.estimatedMonthlyAmount : "0.00";
+}
+
+function provisionForecastCents(provision: ProvisionRecord, start: string, end: string) {
+  // Explicit dates can fall outside the cycle's competence. Count those once by due date.
+  let total = (provision.cycles ?? []).filter(cycle => cycle.status === "planned" && cycle.dueDate >= start && cycle.dueDate <= end)
+    .reduce((sum, cycle) => sum + moneyToCents(cycle.estimatedAmount), 0);
+  if (!provision.recurring || provision.status !== "active" || !provision.expectedDay) return total;
+  for (let month = start.slice(0, 7); month <= end.slice(0, 7); month = getNextMonthKey(month)) {
+    if (provision.cycles?.some(cycle => cycle.competence === month)) continue;
+    const due = buildClampedDateKey(month, provision.expectedDay);
+    if (due >= start && due <= end) total += moneyToCents(provision.estimatedMonthlyAmount);
+  }
+  return total;
+}
 
 export type FinanceDashboardTotals = {
   incomeExpected: string;
@@ -457,9 +484,6 @@ export function computeFinanceDashboard(input: {
 
   const entriesInCompetence = input.entries.filter((entry) => entry.competence === competence);
   const expensesInCompetence = input.expenses.filter((expense) => expense.competence === competence);
-  const activeProvisions = input.provisions.filter(
-    (provision) => provision.recurring && provision.status === "active",
-  );
 
   const incomeExpected = sumMoney(
     entriesInCompetence
@@ -492,7 +516,7 @@ export function computeFinanceDashboard(input: {
       .map((expense) => expense.amount),
   );
   const provisionsExpected = sumMoney(
-    activeProvisions.map((provision) => provision.estimatedMonthlyAmount),
+    input.provisions.map((provision) => provisionExpectedAmount(provision, competence)),
   );
   const forecastIncomeCents = input.entries
     .filter((entry) => {
@@ -538,14 +562,9 @@ export function computeFinanceDashboard(input: {
         ),
       0,
     );
-  const forecastProvisionCents = activeProvisions
-    .filter((provision) =>
-      isProvisionDueWithinRange(provision.expectedDay, asOfKey, forecastEndKey),
-    )
-    .reduce(
-      (total, provision) => total + moneyToCents(provision.estimatedMonthlyAmount),
-      0,
-    );
+  const forecastProvisionCents = input.provisions.reduce(
+    (total, provision) => total + provisionForecastCents(provision, asOfKey, forecastEndKey), 0,
+  );
 
   return {
     competence,
@@ -565,24 +584,6 @@ export function computeFinanceDashboard(input: {
       ),
     },
   };
-}
-
-function isProvisionDueWithinRange(
-  expectedDay: number | null | undefined,
-  startKey: string,
-  endKey: string,
-) {
-  if (!expectedDay) {
-    return false;
-  }
-
-  const currentDueDate = buildClampedDateKey(startKey.slice(0, 7), expectedDay);
-  const nextDueDate = buildClampedDateKey(getNextMonthKey(startKey), expectedDay);
-
-  return (
-    (currentDueDate >= startKey && currentDueDate <= endKey) ||
-    (nextDueDate >= startKey && nextDueDate <= endKey)
-  );
 }
 
 function buildClampedDateKey(monthKey: string, expectedDay: number) {
