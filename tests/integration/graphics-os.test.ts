@@ -8,7 +8,9 @@ import { uploadFinalArtwork, listFinalArtwork, getFinalArtworkDownload } from "@
 import { findDuplicateOsJobs, getGraphicOsDownload, getGraphicOsVersions } from "@/features/graphics/os-dal";
 import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/features/graphics/client-decision";
 import { advanceGraphicProduction, getGraphicProduction } from "@/features/graphics/production";
-import { contractGraphicSupplier } from "@/features/graphics/commitment";
+import { contractGraphicSupplier, getGraphicCommitments } from "@/features/graphics/commitment";
+import { correctGraphicPayable } from "@/features/graphics/payable-correction";
+import { reverseFinancialTransaction } from "@/features/finance-transactions/reversal";
 import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
 import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
 import { getGraphicDashboard } from "@/features/graphics/dashboard";
@@ -59,6 +61,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await admin.transaction(async tx => {
+    await tx.execute(sql`alter table financial_allocations disable trigger financial_allocations_immutable_guard`);
+    await tx.execute(sql`alter table financial_transaction_reversals disable trigger financial_reversals_immutable`);
     await tx.execute(sql`alter table graphic_os_versions disable trigger graphic_os_versions_immutable`);
     await tx.execute(sql`alter table graphic_client_decisions disable trigger graphic_client_decisions_immutable`);
     await tx.execute(sql`alter table graphic_production_events disable trigger graphic_production_events_immutable`);
@@ -66,7 +70,7 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_sales disable trigger graphic_sales_immutable`);
     await tx.execute(sql`alter table graphic_sale_installments disable trigger graphic_sale_installments_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "work_items", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "documents", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "work_items", "financial_transaction_reversals", "financial_allocations", "financial_transactions", "financial_accounts", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "documents", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
@@ -77,6 +81,8 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_supplier_commitments enable trigger graphic_supplier_commitments_immutable`);
     await tx.execute(sql`alter table graphic_sales enable trigger graphic_sales_immutable`);
     await tx.execute(sql`alter table graphic_sale_installments enable trigger graphic_sale_installments_immutable`);
+    await tx.execute(sql`alter table financial_allocations enable trigger financial_allocations_immutable_guard`);
+    await tx.execute(sql`alter table financial_transaction_reversals enable trigger financial_reversals_immutable`);
   });
   await admin.$client.end();
   await getDb().$client.end();
@@ -420,4 +426,77 @@ it("protects job client after OS/sale and prevents archiving linked financial hi
   await expect(withTenantDb(contexts[0], tx => tx.execute(sql`update graphic_jobs set client_id=${client} where id=${jobs[2]}`))).rejects.toMatchObject({ cause: { code: "23514", constraint: "graphic_job_origin_identity_guard" } });
   await expect(withTenantDb(contexts[0], tx => tx.execute(sql`update graphic_jobs set deleted_at=now() where id=${jobs[2]}`))).rejects.toMatchObject({ cause: { code: "23514" } });
   expect((await withTenantDb(contexts[1], tx => tx.execute(sql`update graphic_jobs set client_id=${client} where id=${jobs[2]} returning id`))).rows).toHaveLength(0);
+});
+
+const financialReviewer: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "finance.read", "finance.write", "finance.reverse", "finance.settle"] };
+it("corrects a graphic payable and its summary without rewriting immutable commitment/quote or creating cash", async () => {
+  const rollback = new Error("Rollback payable correction scenario");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    const [before] = await getGraphicCommitments(financialReviewer, jobs[2]);
+    const quote = (await tx.execute(sql`select * from graphic_supplier_quotes where id=${before.commitment.quoteId}`)).rows[0];
+    const counts = (await tx.execute(sql`select (select count(*) from financial_expenses where organization_id=${orgs[0]}) as ap,(select count(*) from financial_transactions where organization_id=${orgs[0]}) as cash`)).rows[0];
+    const request = { jobId: jobs[2], commitmentId: before.commitment.id, revision: before.revision, amount: "119,99", dueDate: "2026-11-15", competence: "2026-10", reason: "Fatura conferida com o fornecedor" };
+    await correctGraphicPayable(financialReviewer, request); await correctGraphicPayable(financialReviewer, request);
+    const [after] = await getGraphicCommitments(financialReviewer, jobs[2]);
+    expect(after).toMatchObject({ amount: "119.99", dueDate: request.dueDate, competence: request.competence, commitment: before.commitment, corrections: [expect.objectContaining({ beforeAmount: "100.00", afterAmount: "119.99", reason: request.reason })] });
+    expect((await tx.execute(sql`select * from graphic_supplier_quotes where id=${before.commitment.quoteId}`)).rows[0]).toEqual(quote);
+    expect((await tx.execute(sql`select (select count(*) from financial_expenses where organization_id=${orgs[0]}) as ap,(select count(*) from financial_transactions where organization_id=${orgs[0]}) as cash`)).rows[0]).toEqual(counts);
+    expect(await getGraphicFinanceSummary(financialReviewer, jobs[2])).toMatchObject({ payableTotal: "119.99", payableOpen: "119.99" });
+    await expect(correctGraphicPayable(financialReviewer, { ...request, amount: "130" })).rejects.toThrow(/alterada/);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+it("rejects tenant, wrong job, permissions, tampered IDs and canceled/settled AP; audit failure rolls the edit back", async () => {
+  const [before] = await getGraphicCommitments(financialReviewer, jobs[2]);
+  const request = { jobId: jobs[2], commitmentId: before.commitment.id, revision: before.revision, amount: "150", dueDate: "2026-10-20", competence: "2026-09", reason: "Correção de fatura" };
+  const denied: AccessContext[] = [contexts[0], { ...financialReviewer, organizationId: orgs[1], userId: userIds[1] }, { ...financialReviewer, permissions: ["finance.write"] }];
+  for (const context of denied) await expect(correctGraphicPayable(context, request)).rejects.toThrow();
+  for (const extra of [{ jobId: jobs[3] }, { expenseId: randomUUID() }, { supplierId: randomUUID() }, { reason: "ok" }, { amount: "0" }]) await expect(correctGraphicPayable(financialReviewer, { ...request, ...extra })).rejects.toThrow();
+  audit.fail = true;
+  try { await expect(correctGraphicPayable(financialReviewer, request)).rejects.toThrow("Simulated audit failure"); } finally { audit.fail = false; }
+  expect((await getGraphicCommitments(financialReviewer, jobs[2]))[0]).toMatchObject({ amount: before.amount, revision: before.revision, corrections: [] });
+  const rollback = new Error("Rollback settlement fixture");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    await tx.execute(sql`update financial_expenses set status='cancelled' where id=${before.commitment.expenseId}`);
+    await expect(correctGraphicPayable(financialReviewer, request)).rejects.toThrow(/cancelada/);
+    await tx.execute(sql`update financial_expenses set status='planned' where id=${before.commitment.expenseId}`);
+    const account = randomUUID(), movement = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${orgs[0]},'Correction QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${orgs[0]},${account},'out',10,now(),${userIds[0]})`);
+    await tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_expense_id,amount,created_by_user_id) values (${orgs[0]},${movement},${before.commitment.expenseId},10,${userIds[0]})`);
+    await expect(correctGraphicPayable(financialReviewer, request)).rejects.toThrow(/Estorne/);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+it("reads a fresh settlement after waiting for an AP lock held by an in-flight reconciliation", async () => {
+  const [before] = await getGraphicCommitments(financialReviewer, jobs[2]);
+  const account = randomUUID(), movement = randomUUID(), tag = `graphic_correction_${randomUUID()}`;
+  await admin.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${orgs[0]},'Correction race QA','bank')`);
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${orgs[0]},${account},'out',10,now(),${userIds[0]})`);
+  let unlock!: () => void, ready!: () => void;
+  const released = new Promise<void>(resolve => { unlock = resolve; });
+  const locked = new Promise<void>(resolve => { ready = resolve; });
+  const reconciliation = withTenantDb(financialReviewer, async () => {
+    await createFinancialAllocations(financialReviewer, { transactionId: movement, allocations: [{ targetType: "payable", targetId: before.commitment.expenseId, amount: "10" }] });
+    ready(); await released;
+  });
+  await locked;
+  const correction = Promise.allSettled([withTenantDb(financialReviewer, async tx => {
+    await tx.execute(sql`select set_config('application_name',${tag},true)`);
+    return correctGraphicPayable(financialReviewer, { jobId: jobs[2], commitmentId: before.commitment.id, revision: before.revision, amount: "150", dueDate: before.dueDate, competence: before.competence, reason: "Correção concorrente com pagamento" });
+  })]);
+  let waiting = false;
+  try {
+    for (let n=0;n<100;n++) {
+      // The runtime role can inspect its own sessions; migrator is not a pg_monitor role.
+      waiting = (await getDb().execute(sql`select exists(select 1 from pg_stat_activity where application_name=${tag} and wait_event_type='Lock') as waiting`)).rows[0].waiting as boolean;
+      if (waiting) break; await new Promise(resolve => setTimeout(resolve,20));
+    }
+  } finally { unlock(); }
+  await reconciliation;
+  const result = (await correction)[0];
+  expect(waiting).toBe(true); expect(result.status).toBe("rejected");
+  if (result.status === "rejected") expect(result.reason.message).toMatch(/Estorne/);
+  expect((await getGraphicCommitments(financialReviewer, jobs[2]))[0].amount).toBe(before.amount);
+  await reverseFinancialTransaction(financialReviewer, { transactionId: movement, reason: "Estorno de fixture de concorrência" });
 });

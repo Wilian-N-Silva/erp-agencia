@@ -52,6 +52,7 @@ import { FinalArtworkForm } from "../final-artwork-form";
 import { listFinalArtwork } from "@/features/graphics/final-artwork";
 import { getUploadMaxBytes } from "@/features/documents/rules";
 import { CommitmentForm } from "../commitment-form";
+import { GraphicPayableCorrectionForm } from "@/features/graphics/payable-correction-form";
 import { GraphicSaleForm } from "../sale-form";
 import { getGraphicSale } from "@/features/graphics/sale";
 import {
@@ -669,6 +670,9 @@ export default async function GraphicJobDetailPage({
               <p>
                 Conta a pagar criada. Pagamento acompanhado pelo Financeiro.
               </p>
+              <Link className="underline" href={`/app/financeiro/saidas?competence=${encodeURIComponent(row.competence)}&q=${encodeURIComponent(`Gráfica ${job.internalCode}`)}`}>Consultar conta a pagar</Link>
+              {context.permissions.includes("finance.write") && context.permissions.includes("finance.reverse") ? <details className="mt-3"><summary>Corrigir conta a pagar da contratação</summary><GraphicPayableCorrectionForm jobId={id} commitmentId={row.commitment.id} revision={row.revision} amount={row.amount} dueDate={row.dueDate} competence={row.competence} /></details> : null}
+              {row.corrections.length ? <details className="mt-3"><summary>Histórico de correções da conta a pagar</summary><ul>{row.corrections.map(item => <li key={item.id} className="mt-2"><p>De {formatMoney(item.beforeAmount)} para {formatMoney(item.afterAmount)}</p><p>Vencimento: {item.beforeDueDate} para {item.afterDueDate} · Competência: {item.beforeCompetence} para {item.afterCompetence}</p><p>{formatDateTime(new Date(item.occurredAt))} · Responsável: {item.actorName ?? "Usuário indisponível"}</p><p>Motivo: {item.reason}</p></li>)}</ul></details> : null}
             </div>
           ))}
         </Card>

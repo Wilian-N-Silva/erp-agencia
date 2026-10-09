@@ -156,3 +156,19 @@ possível registrar uma substituta na mesma competência: só uma cobrança ativ
 a substituta, com estados distintos. Assinaturas com qualquer cobrança, mesmo
 cancelada, não podem ser removidas como cadastro incorreto; cancele o contrato
 para preservar sua consulta. Cancelar o contrato não cancela automaticamente APs.
+
+### Correção da AP de uma contratação gráfica
+
+No trabalho, abra **Produção e entrega → Corrigir conta a pagar da contratação**.
+Gestão/Financeiro com finance.write e finance.reverse pode corrigir valor,
+vencimento e competência da mesma AP, com motivo. Confira a fatura/evidência
+do fornecedor; a alteração não reescreve a cotação, a contratação, o fornecedor
+ou os documentos, nem registra pagamento. A cotação permanece como referência
+comercial histórica; o custo financeiro atual é o valor da AP corrigida.
+
+O histórico mostra valores, vencimentos, competências, responsável e motivo.
+**Consultar conta a pagar** abre a competência correspondente no Financeiro.
+Resumo e dashboard da Gráfica usam essa mesma obrigação. Uma AP cancelada ou
+com liquidação/reserva histórica não pode ser corrigida por esse fluxo: estorne
+o pagamento indevido ou revise a reserva antes. Se outra pessoa corrigiu,
+atualize a página. O encerramento operacional não impede conferir a obrigação.

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
 import { db, withTenantDb } from "@/lib/db";
 import { costCenters, financialCategories, financialExpenses, graphicClientDecisions, graphicJobs, graphicOsVersions, graphicSupplierCommitments, graphicSupplierQuotes, suppliers } from "@/lib/db/schema";
@@ -7,6 +7,7 @@ import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { GraphicFlowError } from "./client-decision-rules";
 import { graphicCommitmentSchema } from "./commitment-rules";
 import { canReadGraphicJobs } from "./rules";
+import { graphicPayableRevision } from "./payable-correction";
 
 export async function contractGraphicSupplier(context: AccessContext, raw: unknown) {
   assertCan("graphics.production_write", context);
@@ -41,9 +42,14 @@ export async function contractGraphicSupplier(context: AccessContext, raw: unkno
 
 export async function getGraphicCommitments(context: AccessContext, jobId: string) {
   if (!context.organizationId || !canReadGraphicJobs(context)) throw new AccessDeniedError();
-  return withTenantDb(context, () => db.select({ commitment: graphicSupplierCommitments, supplier: financialExpenses.supplier, amount: financialExpenses.amount, dueDate: financialExpenses.dueDate })
+  return withTenantDb(context, async () => {
+    const rows = await db.select({ commitment: graphicSupplierCommitments, supplier: financialExpenses.supplier, amount: financialExpenses.amount, dueDate: financialExpenses.dueDate, competence: financialExpenses.competence,
+      corrections: sql<Array<{ id: string; occurredAt: string; beforeAmount: string; afterAmount: string; beforeDueDate: string; afterDueDate: string; beforeCompetence: string; afterCompetence: string; actorName: string | null; reason: string }>>`coalesce((select jsonb_agg(jsonb_build_object('id',a.id,'occurredAt',a.created_at,'beforeAmount',a.before->>'amount','afterAmount',a.after->>'amount','beforeDueDate',a.before->>'dueDate','afterDueDate',a.after->>'dueDate','beforeCompetence',a.before->>'competence','afterCompetence',a.after->>'competence','reason',a.metadata->>'reason','actorName',(select u.name from "user" u where u.id=a.actor_user_id and u.organization_id=a.organization_id)) order by a.created_at desc,a.id desc) from audit_logs a where a.organization_id=${context.organizationId} and a.entity_type='financial_expense' and a.entity_id=financial_expenses.id::text and a.metadata->>'origin'='graphic_commitment_correction' and a.metadata->>'commitmentId'=graphic_supplier_commitments.id::text),'[]'::jsonb)`,
+    })
     .from(graphicSupplierCommitments).innerJoin(financialExpenses, and(eq(financialExpenses.id, graphicSupplierCommitments.expenseId), eq(financialExpenses.organizationId, graphicSupplierCommitments.organizationId)))
-    .where(and(eq(graphicSupplierCommitments.organizationId, context.organizationId!), eq(graphicSupplierCommitments.jobId, jobId))).orderBy(desc(graphicSupplierCommitments.createdAt)));
+    .where(and(eq(graphicSupplierCommitments.organizationId, context.organizationId!), eq(graphicSupplierCommitments.jobId, jobId))).orderBy(desc(graphicSupplierCommitments.createdAt));
+    return rows.map(row => ({ ...row, revision: graphicPayableRevision({ id: row.commitment.expenseId, amount: row.amount, dueDate: row.dueDate, competence: row.competence }) }));
+  });
 }
 
 export async function getGraphicCommitmentOptions(context: AccessContext) {

@@ -26,13 +26,14 @@ export async function cancelSaasCharge(context: AccessContext, raw: unknown) {
     if (!subscription) throw new AccessDeniedError();
     const [before] = await tx.select().from(saasSubscriptionCharges).where(and(eq(saasSubscriptionCharges.id, input.chargeId), eq(saasSubscriptionCharges.subscriptionId, subscription.id), eq(saasSubscriptionCharges.organizationId, org))).for("update").limit(1);
     if (!before || !before.financialExpenseId) throw new AccessDeniedError();
-    const [payable] = await tx.select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") }).from(financialExpenses)
+    const [payable] = await tx.select(getTableColumns(financialExpenses)).from(financialExpenses)
       .where(and(eq(financialExpenses.id, before.financialExpenseId), eq(financialExpenses.organizationId, org), isNull(financialExpenses.deletedAt))).for("update").limit(1);
     if (!payable) throw new AccessDeniedError();
     if (before.cancelledAt && payable.status === "cancelled") return before;
     if (before.cancelledAt || payable.status === "cancelled") throw new SaasChargeCancellationError("O estado da cobrança e da conta a pagar precisa ser conferido antes de continuar.");
     if (input.revision !== saasChargeRevision(before)) throw new SaasChargeCancellationError("Esta cobrança foi alterada desde sua consulta. Atualize a página antes de cancelar.");
-    if (moneyToCents(payable.ledgerSettled) > 0) throw new SaasChargeCancellationError("Estorne a liquidação ou revise a reserva histórica antes de cancelar esta cobrança.");
+    const [settlement] = await tx.select({ amount: titleSettledAmount("payable") }).from(financialExpenses).where(and(eq(financialExpenses.id, payable.id), eq(financialExpenses.organizationId, org))).limit(1);
+    if (!settlement || moneyToCents(settlement.amount) > 0) throw new SaasChargeCancellationError("Estorne a liquidação ou revise a reserva histórica antes de cancelar esta cobrança.");
     const now = new Date();
     const [after] = await tx.update(saasSubscriptionCharges).set({ cancelledAt: now, cancellationReason: input.reason, updatedAt: now })
       .where(and(eq(saasSubscriptionCharges.id, before.id), eq(saasSubscriptionCharges.organizationId, org))).returning();

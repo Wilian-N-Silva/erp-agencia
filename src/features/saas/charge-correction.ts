@@ -30,10 +30,11 @@ export async function correctSaasCharge(context: AccessContext, raw: unknown) {
     if (!before || !before.financialExpenseId) throw new AccessDeniedError();
     if (before.cancelledAt) throw new SaasChargeCorrectionError("Uma cobrança cancelada preserva seus dados. Registre uma nova cobrança, se necessário.");
     if (input.competence !== before.competence) throw new SaasChargeCorrectionError("A competência da cobrança é preservada. Confira a origem antes de corrigir.");
-    const [payable] = await tx.select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") }).from(financialExpenses)
+    const [payable] = await tx.select(getTableColumns(financialExpenses)).from(financialExpenses)
       .where(and(eq(financialExpenses.id, before.financialExpenseId), eq(financialExpenses.organizationId, org), isNull(financialExpenses.deletedAt))).for("update").limit(1);
     if (!payable) throw new AccessDeniedError();
-    if (payable.status === "cancelled" || moneyToCents(payable.ledgerSettled) > 0) throw new SaasChargeCorrectionError("Estorne a liquidação ou revise a reserva histórica antes de corrigir esta cobrança.");
+    const [settlement] = await tx.select({ amount: titleSettledAmount("payable") }).from(financialExpenses).where(and(eq(financialExpenses.id, payable.id), eq(financialExpenses.organizationId, org))).limit(1);
+    if (!settlement || payable.status === "cancelled" || moneyToCents(settlement.amount) > 0) throw new SaasChargeCorrectionError("Estorne a liquidação ou revise a reserva histórica antes de corrigir esta cobrança.");
     if (saasChargeRevision(before) === saasChargeRevision(input) && payable.amount === before.totalAmountBrl && payable.dueDate === before.dueDate && payable.competence === before.competence) return before;
     if (input.revision !== saasChargeRevision(before)) throw new SaasChargeCorrectionError("Esta cobrança foi alterada desde sua consulta. Atualize a página antes de corrigir.");
     const values = { chargedAt: input.chargedAt, dueDate: input.dueDate, originalCurrency: input.originalCurrency, originalAmount: input.originalAmount,

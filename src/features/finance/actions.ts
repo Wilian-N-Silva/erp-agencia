@@ -471,7 +471,7 @@ async function resolveClientId(clientId: string | null, organizationId: string) 
 
 async function getEntryForWrite(id: string, organizationId: string) {
   const [entry] = await db
-    .select({ ...getTableColumns(financialEntries), ledgerSettled: titleSettledAmount("receivable") })
+    .select(getTableColumns(financialEntries))
     .from(financialEntries)
     .where(
       and(
@@ -487,12 +487,16 @@ async function getEntryForWrite(id: string, organizationId: string) {
     throw new AccessDeniedError();
   }
 
-  return entry;
+  // Fresh statement after the row lock: financial events may have committed while waiting.
+  const [settlement] = await db.select({ amount: titleSettledAmount("receivable") }).from(financialEntries)
+    .where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organizationId))).limit(1);
+  if (!settlement) throw new AccessDeniedError();
+  return { ...entry, ledgerSettled: settlement.amount };
 }
 
 async function getExpenseForWrite(id: string, organizationId: string) {
   const [expense] = await db
-    .select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") })
+    .select(getTableColumns(financialExpenses))
     .from(financialExpenses)
     .where(
       and(
@@ -508,7 +512,10 @@ async function getExpenseForWrite(id: string, organizationId: string) {
     throw new AccessDeniedError();
   }
 
-  return expense;
+  const [settlement] = await db.select({ amount: titleSettledAmount("payable") }).from(financialExpenses)
+    .where(and(eq(financialExpenses.id, id), eq(financialExpenses.organizationId, organizationId))).limit(1);
+  if (!settlement) throw new AccessDeniedError();
+  return { ...expense, ledgerSettled: settlement.amount };
 }
 
 type ResolvedExpenseMasterData = {

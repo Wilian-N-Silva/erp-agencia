@@ -562,3 +562,37 @@ Próxima origem P0: Gráfica. `sale.ts`/`commitment.ts` já criam AR/AP uma vez;
 genérico recusa edição econômica desses títulos, mas falta correção pela origem.
 Implementar sem reescrever venda/contratação históricas, mantendo conciliação,
 resumo, parcelas e auditoria concordantes. Não recriar o fluxo gráfico existente.
+
+### FIN-006/GRF — correção da AP de contratação e saldo após lock
+
+Correção pela origem gráfica implementada com finance.write + finance.reverse,
+motivo, revisão esperada e rate limit persistido. Locks trabalho→contratação→AP;
+atualiza somente valor/vencimento/competência da mesma AP. Cotação e contratação
+imutáveis, fornecedor, vínculos e documentos preservados. Audit dos dois donos
+na mesma transação, reenvio idempotente e histórico consultável com campos
+selecionados por tenant/AP/contratação, sem IP/user-agent. Link abre a competência
+da AP. Resumo/dashboard já consultam o valor atual da mesma obrigação.
+
+Teste concorrente real espera uma conciliação que mantém o lock da AP e comprova
+que a correção deve recusar após o pagamento ser commitado. Uma prova negativa
+temporária, restaurada imediatamente, recolocou a leitura do saldo na consulta
+de aquisição do lock: o teste detectou correção indevida (fulfilled em vez de
+rejected; `graphic-payable-race-negative-probe.log`). Com leitura separada após
+o lock, 23 testes DB focais passaram (`graphic-payable-db-focus.log`).
+
+Mudança adjacente indispensável: Financeiro manual, SaaS e provisões tinham o
+mesmo padrão de snapshot anterior à espera pelo lock. Seus caminhos sensíveis
+agora relêem o saldo canônico em uma nova consulta depois do lock, evitando
+aceitar correção concorrente à liquidação. Não altera regras/permissões nem
+enfraquece imutabilidade. Nenhuma migration/backfill novo.
+
+Typecheck/lint e 475 unitários/80 arquivos aprovados. DB completo em execução;
+build/E2E aguardam checkpoint Git. Cobertura negativa de tenant, IDs, permissões,
+AP cancelada, parcial com cache zero, concorrência observada no PostgreSQL e
+rollback de auditoria. E2E integrado ampliado para corrigir custo 1200→1250 e
+conferir a mesma AP/histórico, resumo, dashboard e pagamentos parciais 300+950.
+
+DB completo aprovado: 254 testes/41 arquivos (`graphic-payable-db.log`), com
+regressões de Financeiro, SaaS, provisões e RLS. Typecheck/lint/unit nos logs
+`graphic-payable-typecheck.log`, `graphic-payable-lint.log` e
+`graphic-payable-unit.log`. Build e E2E ainda pendentes neste registro.

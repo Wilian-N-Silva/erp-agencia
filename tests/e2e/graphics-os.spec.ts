@@ -419,6 +419,23 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
       { exact: true },
     ),
   ).toBeVisible();
+  const supplierChargeJobUrl = page.url();
+  await page.getByText("Corrigir conta a pagar da contratação", { exact: true }).click();
+  const correction = page.locator("form").filter({ has: page.getByRole("button", { name: "Salvar correção da conta a pagar", exact: true }) });
+  await correction.getByLabel("Valor da conta a pagar", { exact: true }).fill("1250,00");
+  await correction.getByLabel("Vencimento da conta a pagar", { exact: true }).fill("2026-10-05");
+  await correction.getByLabel("Motivo da correção financeira", { exact: true }).fill("Fatura final conferida com o fornecedor");
+  await correction.getByRole("button", { name: "Salvar correção da conta a pagar", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Conta a pagar corrigida" })).toBeVisible();
+  await page.reload();
+  await page.getByText("Histórico de correções da conta a pagar", { exact: true }).click();
+  await expect(page.getByText("De R$ 1.200,00 para R$ 1.250,00", { exact: true })).toBeVisible();
+  await expect(page.getByText("Motivo: Fatura final conferida com o fornecedor", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Consultar conta a pagar", exact: true }).click();
+  const supplierPayable = page.getByRole("row").filter({ hasText: `Gráfica ${code}` });
+  await expect(supplierPayable).toHaveCount(1);
+  await expect(supplierPayable).toContainText("R$ 1.250,00");
+  await page.goto(supplierChargeJobUrl);
   await tab("Financeiro");
   await panel("Definir venda e parcelas");
   await page
@@ -595,7 +612,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     });
   await expect(financeSummary).toContainText("Recebido e conciliado");
   await expect(financeSummary.locator("dl")).toContainText("R$ 1.950,00");
-  await expect(financeSummary).toContainText("R$ 750,00");
+  await expect(financeSummary).toContainText("R$ 700,00");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
     page.getByRole("heading", {
@@ -664,7 +681,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     .locator(".fg-card")
     .filter({ has: page.getByText("Visão financeira", { exact: true }) });
   await expect(dashboardFinance).toContainText("R$ 1.950,00");
-  await expect(dashboardFinance).toContainText("R$ 750,00");
+  await expect(dashboardFinance).toContainText("R$ 700,00");
   await expect(
     page.getByRole("link", { name: "Encerrado: 1", exact: true }),
   ).toBeVisible();
@@ -681,7 +698,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     page.getByText("Nenhum trabalho encontrado", { exact: true }),
   ).toBeVisible();
   await expect(dashboardFinance).toContainText("R$ 0,00");
-  for (const [index, paymentAmount] of ["300,00", "900,00"].entries()) {
+  for (const [index, paymentAmount] of ["300,00", "950,00"].entries()) {
   await page.goto("/app/financeiro/movimentacoes");
   await page
     .getByRole("combobox", { name: /^Conta financeira/ })
@@ -733,9 +750,9 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   ).toBeVisible();
   await page.goto(jobUrl);
   await expect(financeSummary).toContainText("Pago e conciliado");
-  await expect(financeSummary.locator("dl")).toContainText(index === 0 ? "R$ 300,00" : "R$ 1.200,00");
+  await expect(financeSummary.locator("dl")).toContainText(index === 0 ? "R$ 300,00" : "R$ 1.250,00");
   }
-  await expect(financeSummary).toContainText("R$ 750,00");
+  await expect(financeSummary).toContainText("R$ 700,00");
   await page.goto(`${clientUrl}?tab=pagamentos`);
   for (const amount of ["R$ 500,00", "R$ 1.450,00"]) {
     const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: amount, exact: true }) });
@@ -749,6 +766,6 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("button", { name: "Arquivar", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "histórico financeiro vinculado" })).toBeVisible();
   await page.reload();
-  await expect(financeSummary).toContainText("R$ 1.200,00");
+  await expect(financeSummary).toContainText("R$ 1.250,00");
   await expect(financeSummary).toContainText("R$ 1.950,00");
 });

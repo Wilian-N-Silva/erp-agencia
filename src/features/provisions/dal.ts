@@ -67,10 +67,11 @@ export async function cancelProvisionCycle(context: AccessContext, raw: unknown)
     if (before.status === "realized") {
       assertCan("finance.reverse", context);
       if (!before.financialExpenseId) throw new ProvisionCycleError("Ocorrência sem vínculo financeiro confiável. Confira o histórico.");
-      const [payable] = await tx.select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") }).from(financialExpenses)
+      const [payable] = await tx.select(getTableColumns(financialExpenses)).from(financialExpenses)
         .where(and(eq(financialExpenses.id, before.financialExpenseId), eq(financialExpenses.organizationId, org), isNull(financialExpenses.deletedAt))).for("update").limit(1);
       if (!payable) throw new AccessDeniedError();
-      if (moneyToCents(payable.ledgerSettled) > 0) throw new ProvisionCycleError("Estorne as movimentações conciliadas ou revise a reserva histórica antes de cancelar esta cobrança.");
+      const [settlement] = await tx.select({ amount: titleSettledAmount("payable") }).from(financialExpenses).where(and(eq(financialExpenses.id, payable.id), eq(financialExpenses.organizationId, org))).limit(1);
+      if (!settlement || moneyToCents(settlement.amount) > 0) throw new ProvisionCycleError("Estorne as movimentações conciliadas ou revise a reserva histórica antes de cancelar esta cobrança.");
       const [afterPayable] = await tx.update(financialExpenses).set({ status: "cancelled", paidAmount: "0.00", paidDate: null, updatedAt: new Date() })
         .where(and(eq(financialExpenses.id, payable.id), eq(financialExpenses.organizationId, org))).returning();
       await writeAuditLog(context, { action: "status_change", entityType: "financial_expense", entityId: payable.id, before: payable, after: afterPayable, metadata: { provisionCycleId: before.id, reason: input.reason } });
@@ -96,10 +97,11 @@ export async function correctRealizedProvisionCycle(context: AccessContext, raw:
     const [cycle] = await tx.select().from(provisionCycles).where(and(eq(provisionCycles.id, input.id), eq(provisionCycles.organizationId, org))).for("update").limit(1);
     if (!cycle) throw new AccessDeniedError();
     if (cycle.status !== "realized" || !cycle.financialExpenseId) throw new ProvisionCycleError("Corrija somente uma ocorrência realizada com conta a pagar vinculada.");
-    const [before] = await tx.select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") }).from(financialExpenses)
+    const [before] = await tx.select(getTableColumns(financialExpenses)).from(financialExpenses)
       .where(and(eq(financialExpenses.id, cycle.financialExpenseId), eq(financialExpenses.organizationId, org), isNull(financialExpenses.deletedAt))).for("update").limit(1);
     if (!before) throw new AccessDeniedError();
-    if (before.status === "cancelled" || moneyToCents(before.ledgerSettled) > 0) throw new ProvisionCycleError("Estorne as movimentações conciliadas ou revise a reserva histórica antes de corrigir esta cobrança.");
+    const [settlement] = await tx.select({ amount: titleSettledAmount("payable") }).from(financialExpenses).where(and(eq(financialExpenses.id, before.id), eq(financialExpenses.organizationId, org))).limit(1);
+    if (!settlement || before.status === "cancelled" || moneyToCents(settlement.amount) > 0) throw new ProvisionCycleError("Estorne as movimentações conciliadas ou revise a reserva histórica antes de corrigir esta cobrança.");
     const amount = centsToMoney(moneyToCents(input.amount));
     if (amount === before.amount && input.dueDate === before.dueDate) return cycle;
     const [after] = await tx.update(financialExpenses).set({ amount, dueDate: input.dueDate, updatedAt: new Date() })
