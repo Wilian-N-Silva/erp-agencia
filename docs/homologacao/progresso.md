@@ -279,3 +279,17 @@ AR no Cliente. Typecheck/lint aprovados; E2E focal desse incremento em validaç�
 O resultado verde do checkpoint anterior não cobre automaticamente esse teste
 ampliado nem encerra o backlog V1. Prova de restart, documentos financeiros,
 perfis/referências e correções/revisão histórica ainda precisam ser concluídos.
+### Cenário integrado ampliado aprovado
+
+Testes `f8ca269`, runtime `4725051`: OS E2E ampliado aprovado, exit 0, 13,0 s
+(`graphics-integrated-e2e.log`). Cliente sem fee cadastrado pela UI, fornecedor
+e alternativa próprios, duas artes no mesmo trabalho, AP paga em R$300 + R$900,
+e AR de R$500/R$1.450 consultadas no Cliente com os mesmos valores conciliados.
+Histórico, bloqueio/retomada, entrega/encerramento e rejeições continuam cobertos.
+Nenhuma migration aplicada fora dos bancos isolados; worktrees/stash anteriores
+preservados. Branch enviada ao GitHub; sem merge main/development ou deploy.
+
+Próxima task viável: FIN-008, anexos/comprovantes em AR/AP/movimentação usando
+storage/documentos existentes, validação de dono/organização, versionamento,
+download autorizado e auditoria. A V1 não está pronta enquanto esse fluxo e
+os demais bloqueios listados na matriz não forem resolvidos e revalidados.
