@@ -43,8 +43,13 @@ gestor; a segunda é do Financeiro. Para PJ, escolha se o valor será pago diret
 ou incluído numa NF elegível. Não pague diretamente algo já incluído na NF.
 
 Pedidos incluídos acompanham a quitação da NF. Pagamento parcial fica indicado;
-nenhuma parcela é atribuída automaticamente a um item específico. Reembolso direto
-ainda usa status legado e não gera AP automaticamente; confira antes de registrar.
+nenhuma parcela é atribuída automaticamente a um item específico.
+
+Para pagamento avulso aprovado, use **Gerar conta a pagar** e informe vencimento,
+competência, categoria de despesa e centro de custo. Registre o pagamento em
+**Financeiro → Movimentações** e concilie com essa AP. Pagamentos parciais,
+quitação e estornos são refletidos no pedido. Não existe baixa direta e um pedido
+com AP avulsa não pode também integrar NF. Históricos sem vínculo exigem revisão.
 
 ## RH e lideranças
 

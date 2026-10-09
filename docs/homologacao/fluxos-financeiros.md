@@ -43,6 +43,18 @@ e cancelamento para não contradizer os dados da origem. O procedimento controla
 para desfazer esses fatos integrados ainda está no backlog V1; não se deve editar
 diretamente o banco para contornar a proteção.
 
+## Reembolso avulso
+
+Após aprovação financeira, **Gerar conta a pagar** permite escolher competência,
+vencimento, categoria de despesa e centro de custo. O valor é o aprovado no pedido.
+Se não houver categoria elegível, a interface direciona aos cadastros financeiros.
+Depois, registre a movimentação de saída e concilie essa AP. Portal e gestão
+acompanham parcial/quitação/data e reabertura após estorno. A geração repetida
+usa a mesma obrigação; o pedido com AP não pode também integrar NF.
+
+Não é criada uma AP para pedidos historicamente pagos. Esses registros permanecem
+para conferência e não são reinterpretados como dinheiro comprovado.
+
 ## Consulta de caixa
 
 Na lista de movimentações, abra **Consultar relatório de caixa** e selecione o
@@ -62,6 +74,6 @@ liquidados. Vencimento no dia da consulta ainda não é atraso.
 
 ## Pendências do roteiro completo
 
-Leitura explícita de baixas legadas, reembolso avulso sem baixa direta,
+Leitura explícita de baixas legadas das demais obrigações,
 correções das origens integradas e anexos financeiros ainda estão em execução.
 A validação humana deve aguardar o candidato final e o roteiro integrado completo.

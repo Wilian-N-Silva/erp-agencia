@@ -51,6 +51,10 @@ Não solicite de novo apenas porque está aguardando. Se for incluído numa NF,
 combine o total com o Financeiro para não cobrar o mesmo gasto duas vezes.
 A indicação de aprovado não confirma transferência bancária.
 
+No pagamento avulso, a indicação acompanha a conta a pagar e as conciliações do
+Financeiro: pode estar em aberto, parcialmente paga ou quitada. Um estorno
+reabre o saldo e atualiza essa indicação; não é necessário reenviar o pedido.
+
 ## Férias, pausas e informações pessoais
 
 Toda a equipe real é PJ. Em Férias, confira tempo de vínculo, data de referência e

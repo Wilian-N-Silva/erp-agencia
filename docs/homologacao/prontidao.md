@@ -58,3 +58,11 @@ de caixa consulta eventos e estornos por data sem somar conciliações novamente
 446 unitários, 221 DB, build e dois E2E focais aprovados. Legado explícito,
 correções das origens, reembolso avulso, documentos/perfis e E2E completo continuam
 na fila. Não há ainda candidato técnico aprovado para homologação.
+
+Em `d6b1e00..f21468d`, reembolso avulso passou a gerar AP única, mutuamente
+exclusiva à inclusão em NF. Baixa direta do servidor removida. Portal/gestão
+derivam pagamento de conciliações ativas, com reabertura após estorno; histórico
+sem vínculo preservado. 0053 expansiva aplicada somente em testes, sem backfill.
+Upgrade 0050→0053, 450 unitários, 227 DB e build verdes. E2E focal em `c9bf573`
+aprovou solicitação/aprovações/cadastro financeiro/AP/parcial/quitação/estorno.
+FIN-010 ainda exige leitura explícita do legado das demais obrigações.

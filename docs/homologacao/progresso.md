@@ -178,3 +178,26 @@ permissões, payload, rollback de auditoria, dupla origem e recusa da baixa dire
 Logs `reimbursement-*.log` e `hml-upgrade.log` em storage-local/homologacao.
 Build/E2E do novo fluxo ainda em validação. Legado das demais obrigações segue
 pendente; não considerar a candidata pronta.
+
+### Evidência final do incremento de reembolso
+
+Checkpoint runtime `f21468d`, E2E final em `c9bf573` (apenas ajuste do teste).
+Typecheck/lint e 450 unitários aprovados. Suíte serial isolada: 227 testes de
+banco/38 arquivos; repetição focal dos cinco testes de reembolso também verde
+após acrescentar a proteção de `paidAt` histórico. Upgrade 0050→0053 aprovado.
+0053 aplicada somente nos dois bancos isolados. Nenhum backfill foi realizado.
+
+Build aprovado (`build-reimbursement.log`). `portal-invoice-workflow.spec.ts`
+passou com exit 0 em 41,2 s (`reimbursement-e2e.log`): comprovante PDF no portal,
+aprovação do gestor/Financeiro, criação de categoria pela UI, geração de AP,
+conciliações de R$10 e R$15, quitação consultada no portal, estorno dos R$15 e
+retorno a pagamento parcial. Perfis RH e diretoria consultaram suas rotinas.
+O teste focal não substitui o gate E2E completo nem o aceite humano.
+
+Durante a validação foram corrigidos o nome acessível dos selects e a orientação
+quando não há categoria financeira; o teste passou a cadastrar sua categoria e
+abrir o painel de novo cadastro. Sem enfraquecer RBAC/rate limit. Obrigações
+aprovadas de colaborador arquivado continuam geráveis e pagamentos históricos
+não podem ganhar uma nova AP por engano. Manuais de gestão/portal atualizados.
+Próxima etapa: explicitar saldo legado e usar alocações/eventos nas leituras de
+AR/AP, Cliente, Gráfica e alertas; sem apagar histórico nem inventar caixa.
