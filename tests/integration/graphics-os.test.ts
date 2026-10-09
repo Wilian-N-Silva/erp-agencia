@@ -14,6 +14,7 @@ import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
 import { getGraphicDashboard } from "@/features/graphics/dashboard";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 import { suggestGraphicReconciliation, reviewGraphicReconciliation, getGraphicSuggestions } from "@/features/graphics/reconciliation";
+import { assertGraphicJobIdentityChangeAllowed } from "@/features/graphics/job-integrity";
 
 const storage = vi.hoisted(() => ({ put: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) }));
 const audit = vi.hoisted(() => ({ fail: false }));
@@ -35,6 +36,8 @@ const contexts: AccessContext[] = orgs.map((organizationId, i) => ({ organizatio
 const pdf = () => new File(["%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"], "os.pdf", { type: "application/pdf" });
 const input = (jobId: string, expectedVersion = 0) => ({ jobId, expectedVersion, externalNumber: "OS-TEST", issuedAt: "2026-09-21", presentedAmount: "1500,00", revisionReason: expectedVersion ? "Nova arte" : "" });
 let versionId: string;
+
+
 
 beforeAll(async () => {
   storage.put.mockImplementation(async ({ key }) => ({ key, provider: "local", bucket: null }));
@@ -407,4 +410,14 @@ it("rolls back a blocking stage when audit fails and rejects duplicate productio
   expect((await admin.execute(sql`select count(*)::int n from work_items where organization_id=${orgs[0]} and source_id=${jobs[0]}`)).rows).toEqual([{ n: 0 }]);
   const results = await Promise.allSettled([advanceGraphicProduction(context, payload), advanceGraphicProduction(context, payload)]);
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+});
+
+it("protects job client after OS/sale and prevents archiving linked financial history", async () => {
+  const client = randomUUID();
+  await admin.execute(sql`insert into clients (id,organization_id,name,code) values (${client},${orgs[0]},'Alternative client',${client})`);
+  await expect(withTenantDb(contexts[0], () => assertGraphicJobIdentityChangeAllowed({ jobId: jobs[2], organizationId: orgs[0], clientChanged: true }))).rejects.toThrow("cliente");
+  await expect(withTenantDb(contexts[0], () => assertGraphicJobIdentityChangeAllowed({ jobId: jobs[2], organizationId: orgs[0], archive: true }))).rejects.toThrow("histórico financeiro");
+  await expect(withTenantDb(contexts[0], tx => tx.execute(sql`update graphic_jobs set client_id=${client} where id=${jobs[2]}`))).rejects.toMatchObject({ cause: { code: "23514", constraint: "graphic_job_origin_identity_guard" } });
+  await expect(withTenantDb(contexts[0], tx => tx.execute(sql`update graphic_jobs set deleted_at=now() where id=${jobs[2]}`))).rejects.toMatchObject({ cause: { code: "23514" } });
+  expect((await withTenantDb(contexts[1], tx => tx.execute(sql`update graphic_jobs set client_id=${client} where id=${jobs[2]} returning id`))).rows).toHaveLength(0);
 });

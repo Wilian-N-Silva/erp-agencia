@@ -547,6 +547,26 @@ describe("graphic job Action security boundary", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(transactionActive).toBe(false);
   });
+
+  it("returns a visible conflict without writes when changing a client after an OS", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(writerContext());
+    mocks.selectResults.push([existingJob()], [{ id: "client" }], [{ id: "employee" }], [{ id: "project" }], [{ id: "os" }], [], []);
+    const form = validUpdateForm();
+    form.set("clientId", "10000000-0000-4000-8000-000000000002");
+    await expect(updateGraphicJobAction(form)).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(mocks.lockModes).toContain("update");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("keeps a financial job consultable when archive is requested", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue(writerContext());
+    mocks.selectResults.push([existingJob()], [], [{ id: "sale" }], []);
+    await expect(deleteGraphicJobAction(validDeleteForm())).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(mocks.lockModes).toContain("update");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
 });
 
 function writerContext() {
@@ -596,6 +616,7 @@ function existingJob() {
   return {
     id: jobId,
     organizationId,
+    clientId: "10000000-0000-4000-8000-000000000001",
     title: "Banner",
   };
 }

@@ -48,6 +48,7 @@ import { transitionPendingGraphicSupplierQuote } from "./quote-decision";
 import { lockGraphicJobForQuoteSubmission } from "./quote-submission";
 import type { ServerActionResult } from "@/lib/server-action-result";
 import { registerGraphicOs } from "./os-registration";
+import { assertGraphicJobIdentityChangeAllowed, GraphicJobIntegrityError } from "./job-integrity";
 
 async function createGraphicJobEntryPoint(formData: FormData) {
   const destination = await runWithCurrentTenantDb(() => createGraphicJob(formData));
@@ -84,6 +85,7 @@ async function updateGraphicJob(formData: FormData) {
   const before = await getOwnedJob(input.id, organizationId);
   const { id, ...values } = input;
   await validateOwnedReferences(values, organizationId);
+  await assertGraphicJobIdentityChangeAllowed({ jobId: id, organizationId, clientChanged: values.clientId !== before.clientId });
 
   const [after] = await db
     .update(graphicJobs)
@@ -118,6 +120,7 @@ async function deleteGraphicJob(formData: FormData) {
   const input = graphicJobDeleteSchema.parse(formDataToObject(formData));
   const before = await getOwnedJob(input.id, organizationId);
   const now = new Date();
+  await assertGraphicJobIdentityChangeAllowed({ jobId: input.id, organizationId, archive: true });
   const [after] = await db
     .update(graphicJobs)
     .set({ deletedAt: now, updatedAt: now })
@@ -155,6 +158,7 @@ async function getOwnedJob(id: string, organizationId: string) {
     .select()
     .from(graphicJobs)
     .where(and(eq(graphicJobs.id, id), eq(graphicJobs.organizationId, organizationId), isNull(graphicJobs.deletedAt)))
+    .for("update")
     .limit(1);
   if (!job) throw new AccessDeniedError();
   return job;
@@ -632,7 +636,7 @@ function refresh(id: string) {
 
 export const createGraphicJobAction = withGraphicJobConflictResult(createGraphicJobEntryPoint);
 export const updateGraphicJobAction = withGraphicJobConflictResult(updateGraphicJobEntryPoint);
-export const deleteGraphicJobAction = withRateLimitActionResult(deleteGraphicJobEntryPoint);
+export const deleteGraphicJobAction = withGraphicJobConflictResult(deleteGraphicJobEntryPoint);
 export const createGraphicSupplierQuoteAction = withRateLimitActionResult(createGraphicSupplierQuoteEntryPoint);
 export const updateGraphicSupplierQuoteAction = withRateLimitActionResult(updateGraphicSupplierQuoteEntryPoint);
 export const cancelGraphicSupplierQuoteAction = withRateLimitActionResult(cancelGraphicSupplierQuoteEntryPoint);
@@ -644,10 +648,14 @@ function withGraphicJobConflictResult<T>(operation: (formData: FormData) => Prom
   return async (formData: FormData): Promise<ServerActionResult<T>> => {
     try { return await limited(formData); }
     catch (error) {
+      if (error instanceof GraphicJobIntegrityError) return { ok: false, code: "CONFLICT", message: error.message };
       // Match only the known organization/code constraint, after transaction rollback.
       let cause: unknown = error;
       for (let depth = 0; depth < 4 && cause && typeof cause === "object"; depth++) {
         const detail = cause as { code?: string; constraint?: string; cause?: unknown };
+        if (detail.code === "23514" && detail.constraint === "graphic_job_origin_identity_guard") {
+          return { ok: false, code: "CONFLICT", message: "O trabalho possui OS ou histórico financeiro vinculado. Preserve o cliente e mantenha o trabalho consultável; use o encerramento operacional." };
+        }
         if (detail.code === "23505" && detail.constraint === "graphic_jobs_internal_code_idx") {
           return { ok: false, code: "CONFLICT", message: "Este código interno já está em uso nesta organização, inclusive em trabalhos arquivados. Escolha outro código ou consulte o trabalho existente. Seus dados foram mantidos." };
         }

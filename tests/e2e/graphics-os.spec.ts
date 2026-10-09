@@ -744,5 +744,11 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     await expect(row.getByRole("cell").nth(3)).toHaveText(amount);
     await expect(row).toContainText("Recebido");
   }
-
+  await page.goto(jobUrl);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Arquivar", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("histórico financeiro vinculado");
+  await page.reload();
+  await expect(financeSummary).toContainText("R$ 1.200,00");
+  await expect(financeSummary).toContainText("R$ 1.950,00");
 });

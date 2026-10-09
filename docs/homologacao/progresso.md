@@ -343,3 +343,25 @@ conclusão das correções de origens/revisão legada e relatórios/perfis/refer
 O Goal segue ativo e sem candidato final aprovado. Próxima prioridade P0:
 procedimento seguro e auditável para correções financeiras das origens/legado,
 sem alterar fatos imutáveis nem permitir duplicação de pagamentos.
+
+### CORE/GRF — identidade e consulta dos vínculos financeiros
+
+A revisão das correções de origem encontrou dois caminhos inseguros: edição
+livre do cliente após OS/venda/contratação e arquivamento de trabalho com títulos
+vinculados. Corrigidos nas ações de servidor e na migration aditiva 0056, sem
+alterar registros antigos. O lock do trabalho é compartilhado com os registros
+de OS/venda/contratação; referências passam por validação de tenant antes da
+verificação. Encerramento operacional continua permitido e não quita títulos.
+
+O arquivamento recusado retorna conflito visível na interface. Não há tabela,
+permissão, backfill ou mudança em valores financeiros. Mantidos RBAC/RLS,
+rate limit, transação e auditoria; recusas não escrevem dados. Proteção no banco
+também recusa escrita direta, e outro tenant não consegue alterar o trabalho.
+
+Typecheck/lint aprovados; 458 unitários/73 arquivos e 232 DB/39 arquivos
+aprovados (`job-integrity-*-final.log`, `job-integrity-db.log`). A primeira suíte
+unitária revelou fixtures sem clientId; corrigidas e ampliadas com dois testes
+de recusa. Upgrade isolado 0050→0056 aprovado. Migration aplicada somente no
+banco isolado. Build/E2E focal ainda pendentes neste registro; não é gate final.
+Essa correção é necessária à integridade integrada, mas não conclui o fluxo de
+correção econômica de venda/contratação, que permanece P0 no backlog.

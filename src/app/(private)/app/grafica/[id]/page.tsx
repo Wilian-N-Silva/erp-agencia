@@ -1039,13 +1039,13 @@ export default async function GraphicJobDetailPage({
                 Editar
               </Link>
               <ConfirmArchive>
-                <RateLimitedActionForm action={deleteGraphicJobAction}>
+                <GraphicJobActionForm action={deleteGraphicJobAction}>
                   <input name="id" type="hidden" value={id} />
                   <button className={dangerButtonClassName} type="submit">
                     <Trash2 size={15} />
                     Arquivar
                   </button>
-                </RateLimitedActionForm>
+                </GraphicJobActionForm>
               </ConfirmArchive>
             </div>
           ) : null}
