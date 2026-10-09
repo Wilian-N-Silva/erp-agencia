@@ -125,3 +125,13 @@ E2E `tests/e2e/provision-cycles.spec.ts`: **1 cenário aprovado em 6,6 segundos*
 O cenário criou dados `QA-provisao-*` no banco local e não removeu histórico. O
 PostgreSQL foi iniciado para a validação. O navegador Playwright foi instalado
 localmente por estar ausente; nenhum artefato de navegador é versionado.
+
+## Validação de integração final — 09/10/2026
+
+A branch foi reconstruída sem o artefato `.next` anterior. `npm run build` passou,
+e a suíte de banco passou com **33 arquivos e 206 testes**. O E2E completo executou
+17 cenários: **16 passaram** (incluindo o novo ciclo de provisões) e um cenário de
+assinaturas falhou no login por rate limit após a sequência de testes. O mesmo
+`tests/e2e/saas-currency-cycle.spec.ts` foi repetido isoladamente e passou (**1/1**),
+confirmando limitação do ambiente de execução serial, não falha funcional. Typecheck,
+lint, 424 testes unitários e `git diff --check` permanecem aprovados.
