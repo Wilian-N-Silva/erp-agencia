@@ -97,3 +97,23 @@ Pendente antes de considerar esta proteção completa para V1: revisão controla
 das origens integradas quando for necessário desfazer uma contratação/venda,
 explicitação do legado nas leituras e tratamento da baixa direta de reembolso
 avulso identificada em `portal/actions.ts`. Não declarar candidato pronto.
+
+### Validação da interface de correção
+
+Build do código `09f05e5` aprovado na worktree isolada. Em `8d83860`, dois E2E
+passaram no mesmo build: correção/cancelamento com justificativa e
+recebimento/conciliação/estorno/consulta no Cliente. Logs:
+`build-title-corrections.log`, `title-and-reversal-e2e.log` nessa worktree.
+As primeiras execuções do novo E2E falharam por seletor relativo do MoneyInput e
+por esperar mensagem em um formulário removido após cancelar. Corrigidos os
+testes, sem relaxar proteção ou modificar a regra de negócio.
+
+## HML-04 — saldo vencido parcial
+
+O dashboard de competência somava o valor original apenas quando o estado
+derivado era `overdue`; uma obrigação parcial já vencida ficava fora do total.
+Agora o indicador usa a data de vencimento e soma somente o saldo em aberto,
+excluindo cancelados e liquidados. Vencimento no próprio dia ainda não é atraso.
+Dois testes cobrem AR/AP parcial, estados, competência e reabertura após estorno.
+446 unitários/69 arquivos aprovados; sem migration, backfill ou alteração de caixa.
+Caixa por eventos/datadas, legado explícito e relatórios completos continuam pendentes.

@@ -497,8 +497,10 @@ export function computeFinanceDashboard(input: {
   );
   const incomeOverdue = sumMoney(
     entriesInCompetence
-      .filter((entry) => getFinancialEntryEffectiveStatus(entry, asOfKey) === "overdue")
-      .map((entry) => entry.amount),
+      .filter((entry) => entry.status !== "cancelled" && toDateKey(entry.dueDate) < asOfKey)
+      .map((entry) => deriveFinancialObligation({ amount: entry.amount,
+        settledAmount: getFinancialEntrySettledAmount(entry), dueDate: entry.dueDate,
+        asOf: asOfKey }).outstandingAmount),
   );
   const expensesExpected = sumMoney(
     expensesInCompetence
@@ -512,8 +514,10 @@ export function computeFinanceDashboard(input: {
   );
   const expensesOverdue = sumMoney(
     expensesInCompetence
-      .filter((expense) => getFinancialExpenseEffectiveStatus(expense, asOfKey) === "overdue")
-      .map((expense) => expense.amount),
+      .filter((expense) => expense.status !== "cancelled" && toDateKey(expense.dueDate) < asOfKey)
+      .map((expense) => deriveFinancialObligation({ amount: expense.amount,
+        settledAmount: getFinancialExpenseSettledAmount(expense), dueDate: expense.dueDate,
+        asOf: asOfKey }).outstandingAmount),
   );
   const provisionsExpected = sumMoney(
     input.provisions.map((provision) => provisionExpectedAmount(provision, competence)),
