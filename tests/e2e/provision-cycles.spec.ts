@@ -1,0 +1,58 @@
+import { expect, test } from "@playwright/test";
+import { signInWithRetry } from "./helpers/auth";
+
+test("planeja provisão, realiza uma única AP e cancela somente a próxima competência", async ({ page }) => {
+  test.setTimeout(150_000);
+  page.setDefaultTimeout(15_000);
+  await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
+  const name = `QA-provisao-${Date.now()}`;
+  await page.goto("/app/financeiro/provisoes");
+  await page.locator("button").filter({ hasText: /^Nova provisão$/ }).click();
+  const form = page.locator("form").filter({ has: page.locator('[name="estimatedMonthlyAmount"]') });
+  await form.locator('[name="name"]').fill(name);
+  await form.locator('[name="category"]').fill("SaaS");
+  await form.locator(".fg-input-wrap").filter({ has: page.locator('[name="estimatedMonthlyAmount"]') }).locator('input[type="text"]').fill("100,00");
+  await form.locator('[name="expectedDay"]').fill("15");
+  await Promise.all([
+    page.waitForResponse(response => response.request().method() === "POST" && response.url().includes("/app/financeiro/provisoes")),
+    form.getByRole("button", { name: "Criar provisão", exact: true }).click(),
+  ]);
+  await page.goto("/app/financeiro/provisoes");
+  await page.getByRole("link", { name: "Gerenciar ocorrências por competência" }).click();
+  await page.getByLabel("Provisão", { exact: true }).selectOption({ label: name });
+  await page.getByLabel("Competência", { exact: true }).fill("2026-10");
+  await page.getByLabel("Valor previsto (R$)", { exact: true }).fill("100,00");
+  await page.getByLabel("Vencimento previsto", { exact: true }).fill("2026-10-15");
+  await page.getByRole("button", { name: "Planejar ocorrência", exact: true }).click();
+  const first = page.getByRole("region", { name: `${name} · 10/2026`, exact: true });
+  await expect(first).toContainText("Planejada");
+  await page.getByRole("button", { name: "Planejar ocorrência", exact: true }).click();
+  await expect(first).toHaveCount(1);
+  await first.getByText("Realizar ocorrência", { exact: true }).click();
+  await first.getByLabel("Fornecedor", { exact: true }).selectOption({ label: "Fornecedor QA Grafica B" });
+  await first.getByLabel("Valor efetivo (R$)", { exact: true }).fill("120,00");
+  await first.getByRole("button", { name: "Gerar conta a pagar", exact: true }).click();
+  await expect(first).toContainText("Realizada");
+  await expect(first).toContainText("100,00");
+  await first.getByRole("link", { name: "Consultar conta a pagar", exact: true }).click();
+  const payable = page.getByRole("row").filter({ hasText: name });
+  await expect(payable).toHaveCount(1);
+  await expect(payable).toContainText("120,00");
+  await expect(payable).not.toContainText("Liquidado");
+  await page.goto("/app/financeiro/provisoes/ciclos");
+  await page.getByLabel("Provisão", { exact: true }).selectOption({ label: name });
+  await page.getByLabel("Competência", { exact: true }).fill("2026-11");
+  await page.getByLabel("Valor previsto (R$)", { exact: true }).fill("100,00");
+  await page.getByLabel("Vencimento previsto", { exact: true }).fill("2026-11-15");
+  await page.getByRole("button", { name: "Planejar ocorrência", exact: true }).click();
+  const second = page.getByRole("region", { name: `${name} · 11/2026`, exact: true });
+  await expect(second).toContainText("Planejada");
+  await second.getByText("Cancelar previsão", { exact: true }).click();
+  await second.getByLabel("Motivo do cancelamento").fill("Fornecedor não cobrará neste mês");
+  await second.getByRole("button", { name: "Cancelar ocorrência", exact: true }).click();
+  await expect(second).toContainText("Cancelada");
+  await page.reload();
+  await expect(second).toContainText("Fornecedor não cobrará neste mês");
+  await expect(first).toContainText("Realizada");
+  await expect(second.getByText("Realizar ocorrência", { exact: true })).toHaveCount(0);
+});

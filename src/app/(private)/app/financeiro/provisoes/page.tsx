@@ -1,4 +1,5 @@
 import { renderFinancePage } from "../finance-page";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -7,5 +8,6 @@ type PageProps = {
 };
 
 export default async function FinanceProvisoesPage({ searchParams }: PageProps) {
-  return renderFinancePage({ searchParams, initialTab: "provisoes" });
+  const content = await renderFinancePage({ searchParams, initialTab: "provisoes" });
+  return <><div className="px-6 pt-4"><Link className="text-primary underline" href="/app/financeiro/provisoes/ciclos">Gerenciar ocorrências por competência</Link></div>{content}</>;
 }

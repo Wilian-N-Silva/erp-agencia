@@ -89,10 +89,10 @@ e vencimento deslocado. Nenhuma nova migration/backfill neste ajuste.
 As migrations 0048/0049 continuam obrigatórias antes deste runtime; ainda não
 foram aplicadas na base de uso local. Esta branch continua fora da release.
 
-Pendente: formulário, gestão de ciclos, apresentação dos
-estados e valores por ocorrência na tabela de provisões, confirmação visual e
-E2E completo. O resumo de cadastro mensal/anualizado da tabela ainda descreve
-as regras cadastradas, não o total de ocorrências previstas.
+Pendente: melhorar a gestão de ciclos na tabela principal e apresentar os estados
+por ocorrência nela. A página dedicada de ciclos já oferece planejamento,
+realização e cancelamento; o resumo mensal/anualizado da tabela principal ainda
+descreve as regras cadastradas, não o total de ocorrências previstas.
 
 ## Ações de servidor — 05/10/2026
 
@@ -109,5 +109,19 @@ lint passaram; 424 testes unitários passaram. Os 206 testes de banco da etapa
 anterior permanecem como evidência do DAL. Build de produção aprovado nesta etapa.
 Os testes de banco da etapa
 anterior cobrem o DAL inalterado, não foram repetidos para este ajuste de ações.
-A conexão do formulário e o E2E completo ainda estão pendentes; não integrar
-esta branch como funcionalidade pronta.
+A página dedicada e o E2E completo agora estão conectados. O teste percorre cadastro,
+planejamento idempotente, realização de uma AP e cancelamento de competência
+seguinte. A branch ainda requer revisão de integração antes de promoção.
+
+## Interface e E2E — 09/10/2026
+
+`/app/financeiro/provisoes/ciclos` apresenta ocorrências por competência, vincula
+fornecedores ativos na realização, abre a conta a pagar criada e exige motivo no
+cancelamento. Os formulários usam Server Actions autenticadas, estado pendente,
+mensagens de sucesso/erro e campos rotulados; não enviam valores de pagamento
+automaticamente.
+
+E2E `tests/e2e/provision-cycles.spec.ts`: **1 cenário aprovado em 6,6 segundos**.
+O cenário criou dados `QA-provisao-*` no banco local e não removeu histórico. O
+PostgreSQL foi iniciado para a validação. O navegador Playwright foi instalado
+localmente por estar ausente; nenhum artefato de navegador é versionado.
