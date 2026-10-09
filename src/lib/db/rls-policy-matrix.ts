@@ -41,6 +41,7 @@ export const directTenantPolicyTables = [
   "provision_cycles",
   "reimbursement_requests",
   "saas_subscriptions",
+  "saas_subscription_charges",
   "suppliers",
   "time_off_requests",
   "vacation_balances",

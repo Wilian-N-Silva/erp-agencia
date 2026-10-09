@@ -1,8 +1,7 @@
 # Assinaturas em moeda estrangeira e periodicidade anual
 
-Atualização 02/10/2026: cadastro por moeda/ciclo e estimativa manual documentada
-implementados em [saas-currency-cycle](../runbooks/saas-currency-cycle.md).
-O restante deste texto distingue o modelo alvo da cobrança efetiva ainda pendente.
+Atualização 09/10/2026: cadastro por moeda/ciclo, estimativa manual e registro da
+cobrança efetiva com AP foram implementados em `SAA-004`.
 
 Requisito informado pelo responsável em 30/09/2026: existem assinaturas em euro,
 dólar e reais, inclusive anuais; IOF pode aparecer depois/separado da cobrança e
@@ -34,11 +33,12 @@ Gerar obrigação por ciclo com chave única contrato/ciclo, somente uma vez;
 pagamento/encargos derivam de conciliação financeira. Atualização da previsão
 de câmbio não liquida títulos e não altera valores realizados.
 
-O modelo atual possui apenas `monthlyCost`, sem moeda/ciclo/registro de cobrança.
-Os indicadores existentes não comprovam suporte a câmbio ou IOF. Esta evolução
-pertence ao modelo SaaS (SAA-001) e integração financeira (SAA-004), devendo ser
-implementada e testada antes de ser anunciada como disponível.
+O contrato preserva moeda/ciclo e a estimativa não altera cobranças históricas. A
+aba de cobranças registra manualmente o valor original, câmbio efetivo, principal
+em BRL, IOF, tarifas, total da fatura e competência. Cada competência cria uma
+única conta a pagar vinculada ao registro da cobrança; o pagamento continua sendo
+conciliado no Financeiro.
 
-Decisão técnica pendente: cotação estimada manual ou integração com provedor;
-em ambos os casos o valor efetivo do extrato deve poder ser informado. Não fixar
-taxa de câmbio ou alíquota de IOF no código com base apenas neste documento.
+A cotação estimada continua manual no contrato. Não fixar taxa de câmbio ou
+alíquota de IOF no código; os valores efetivos vêm da fatura/extrato e ficam
+congelados na competência registrada.

@@ -29,7 +29,7 @@ test("SaaS preserves annual currency prices and updates documented estimates", a
   const kpi = (label: string) => page.locator(".fg-kpi").filter({ has: page.getByText(label, { exact: true }) }).locator(".fg-kpi-value");
   await expect(kpi("Custo mensal")).toContainText("60,00");
   await expect(kpi("Custo anualizado")).toContainText("720,00");
-  await expect(page.locator("body")).toContainText(/ainda não gera automaticamente/i);
+  await expect(page.locator("body")).toContainText(/Registre cada cobrança efetiva na aba Cobranças/i);
   await page.getByRole("tab", { name: "Contrato", exact: true }).click();
   await expect(page.locator("body")).toContainText("EUR 120.00 · Anual");
   const edit = page.locator("form").filter({ has: page.locator('[name="cycleAmount"]') });

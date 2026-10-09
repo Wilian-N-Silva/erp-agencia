@@ -38,6 +38,8 @@ import { RemoveSubscriptionForm } from "../remove-subscription-form";
 import { SaasBillingFields } from "@/features/saas/billing-fields";
 import { updateSaasBillingFormAction } from "@/features/saas/actions";
 import { SaasActionForm } from "@/features/saas/billing-action-form";
+import { SaasChargeForm } from "@/features/saas/charge-form";
+import { listSaasCharges } from "@/features/saas/charge-dal";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,7 @@ const tabs = [
   { id: "resumo", label: "Resumo" },
   { id: "usuarios", label: "Usuários vinculados" },
   { id: "renovacoes", label: "Renovações" },
+  { id: "cobrancas", label: "Cobranças" },
   { id: "contrato", label: "Contrato" },
 ] as const;
 
@@ -97,7 +100,11 @@ export default async function SaasDetailPage({ params, searchParams }: PageProps
   const subscription = subscriptions.find((s) => s.id === id);
   if (!subscription) notFound();
 
+  const canReadFinance = canAny(["finance.read"], context);
+  const charges = canReadFinance ? await listSaasCharges(context, subscription.id) : [];
+
   const canWrite = canWriteSaasSubscriptions(context);
+  const canWriteFinance = canAny(["finance.write"], context);
   const canSeeCosts = canReadSaasCost(context);
 
   const activeLicenses = subscription.linkedUsers.filter((u) => u.status === "active");
@@ -256,6 +263,10 @@ export default async function SaasDetailPage({ params, searchParams }: PageProps
           <RenovacoesTab subscription={subscription} />
         ) : null}
 
+        {activeTab === "cobrancas" ? (
+          <CobrancasTab subscription={subscription} charges={charges} canWrite={canWriteFinance} />
+        ) : null}
+
         {activeTab === "contrato" ? (
           <ContratoTab subscription={subscription} canWrite={canWrite} />
         ) : null}
@@ -346,7 +357,7 @@ function ResumoTab({
 
         <Card
           title="Conexão com financeiro"
-          description="O cadastro registra uma estimativa. Ainda não gera automaticamente contas a pagar ou provisões. Confira a cobrança efetiva e seus encargos no Financeiro."
+          description="O cadastro mantém a estimativa. Registre cada cobrança efetiva na aba Cobranças para criar uma conta a pagar com o câmbio e os encargos da fatura."
         >
           <dl className="fg-deflist">
             <div>
@@ -502,6 +513,25 @@ function RenovacoesTab({ subscription }: { subscription: SaasSubscriptionListIte
 }
 
 /* ──────────────────── Contrato ──────────────────── */
+function CobrancasTab({
+  subscription,
+  charges,
+  canWrite,
+}: {
+  subscription: SaasSubscriptionListItem;
+  charges: Awaited<ReturnType<typeof listSaasCharges>>;
+  canWrite: boolean;
+}) {
+  return <div className="fg-grid fg-grid-2">
+    {canWrite && subscription.status !== "cancelled" ? <Card title="Registrar cobrança efetiva" description="Use os dados da fatura/extrato. A ação cria uma única conta a pagar para a competência.">
+      <SaasChargeForm subscriptionId={subscription.id} billing={subscription.billing} />
+    </Card> : null}
+    <Card title="Histórico de cobranças" padding={false}>
+      {charges.length === 0 ? <p className="fg-empty-desc" style={{ padding: 20 }}>Nenhuma cobrança efetiva registrada.</p> : <div className="fg-table-wrap" style={{ border: 0, borderRadius: 0 }}><table className="fg-table fg-table-regular"><thead><tr><th>Competência</th><th>Original</th><th>Câmbio</th><th>Total BRL</th><th>Conta a pagar</th></tr></thead><tbody>{charges.map(charge => <tr key={charge.id}><td>{charge.competence}<br /><span className="fg-cell-sub">cobrado em {formatDate(charge.chargedAt)}</span></td><td className="fg-tabular">{charge.originalCurrency} {charge.originalAmount}</td><td className="fg-tabular">{charge.effectiveExchangeRate}</td><td className="fg-tabular fg-cell-strong">{formatMoney(charge.totalAmountBrl)}<br /><span className="fg-cell-sub">principal {formatMoney(charge.principalAmountBrl)} · IOF {formatMoney(charge.iofAmountBrl)} · tarifa {formatMoney(charge.feeAmountBrl)}</span></td><td>{charge.financialExpenseId ? <Link href={`/app/financeiro/saidas?query=${encodeURIComponent(subscription.name)}` as Route} className="fg-cell-link">{charge.financialExpenseStatus === "paid" ? "Paga" : "Em aberto"}</Link> : "Sem vínculo"}</td></tr>)}</tbody></table></div>}
+    </Card>
+  </div>;
+}
+
 function ContratoTab({
   subscription,
   canWrite,

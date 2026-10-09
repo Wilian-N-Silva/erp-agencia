@@ -32,13 +32,17 @@ a repetição isolada passou. Execuções paralelas também podem colidir na por
 - solicitações de férias com estados `requested`, `approved` e `rejected`;
 - assinaturas ativas e canceladas preservadas por histórico.
 
-## Pontos que ainda não devem ser anunciados como concluídos
+## Cobrança efetiva de SaaS
 
-A tela de assinaturas registra contrato, ciclo, moeda, cotação estimada e custos
-indicativos. O valor efetivo da fatura, IOF e tarifa ainda precisam ser conferidos e
-registrados manualmente; não há geração automática de cobrança/AP por ciclo. Essa
-integração está prevista em `SAA-004` (`feature/saas-finance-integration`). A
-estimativa não deve ser tratada como valor pago.
+A aba **Cobranças** registra o valor original, câmbio efetivo do dia, principal em
+BRL, IOF, tarifas, total da fatura e competência. O servidor cria uma conta a pagar
+única por assinatura/competência, congela os valores históricos e deixa o pagamento
+para conciliação no Financeiro. O teste `tests/e2e/saas-charge.spec.ts` confirmou o
+lançamento e a idempotência da segunda tentativa.
+
+A geração automática de cobranças futuras por calendário ainda não faz parte deste
+fluxo; cada fatura deve ser conferida e registrada quando chegar. A estimativa do
+contrato nunca é tratada como valor pago.
 
 A regra informada para o cadastro de colaboradores é que todos são PJ. O seed foi
 ajustado para que Liderança Demo e Colaborador PJ Ferias sejam PJ, e foi aplicado

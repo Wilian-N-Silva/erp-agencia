@@ -1770,12 +1770,66 @@ export const saasSubscriptions = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    organizationIdIdx: uniqueIndex("saas_subscriptions_organization_id_idx").on(table.organizationId, table.id),
     statusIdx: index("saas_status_idx").on(table.organizationId, table.status),
     renewalIdx: index("saas_renewal_idx").on(table.organizationId, table.renewalDate),
     billingCurrencyCheck: check("saas_billing_currency_check", sql`${table.billingCurrency} in ('BRL','USD','EUR')`),
     billingCycleCheck: check("saas_billing_cycle_check", sql`${table.billingCycle} in ('monthly','annual')`),
     billingAmountCheck: check("saas_billing_amount_check", sql`${table.cycleAmount} is null or ${table.cycleAmount} > 0`),
     billingRateCheck: check("saas_billing_rate_check", sql`${table.estimatedExchangeRate} is null or (${table.estimatedExchangeRate} > 0 and ${table.exchangeRateDate} is not null and ${table.exchangeRateSource} is not null and length(trim(${table.exchangeRateSource})) > 0)`),
+  }),
+);
+
+export const saasSubscriptionCharges = pgTable(
+  "saas_subscription_charges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    subscriptionId: uuid("subscription_id").notNull(),
+    competence: text("competence").notNull(),
+    chargedAt: date("charged_at").notNull(),
+    dueDate: date("due_date").notNull(),
+    originalCurrency: text("original_currency").notNull(),
+    originalAmount: numeric("original_amount", { precision: 12, scale: 2 }).notNull(),
+    effectiveExchangeRate: numeric("effective_exchange_rate", { precision: 12, scale: 6 }).notNull(),
+    principalAmountBrl: numeric("principal_amount_brl", { precision: 12, scale: 2 }).notNull(),
+    iofAmountBrl: numeric("iof_amount_brl", { precision: 12, scale: 2 }).notNull().default("0"),
+    feeAmountBrl: numeric("fee_amount_brl", { precision: 12, scale: 2 }).notNull().default("0"),
+    totalAmountBrl: numeric("total_amount_brl", { precision: 12, scale: 2 }).notNull(),
+    chargesIncludedInTotal: boolean("charges_included_in_total").notNull().default(true),
+    financialExpenseId: uuid("financial_expense_id"),
+    notes: text("notes"),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    subscriptionFk: foreignKey({
+      columns: [table.organizationId, table.subscriptionId],
+      foreignColumns: [saasSubscriptions.organizationId, saasSubscriptions.id],
+      name: "saas_subscription_charges_subscription_tenant_fk",
+    }),
+    payableFk: foreignKey({
+      columns: [table.organizationId, table.financialExpenseId],
+      foreignColumns: [financialExpenses.organizationId, financialExpenses.id],
+      name: "saas_subscription_charges_payable_tenant_fk",
+    }),
+    occurrenceIdx: uniqueIndex("saas_subscription_charges_occurrence_idx").on(
+      table.organizationId,
+      table.subscriptionId,
+      table.competence,
+    ),
+    payableIdx: uniqueIndex("saas_subscription_charges_payable_idx").on(table.financialExpenseId),
+    currencyCheck: check("saas_subscription_charges_currency_check", sql`${table.originalCurrency} in ('BRL','USD','EUR')`),
+    competenceCheck: check("saas_subscription_charges_competence_check", sql`${table.competence} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    originalAmountCheck: check("saas_subscription_charges_original_amount_check", sql`${table.originalAmount} > 0`),
+    rateCheck: check("saas_subscription_charges_rate_check", sql`${table.effectiveExchangeRate} > 0`),
+    principalCheck: check("saas_subscription_charges_principal_check", sql`${table.principalAmountBrl} > 0`),
+    iofCheck: check("saas_subscription_charges_iof_check", sql`${table.iofAmountBrl} >= 0`),
+    feeCheck: check("saas_subscription_charges_fee_check", sql`${table.feeAmountBrl} >= 0`),
+    totalCheck: check("saas_subscription_charges_total_check", sql`${table.totalAmountBrl} >= ${table.principalAmountBrl}`),
   }),
 );
 

@@ -20,6 +20,7 @@ import { normalizeMoneyInput } from "@/features/finance/rules";
 import { enforceAuthenticatedRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 import { removeMistakenSaasSubscription, SaasRemovalError } from "./removal";
 import { estimateSaasBilling, saasBillingSchema } from "./billing-rules";
+import { recordSaasCharge } from "./charge-dal";
 
 import {
   canReadSaasCost,
@@ -240,6 +241,32 @@ async function cancelSaasSubscriptionAction(formData: FormData) {
   const input = idSchema.parse(formDataToObject(formData));
 
   await updateSaasStatus(context, input.id, "cancelled");
+}
+
+export async function recordSaasChargeAction(data: FormData) {
+  try {
+    const context = await getCurrentAccessContext();
+    if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+    assertCanAny(["finance.write"], context);
+    if (!context.organizationId) throw new AccessDeniedError();
+    await enforceAuthenticatedRateLimit("common_mutation", context);
+    const input = formDataToObject(data);
+    const charge = await recordSaasCharge(context, input);
+    revalidateSaasPaths();
+    revalidatePath(`/app/assinaturas/${String(input.subscriptionId)}`);
+    return {
+      ok: true,
+      message: charge.financialExpenseId
+        ? "Cobrança registrada e conta a pagar criada no Financeiro."
+        : "Cobrança registrada.",
+    };
+  } catch (error) {
+    if (error instanceof RateLimitExceededError) return { ok: false, message: "Muitas tentativas. Aguarde antes de tentar novamente." };
+    if (error instanceof AccessDeniedError) return { ok: false, message: "Operação indisponível ou acesso não permitido." };
+    if (error instanceof z.ZodError) return { ok: false, message: error.issues[0]?.message ?? "Confira os dados da cobrança." };
+    if (error instanceof Error && error.message.includes("assinatura cancelada")) return { ok: false, message: error.message };
+    return { ok: false, message: "Não foi possível registrar a cobrança. Atualize a página antes de tentar novamente." };
+  }
 }
 
 export async function removeSaasSubscriptionAction(_state: { error: string } | null, formData: FormData) {

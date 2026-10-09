@@ -351,6 +351,13 @@
       "when": 1790963880498,
       "tag": "0049_provision-policy-name",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791556902886,
+      "tag": "0050_optimal_famine",
+      "breakpoints": true
     }
   ]
 }
