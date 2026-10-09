@@ -27,7 +27,6 @@ import { formDataToObject, isoDateSchema, isoMonthSchema } from "@/lib/validatio
 import {
   buildFinancialExpenseUpdateValues,
   normalizeMoneyInput,
-  toDateKey,
   type FinancialExpenseMasterDataUpdate,
 } from "./rules";
 
@@ -184,48 +183,10 @@ async function updateFinancialEntryAction(formData: FormData) {
 }
 
 async function markFinancialEntryReceivedAction(formData: FormData) {
-  const { context, organizationId } = await requireFinanceWriterContext();
+  const { context } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
-  const input = idSchema.parse(formDataToObject(formData));
-  const before = await getEntryForWrite(input.id, organizationId);
-
-  if (before.status === "cancelled") {
-    throw new Error("Cancelled entries cannot be received.");
-  }
-
-  const [after] = await db
-    .update(financialEntries)
-    .set({
-      receivedAmount: before.amount,
-      receivedDate: toDateKey(new Date()),
-      status: "received",
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(financialEntries.id, input.id),
-        eq(financialEntries.organizationId, organizationId),
-        isNull(financialEntries.deletedAt),
-      ),
-    )
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "financial_entry",
-    entityId: input.id,
-    before,
-    after,
-    metadata: {
-      status: "received",
-    },
-  });
-
-  revalidatePath("/app/financeiro");
-  if (before.clientId) {
-    revalidatePath("/app");
-    revalidatePath(`/app/clientes/${before.clientId}`);
-  }
+  idSchema.parse(formDataToObject(formData));
+  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
 }
 
 async function cancelFinancialEntryAction(formData: FormData) {
@@ -329,44 +290,10 @@ async function updateFinancialExpenseAction(formData: FormData) {
 }
 
 async function markFinancialExpensePaidAction(formData: FormData) {
-  const { context, organizationId } = await requireFinanceWriterContext();
+  const { context } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
-  const input = idSchema.parse(formDataToObject(formData));
-  const before = await getExpenseForWrite(input.id, organizationId);
-
-  if (before.status === "cancelled") {
-    throw new Error("Cancelled expenses cannot be paid.");
-  }
-
-  const [after] = await db
-    .update(financialExpenses)
-    .set({
-      paidAmount: before.amount,
-      paidDate: toDateKey(new Date()),
-      status: "paid",
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(financialExpenses.id, input.id),
-        eq(financialExpenses.organizationId, organizationId),
-        isNull(financialExpenses.deletedAt),
-      ),
-    )
-    .returning();
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "financial_expense",
-    entityId: input.id,
-    before,
-    after,
-    metadata: {
-      status: "paid",
-    },
-  });
-
-  revalidatePath("/app/financeiro");
+  idSchema.parse(formDataToObject(formData));
+  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
 }
 
 async function cancelFinancialExpenseAction(formData: FormData) {

@@ -218,6 +218,14 @@ describe("critical Action rate-limit entrypoints", () => {
     expectNoDataOrStorageAccess();
   });
 
+  it.each([markFinancialEntryReceivedAction, markFinancialExpensePaidAction])("rejects deprecated settlement even when authorized and below the rate limit", async (action) => {
+    mocks.enforceAuthenticatedRateLimit.mockResolvedValue(undefined);
+    const data = new FormData();
+    data.set("id", "20000000-0000-4000-8000-000000000001");
+    await expect(action(data)).rejects.toThrow("Baixa direta descontinuada");
+    expectNoDataOrStorageAccess();
+  });
+
   it.each([
     ["approving an invoice request", approveInvoiceRequestAction],
     ["rejecting an invoice request", rejectInvoiceRequestAction],

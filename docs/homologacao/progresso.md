@@ -18,3 +18,22 @@ aceitam cache/status histórico; estorno não implementado; alocações protegid
 trigger imutável (0023). Relatório de atrasados soma valor original em vez do saldo.
 Reconhecimento continua em comprovantes, projetos, permissões e todas as origens.
 Próximo: ambiente descartável independente e gates baseline antes do cutover.
+
+## HML-01 — baseline isolado / HML-02 — primeira proteção
+
+Criado container PostgreSQL exclusivo da homologação em loopback:15433, diferente
+de `erp-agencia-postgres`. Banco novo `erp_hml_dbtests`, migrator BYPASSRLS e app
+NOBYPASSRLS/não owner. Nenhum banco preexistente removido; migrations 0000..0050
+aplicadas com sucesso. Credenciais ficam somente em arquivo `.env.*` ignorado.
+Baseline: lint verde, 430 unitários, 211 integração/segurança/migration em 34 arquivos
+com `npm run test:db -- --fileParallelism=false` (55,33 s).
+
+Baixas diretas de AR/AP/Clientes rejeitam chamadas no servidor após autenticação,
+permissão, rate limit e validação, sem ler/escrever títulos. Botões agora abrem
+movimentações/conciliação. Três regressões testam rejeição inclusive com autorização
+e limite disponível. Nenhum dado histórico modificado. 433 unitários e lint verdes.
+Logs locais: `storage-local/homologacao/baseline-*` e `cutover-*`.
+
+Esta proteção não conclui FIN-010: ainda faltam fontes de leitura legadas explícitas,
+guards de edição/cancelamento e demais origens. Build/E2E desta candidata ainda
+pendentes; testes históricos não serão apresentados como aprovação desta V1.

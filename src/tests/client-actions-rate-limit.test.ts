@@ -57,6 +57,16 @@ describe("client financial Action rate limits", () => {
     vi.clearAllMocks();
   });
 
+  it("rejects the deprecated client settlement endpoint without touching the ledger", async () => {
+    mocks.getCurrentAccessContext.mockResolvedValue({ organizationId: "10000000-0000-4000-8000-000000000001", roles: ["finance"], userId: "user-1" });
+    mocks.enforceAuthenticatedRateLimit.mockResolvedValue(undefined);
+    const data = new FormData();
+    data.set("id", "20000000-0000-4000-8000-000000000001");
+    await expect(markClientPaymentReceivedAction(data)).rejects.toThrow("Baixa direta descontinuada");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
   it("blocks marking a client payment as received without writing", async () => {
     const context = {
       organizationId: "10000000-0000-4000-8000-000000000001",

@@ -30,7 +30,6 @@ import { formDataToObject, isIsoDate, isIsoMonth } from "@/lib/validation";
 import {
   getCompetenceKey,
   normalizeMoneyInput,
-  toDateKey,
 } from "@/features/finance/rules";
 
 import {
@@ -406,68 +405,10 @@ async function generateClientExpectedEntryAction(formData: FormData) {
 }
 
 async function markClientPaymentReceivedAction(formData: FormData) {
-  const { context, organizationId } = await requireClientFinancialWriterContext();
+  const { context } = await requireClientFinancialWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
-  const input = markClientPaymentReceivedSchema.parse(formDataToObject(formData));
-  const before = await getFinancialEntryForWrite(input.id, organizationId);
-
-  if (!before.clientId) {
-    throw new AccessDeniedError();
-  }
-
-  if (before.status === "cancelled") {
-    throw new Error("Cancelled entries cannot be received.");
-  }
-
-  const [after] = await db
-    .update(financialEntries)
-    .set({
-      receivedAmount: before.amount,
-      receivedDate: toDateKey(new Date()),
-      paymentMethod: input.paymentMethod ?? before.paymentMethod,
-      status: "received",
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(financialEntries.id, input.id),
-        eq(financialEntries.organizationId, organizationId),
-        isNull(financialEntries.deletedAt),
-      ),
-    )
-    .returning();
-
-  await db
-    .update(clientPaymentReminders)
-    .set({
-      status: "resolved",
-      resolvedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(clientPaymentReminders.organizationId, organizationId),
-        eq(clientPaymentReminders.financialEntryId, input.id),
-        eq(clientPaymentReminders.status, "open"),
-      ),
-    );
-
-  await writeAuditLog(context, {
-    action: "status_change",
-    entityType: "financial_entry",
-    entityId: input.id,
-    before,
-    after,
-    metadata: {
-      status: "received",
-      source: "client_detail",
-    },
-  });
-
-  await syncClientPaymentReminders(context, before.clientId);
-  revalidatePath("/app");
-  revalidatePath("/app/financeiro");
-  revalidatePath(`/app/clientes/${before.clientId}`);
+  markClientPaymentReceivedSchema.parse(formDataToObject(formData));
+  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
 }
 
 async function updateClientInternalNotesAction(formData: FormData) {
@@ -650,26 +591,6 @@ async function upsertClientBillingProfile(
       },
     })
     .returning();
-}
-
-async function getFinancialEntryForWrite(id: string, organizationId: string) {
-  const [entry] = await db
-    .select()
-    .from(financialEntries)
-    .where(
-      and(
-        eq(financialEntries.id, id),
-        eq(financialEntries.organizationId, organizationId),
-        isNull(financialEntries.deletedAt),
-      ),
-    )
-    .limit(1);
-
-  if (!entry) {
-    throw new AccessDeniedError();
-  }
-
-  return entry;
 }
 
 async function syncClientPaymentReminders(

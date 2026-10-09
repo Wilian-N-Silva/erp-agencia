@@ -1,5 +1,6 @@
 import { Ban, CheckCircle2, Pencil, Plus, Save, Upload } from "lucide-react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import {
@@ -17,8 +18,6 @@ import {
   createFinancialExpenseAction,
   createProvisionAction,
   deactivateProvisionAction,
-  markFinancialEntryReceivedAction,
-  markFinancialExpensePaidAction,
   updateFinancialEntryAction,
   updateFinancialExpenseAction,
 } from "@/features/finance/actions";
@@ -715,20 +714,7 @@ function EntryRowActions({
         />
       </ActionSheet>
       {entry.status !== "settled" && entry.status !== "cancelled" ? (
-        <RateLimitedActionForm
-          action={markFinancialEntryReceivedAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={entry.id} />
-          <button
-            type="submit"
-            className="fg-icon-btn sm"
-            aria-label="Registrar liquidação da conta a receber"
-            title="Registrar liquidação"
-          >
-            <CheckCircle2 size={14} />
-          </button>
-        </RateLimitedActionForm>
+        <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimenta??o e conciliar" title="Registrar movimenta??o e conciliar"><CheckCircle2 size={14} /></Link>
       ) : null}
       {entry.status !== "cancelled" ? (
         <RateLimitedActionForm
@@ -776,20 +762,7 @@ function ExpenseRowActions({ expense, masterData }: { expense: FinanceExpenseLis
         />
       </ActionSheet>
       {expense.status !== "settled" && expense.status !== "cancelled" ? (
-        <RateLimitedActionForm
-          action={markFinancialExpensePaidAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={expense.id} />
-          <button
-            type="submit"
-            className="fg-icon-btn sm"
-            aria-label="Registrar liquidação da conta a pagar"
-            title="Registrar liquidação"
-          >
-            <CheckCircle2 size={14} />
-          </button>
-        </RateLimitedActionForm>
+        <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimenta??o e conciliar" title="Registrar movimenta??o e conciliar"><CheckCircle2 size={14} /></Link>
       ) : null}
       {expense.status !== "cancelled" ? (
         <RateLimitedActionForm

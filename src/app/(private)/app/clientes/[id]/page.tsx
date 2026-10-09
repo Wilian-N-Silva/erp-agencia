@@ -17,13 +17,11 @@ import {
   KpiCard,
   MoneyInput,
   Page,
-  RateLimitedActionForm,
   StatusBadge,
 } from "@/components/fg";
 import { Card, InlineAlert } from "@/components/fg/atoms";
 import {
   generateClientExpectedEntryAction,
-  markClientPaymentReceivedAction,
   updateClientBillingProfileAction,
   updateClientInternalNotesAction,
   updateClientStatusAction,
@@ -510,25 +508,7 @@ function PaymentsTab({
                   {canWriteFinance ? (
                     <td className="right">
                       {p.status !== "received" && p.status !== "cancelled" ? (
-                        <RateLimitedActionForm
-                          action={markClientPaymentReceivedAction}
-                          style={{ display: "inline-flex", justifyContent: "flex-end" }}
-                        >
-                          <input name="id" type="hidden" value={p.id} />
-                          <input
-                            name="paymentMethod"
-                            type="hidden"
-                            value={p.paymentMethod ?? profile.paymentMethod ?? ""}
-                          />
-                          <button
-                            type="submit"
-                            className="fg-icon-btn sm"
-                            aria-label="Marcar como recebido"
-                            title="Marcar como recebido"
-                          >
-                            <CheckCircle2 size={14} />
-                          </button>
-                        </RateLimitedActionForm>
+                        <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimenta??o e conciliar" title="Registrar movimenta??o e conciliar"><CheckCircle2 size={14} /></Link>
                       ) : null}
                     </td>
                   ) : null}
