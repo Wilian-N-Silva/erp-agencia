@@ -308,3 +308,16 @@ com compensação do objeto armazenado se a transação falhar. 453 unitários e
 231 DB/39 arquivos passaram; typecheck/lint verdes. Logs attachments-*.log em
 storage-local/homologacao. Build/E2E focal e revisão final ainda em execução;
 não considerar FIN-008 aceito nem a candidata final pronta neste checkpoint.
+### Evidência do upload financeiro
+
+`673a779`: build verde (`build-attachments.log`) e E2E focal verde em 5,5 s
+(`attachments-e2e.log`) na worktree isolada: AR com duas versões, download com
+bytes exatos/cache privado, portal recebe 404, Financeiro consulta e movimento
+recebe documento persistido. Integração DB cobre também AP, concorrência de
+versões, tenant/RLS, payload e rollback/compensação. Não altera caixa/alocações.
+
+Teste da Server Action passou a usar ambiente Node para File.arrayBuffer (a
+ação roda no servidor); a primeira execução desse teste falhou no File do jsdom.
+Proteções reais preservadas. Adicionada recusa de tenant ausente antes do rate
+limit. Validação unitária/typecheck/lint desse complemento em execução. Manual
+de gestão atualizado. Sem migrations/backfills novos neste incremento.

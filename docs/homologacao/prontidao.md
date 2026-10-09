@@ -79,3 +79,13 @@ reservas e levantamento de inconsistências antes da migração. Não resolver
 alterando caches nem criando movimentos sem evidência. Correções de títulos
 originados na Gráfica/NF/SaaS/provisão ainda exigem conclusão no domínio de
 origem. Esses pontos impedem declarar a V1 pronta neste checkpoint.
+## FIN-008 — incremento de comprovantes
+
+Implementados anexos versionados em AR/AP/movimentações sobre files/documents
+existentes, sem migration/backfill. Vínculo financeiro tenant, permissões de
+leitura/escrita, validação de conteúdo, rate limit de upload, transação/audit e
+compensação de storage. Downloads usam rota privada auditada existente com
+checagem adicional do dono financeiro. Histórico protegido da exclusão genérica.
+Gates/resultados exatos em progresso.md; gate completo do candidato precisa
+ser repetido após os demais incrementos. Restart e cobertura integrada de AP
+com documentos ainda requerem evidência final.

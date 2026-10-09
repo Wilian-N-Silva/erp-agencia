@@ -12,6 +12,7 @@ export async function uploadFinancialAttachmentAction(data: FormData) {
     const context = await getCurrentAccessContext();
     if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
     assertCan("finance.write", context);
+    if (!context.organizationId) throw new AccessDeniedError();
     await enforceAuthenticatedRateLimit("upload", context);
     const input = financialAttachmentSchema.safeParse(formDataToObject(data, ["file"]));
     const file = data.get("file");

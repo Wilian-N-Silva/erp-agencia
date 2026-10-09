@@ -1,5 +1,19 @@
 # Manual de gestão — Diretoria, Financeiro e RH
 
+## Comprovantes e documentos financeiros
+
+Em contas a receber/pagar, use **Documentos** na linha do título. No detalhe de
+uma movimentação, use **Documentos e comprovantes**. Escolha nota fiscal externa,
+comprovante ou outro documento e anexe PDF, PNG ou JPG válido dentro do limite.
+Um novo arquivo do mesmo tipo cria outra versão; todas podem ser consultadas e
+baixadas pelo Financeiro autorizado. Os documentos não quitam títulos nem geram
+notas fiscais: registre o movimento real e faça a conciliação separadamente.
+
+Após estorno, os comprovantes continuam ligados ao movimento original. Não
+exclua a versão anterior para corrigir um documento; anexe a versão revisada.
+Arquivos financeiros são consultados pelo vínculo financeiro, com autorização
+específica. A permissão genérica de documentos não libera esse acesso.
+
 Referência: Jaciane responde por Financeiro/RH; Saulo pela direção; Wilian pela
 Tecnologia. O manual descreve as responsabilidades e o comportamento atual do MVP.
 
