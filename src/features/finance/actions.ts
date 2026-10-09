@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -30,6 +30,10 @@ import {
   type FinancialExpenseMasterDataUpdate,
 } from "./rules";
 
+import type { ServerActionResult } from "@/lib/server-action-result";
+import { FinancialTitleCorrectionError, assertTitleCorrectionAllowed } from "./title-guards";
+
+const correctionReasonSchema = z.string().trim().min(3).max(2000);
 const dateSchema = isoDateSchema;
 const competenceSchema = isoMonthSchema;
 const optionalTextSchema = (maxLength: number) =>
@@ -65,6 +69,7 @@ const createEntrySchema = z.strictObject({
 
 const updateEntrySchema = createEntrySchema.extend({
   id: z.string().uuid(),
+  reason: correctionReasonSchema,
 });
 
 const createExpenseSchema = z.strictObject({
@@ -85,6 +90,7 @@ const createExpenseSchema = z.strictObject({
 
 const updateExpenseSchema = createExpenseSchema.extend({
   id: z.string().uuid(),
+  reason: correctionReasonSchema,
   supplierId: optionalIdSchema(),
   categoryId: optionalIdSchema(),
 });
@@ -111,6 +117,8 @@ const createProvisionSchema = z.strictObject({
 const idSchema = z.strictObject({
   id: z.string().uuid(),
 });
+
+const cancellationSchema = idSchema.extend({ reason: correctionReasonSchema });
 
 async function createFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
@@ -145,9 +153,17 @@ async function createFinancialEntryAction(formData: FormData) {
 
 async function updateFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = updateEntrySchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
   const clientId = await resolveClientId(input.clientId, organizationId);
+  assertTitleCorrectionAllowed({
+    cancelled: before.status === "cancelled", amount: before.amount,
+    settledAmount: before.receivedAmount ?? (before.status === "received" ? before.amount : "0.00"),
+    generated: await hasLinkedOrigin("receivable", before.id, organizationId),
+    economicFieldsChanged: before.amount !== input.amount || before.clientId !== clientId || before.competence !== input.competence || before.recurring !== input.recurring,
+    counterpartyChanged: before.clientId !== clientId, nextAmount: input.amount,
+  });
 
   const [after] = await db
     .update(financialEntries)
@@ -177,9 +193,11 @@ async function updateFinancialEntryAction(formData: FormData) {
     entityId: input.id,
     before,
     after,
+    metadata: { reason: input.reason },
   });
 
-  revalidatePath("/app/financeiro");
+  revalidatePath("/app", "layout");
+  revalidatePath("/portal", "layout");
 }
 
 async function markFinancialEntryReceivedAction(formData: FormData) {
@@ -192,8 +210,11 @@ async function markFinancialEntryReceivedAction(formData: FormData) {
 async function cancelFinancialEntryAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
-  const input = idSchema.parse(formDataToObject(formData));
+  const input = cancellationSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
+  assertTitleCorrectionAllowed({ cancelled: before.status === "cancelled", amount: before.amount,
+    settledAmount: before.receivedAmount ?? (before.status === "received" ? before.amount : "0.00"), generated: await hasLinkedOrigin("receivable", before.id, organizationId),
+    economicFieldsChanged: false, counterpartyChanged: false, cancellation: true });
 
   const [after] = await db
     .update(financialEntries)
@@ -218,10 +239,12 @@ async function cancelFinancialEntryAction(formData: FormData) {
     after,
     metadata: {
       status: "cancelled",
+      reason: input.reason,
     },
   });
 
-  revalidatePath("/app/financeiro");
+  revalidatePath("/app", "layout");
+  revalidatePath("/portal", "layout");
 }
 
 async function createFinancialExpenseAction(formData: FormData) {
@@ -262,9 +285,17 @@ async function createFinancialExpenseAction(formData: FormData) {
 
 async function updateFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
+  await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = updateExpenseSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
   const masterData = await resolveExpenseMasterData(input, organizationId, before);
+  assertTitleCorrectionAllowed({
+    cancelled: before.status === "cancelled", amount: before.amount,
+    settledAmount: before.status === "paid" && before.paidAmount === "0.00" ? before.amount : before.paidAmount,
+    generated: await hasLinkedOrigin("payable", before.id, organizationId),
+    economicFieldsChanged: before.amount !== input.amount || before.supplierId !== masterData.supplierId || before.competence !== input.competence || before.recurring !== input.recurring,
+    counterpartyChanged: before.supplierId !== masterData.supplierId, nextAmount: input.amount,
+  });
 
   const [after] = await db
     .update(financialExpenses)
@@ -284,9 +315,11 @@ async function updateFinancialExpenseAction(formData: FormData) {
     entityId: input.id,
     before,
     after,
+    metadata: { reason: input.reason },
   });
 
-  revalidatePath("/app/financeiro");
+  revalidatePath("/app", "layout");
+  revalidatePath("/portal", "layout");
 }
 
 async function markFinancialExpensePaidAction(formData: FormData) {
@@ -299,8 +332,11 @@ async function markFinancialExpensePaidAction(formData: FormData) {
 async function cancelFinancialExpenseAction(formData: FormData) {
   const { context, organizationId } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
-  const input = idSchema.parse(formDataToObject(formData));
+  const input = cancellationSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
+  assertTitleCorrectionAllowed({ cancelled: before.status === "cancelled", amount: before.amount,
+    settledAmount: before.status === "paid" && before.paidAmount === "0.00" ? before.amount : before.paidAmount, generated: await hasLinkedOrigin("payable", before.id, organizationId),
+    economicFieldsChanged: false, counterpartyChanged: false, cancellation: true });
 
   const [after] = await db
     .update(financialExpenses)
@@ -325,10 +361,12 @@ async function cancelFinancialExpenseAction(formData: FormData) {
     after,
     metadata: {
       status: "cancelled",
+      reason: input.reason,
     },
   });
 
-  revalidatePath("/app/financeiro");
+  revalidatePath("/app", "layout");
+  revalidatePath("/portal", "layout");
 }
 
 async function createProvisionAction(formData: FormData) {
@@ -440,6 +478,7 @@ async function getEntryForWrite(id: string, organizationId: string) {
         isNull(financialEntries.deletedAt),
       ),
     )
+    .for("update")
     .limit(1);
 
   if (!entry) {
@@ -460,6 +499,7 @@ async function getExpenseForWrite(id: string, organizationId: string) {
         isNull(financialExpenses.deletedAt),
       ),
     )
+    .for("update")
     .limit(1);
 
   if (!expense) {
@@ -575,28 +615,53 @@ export {
 const tenantCreateFinancialEntryAction = bindCurrentTenantContext(
   createFinancialEntryAction,
 );
-const tenantUpdateFinancialEntryAction = bindCurrentTenantContext(
-  updateFinancialEntryAction,
+const tenantUpdateFinancialEntryAction = withTitleCorrectionResult(
+  bindCurrentTenantContext(updateFinancialEntryAction),
 );
 const tenantMarkFinancialEntryReceivedAction = withRateLimitActionResult(
   bindCurrentTenantContext(markFinancialEntryReceivedAction),
 );
-const tenantCancelFinancialEntryAction = withRateLimitActionResult(
+const tenantCancelFinancialEntryAction = withTitleCorrectionResult(
   bindCurrentTenantContext(cancelFinancialEntryAction),
 );
 const tenantCreateFinancialExpenseAction = bindCurrentTenantContext(
   createFinancialExpenseAction,
 );
-const tenantUpdateFinancialExpenseAction = bindCurrentTenantContext(
-  updateFinancialExpenseAction,
+const tenantUpdateFinancialExpenseAction = withTitleCorrectionResult(
+  bindCurrentTenantContext(updateFinancialExpenseAction),
 );
 const tenantMarkFinancialExpensePaidAction = withRateLimitActionResult(
   bindCurrentTenantContext(markFinancialExpensePaidAction),
 );
-const tenantCancelFinancialExpenseAction = withRateLimitActionResult(
+const tenantCancelFinancialExpenseAction = withTitleCorrectionResult(
   bindCurrentTenantContext(cancelFinancialExpenseAction),
 );
 const tenantCreateProvisionAction = bindCurrentTenantContext(createProvisionAction);
 const tenantDeactivateProvisionAction = bindCurrentTenantContext(
   deactivateProvisionAction,
 );
+
+// Origin links are explicit; descriptions are never used to infer a relationship.
+async function hasLinkedOrigin(type: "receivable" | "payable", id: string, organizationId: string) {
+  const result = type === "receivable"
+    ? await db.execute(sql`select 1 from graphic_sale_installments where organization_id=${organizationId} and entry_id=${id}::uuid limit 1`)
+    : await db.execute(sql`select 1 from (
+        select expense_id as id, organization_id from graphic_supplier_commitments
+        union all select financial_expense_id, organization_id from invoice_requests
+        union all select financial_expense_id, organization_id from saas_subscription_charges
+        union all select financial_expense_id, organization_id from provision_cycles
+      ) origins where organization_id=${organizationId} and id=${id}::uuid limit 1`);
+  return result.rows.length > 0;
+}
+
+function withTitleCorrectionResult(operation: (formData: FormData) => Promise<void>) {
+  const limited = withRateLimitActionResult(operation);
+  return async (formData: FormData): Promise<ServerActionResult<void>> => {
+    try { return await limited(formData); }
+    catch (error) {
+      if (error instanceof FinancialTitleCorrectionError) return { ok: false, code: "CONFLICT", message: error.message };
+      if (error instanceof z.ZodError) return { ok: false, code: "CONFLICT", message: "Confira os dados e informe uma justificativa de pelo menos 3 caracteres." };
+      throw error;
+    }
+  };
+}

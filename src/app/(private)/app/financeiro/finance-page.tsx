@@ -1,3 +1,5 @@
+import { FinancialTitleForm } from "./financial-title-form";
+import type { ServerActionResult } from "@/lib/server-action-result";
 import { Ban, CheckCircle2, Pencil, Plus, Save, Upload } from "lucide-react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -7,7 +9,6 @@ import {
   ActionSheet,
   Button,
   MoneyInput,
-  RateLimitedActionForm,
 } from "@/components/fg";
 import { listClients } from "@/features/clients/dal";
 import { getFinanceMasterData } from "@/features/finance-master-data/dal";
@@ -162,7 +163,7 @@ function buildFinanceExportQuery(filters: FinanceFilters) {
   return query ? `?${query}` : "";
 }
 
-type FinanceFormAction = (formData: FormData) => Promise<void>;
+type FinanceFormAction = (formData: FormData) => Promise<void | ServerActionResult<void>>;
 type FinanceFormMode = "create" | "edit";
 type FinanceMasterData = Awaited<ReturnType<typeof getFinanceMasterData>>;
 
@@ -220,7 +221,7 @@ function EntryForm({
 }) {
   const SubmitIcon = mode === "create" ? Plus : Save;
   return (
-    <form action={action} className="fg-form">
+    <FinancialTitleForm action={action} className="fg-form">
       {entry ? <input name="id" type="hidden" value={entry.id} /> : null}
       <div className="fg-form-row">
         <div className="fg-field">
@@ -339,14 +340,14 @@ function EntryForm({
           rows={4}
         />
       </div>
-      {mode === "create" ? <FormAuxiliaryOptions /> : null}
+      {mode === "create" ? <FormAuxiliaryOptions /> : <CorrectionReasonField />}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="fg-btn fg-btn-primary fg-btn-default" type="submit">
           <SubmitIcon size={14} aria-hidden />
           <span>{submitLabel}</span>
         </button>
       </div>
-    </form>
+    </FinancialTitleForm>
   );
 }
 
@@ -365,7 +366,7 @@ function ExpenseForm({
 }) {
   const SubmitIcon = mode === "create" ? Plus : Save;
   return (
-    <form action={action} className="fg-form">
+    <FinancialTitleForm action={action} className="fg-form">
       {expense ? <input name="id" type="hidden" value={expense.id} /> : null}
       <div className="fg-form-row">
         <div className="fg-field">
@@ -501,14 +502,14 @@ function ExpenseForm({
           rows={4}
         />
       </div>
-      {mode === "create" ? <FormAuxiliaryOptions /> : null}
+      {mode === "create" ? <FormAuxiliaryOptions /> : <CorrectionReasonField />}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="fg-btn fg-btn-primary fg-btn-default" type="submit">
           <SubmitIcon size={14} aria-hidden />
           <span>{submitLabel}</span>
         </button>
       </div>
-    </form>
+    </FinancialTitleForm>
   );
 }
 
@@ -717,21 +718,13 @@ function EntryRowActions({
         <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimentação e conciliar" title="Registrar movimentação e conciliar"><CheckCircle2 size={14} /></Link>
       ) : null}
       {entry.status !== "cancelled" ? (
-        <RateLimitedActionForm
-          action={cancelFinancialEntryAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={entry.id} />
-          <button
-            type="submit"
-            className="fg-icon-btn sm"
-            aria-label="Cancelar"
-            title="Cancelar"
-            style={{ color: "var(--status-danger-text)" }}
-          >
-            <Ban size={14} />
-          </button>
-        </RateLimitedActionForm>
+        <ActionSheet title="Cancelar obrigação" description="Justifique o cancelamento. Títulos liquidados precisam de estorno; títulos integrados devem ser revistos na origem." trigger={<span className="fg-icon-btn sm" aria-label="Cancelar" title="Cancelar"><Ban size={14} /></span>}>
+          <FinancialTitleForm action={cancelFinancialEntryAction}>
+            <input name="id" type="hidden" value={entry.id} />
+            <CorrectionReasonField />
+            <button type="submit" className="fg-btn fg-btn-danger fg-btn-default">Confirmar cancelamento</button>
+          </FinancialTitleForm>
+        </ActionSheet>
       ) : null}
     </div>
   );
@@ -765,21 +758,13 @@ function ExpenseRowActions({ expense, masterData }: { expense: FinanceExpenseLis
         <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimentação e conciliar" title="Registrar movimentação e conciliar"><CheckCircle2 size={14} /></Link>
       ) : null}
       {expense.status !== "cancelled" ? (
-        <RateLimitedActionForm
-          action={cancelFinancialExpenseAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={expense.id} />
-          <button
-            type="submit"
-            className="fg-icon-btn sm"
-            aria-label="Cancelar"
-            title="Cancelar"
-            style={{ color: "var(--status-danger-text)" }}
-          >
-            <Ban size={14} />
-          </button>
-        </RateLimitedActionForm>
+        <ActionSheet title="Cancelar obrigação" description="Justifique o cancelamento. Títulos liquidados precisam de estorno; títulos integrados devem ser revistos na origem." trigger={<span className="fg-icon-btn sm" aria-label="Cancelar" title="Cancelar"><Ban size={14} /></span>}>
+          <FinancialTitleForm action={cancelFinancialExpenseAction}>
+            <input name="id" type="hidden" value={expense.id} />
+            <CorrectionReasonField />
+            <button type="submit" className="fg-btn fg-btn-danger fg-btn-default">Confirmar cancelamento</button>
+          </FinancialTitleForm>
+        </ActionSheet>
       ) : null}
     </div>
   );
@@ -804,4 +789,8 @@ function ProvisionRowActions({ id, status }: { id: string; status: string }) {
       </button>
     </form>
   );
+}
+
+function CorrectionReasonField() {
+  return <div className="fg-field"><label className="fg-label">Motivo da correção ou cancelamento<textarea className="fg-input fg-textarea" name="reason" required minLength={3} maxLength={2000} rows={3} /></label></div>;
 }

@@ -72,3 +72,28 @@ Pendente: gate E2E completo preparado sem dependências de QA histórico; cobert
 Gráfica→Financeiro→Cliente, relatórios de caixa com estorno por data, legado explícito,
 guards de edição/cancelamento, documentos financeiros, projeto/perfis e restart.
 O SHA acima é um checkpoint de desenvolvimento, não o candidato final homologável.
+
+## HML-02 — proteção de correções e cancelamentos
+
+Edição e cancelamento agora bloqueiam o título com `FOR UPDATE` dentro da
+transação tenant existente. Justificativa obrigatória é validada com Zod estrito
+e gravada junto do before/after na auditoria. Não se permite reduzir o valor
+abaixo da liquidação, trocar contraparte liquidada, alterar título cancelado ou
+cancelar uma obrigação com baixa parcial/integral, inclusive histórica.
+
+Origens explícitas (parcela gráfica, contratação, NF, cobrança SaaS e ciclo de
+provisão) protegem valor, contraparte, competência, recorrência e cancelamento.
+Informações documentais e vencimento continuam corrigíveis. Não são inferidos
+vínculos por descrição. A interface pede motivo e apresenta os conflitos seguros
+sem expor erros internos. Correções revalidam também Cliente, Gráfica e Portal.
+
+444 unitários/68 arquivos e 220 testes de banco/36 arquivos aprovados. Typecheck
+e lint aprovados (warning de import removido). Novos testes verificam proteção
+histórica, origens, justificativa, payload, permissão, auditoria e rollback.
+Logs em `storage-local/homologacao/title-*.log`, somente banco isolado.
+Sem migration/backfill neste incremento. Build/E2E da interface em validação.
+
+Pendente antes de considerar esta proteção completa para V1: revisão controlada
+das origens integradas quando for necessário desfazer uma contratação/venda,
+explicitação do legado nas leituras e tratamento da baixa direta de reembolso
+avulso identificada em `portal/actions.ts`. Não declarar candidato pronto.
