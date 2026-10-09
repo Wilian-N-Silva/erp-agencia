@@ -139,3 +139,13 @@ no servidor/banco. 0060 expansiva com backfill factual, aplicada só em testes.
 Typecheck/lint/472 unitários/251 DB/build e **23/23 E2E completos** aprovados no
 checkpoint. Gráfica/NF/reembolso, demais relatórios, referências/perfis e restart
 continuam pendentes. Próxima tarefa viável: correção financeira pela origem gráfica.
+
+`2d8ff5c`: correção da AP gráfica por contratação mantém cotação/contratação
+imutáveis e a mesma AP, com motivo, revisão esperada, transação/audit e histórico.
+Resumo/dashboard e Financeiro usam o custo corrigido. Um teste com lock real e
+prova negativa reproduziu o risco de saldo lido antes da espera: caminhos de
+correção/cancelamento manual, SaaS e provisões agora relêem saldo depois do lock.
+475 unitários/254 DB/typecheck/lint/build e **23/23 E2E completos** aprovados.
+Sem migration nova. Próxima prioridade: reservas pós-lock em conciliação,
+estorno e revisão histórica; depois venda/cancelamentos gráficos e demais origens.
+Relatórios, referências/perfis e restart continuam no escopo, ainda sem aceite final.

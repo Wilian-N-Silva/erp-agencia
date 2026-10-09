@@ -596,3 +596,22 @@ DB completo aprovado: 254 testes/41 arquivos (`graphic-payable-db.log`), com
 regressões de Financeiro, SaaS, provisões e RLS. Typecheck/lint/unit nos logs
 `graphic-payable-typecheck.log`, `graphic-payable-lint.log` e
 `graphic-payable-unit.log`. Build e E2E ainda pendentes neste registro.
+
+Runtime `2d8ff5c`: build aprovado (`build-graphic-payable.log`) e E2E integrado
+ampliado aprovado (`graphic-payable-e2e.log`, 15,5 segundos). O gestor corrige
+1200→1250, consulta motivo/valores anteriores e a mesma AP; resumo/dashboard e
+conciliações 300+950 usam o custo corrigido. Suíte E2E completa em execução.
+
+Revisão adicional encontrou o mesmo padrão de leitura de reserva na aquisição
+de lock em `releaseFinancialLegacyReserve`, `reverseFinancialTransaction` e
+`lockTarget` da conciliação. Próxima tarefa atômica: reproduzir as disputas e
+garantir recomposição/reserva com snapshot posterior ao lock nesses caminhos.
+Guards de capacidade/RLS permanecem ativos; não resolver alterando reservas ou
+caches por SQL. Depois, retomar venda/cancelamentos gráficos e demais origens.
+
+Checkpoint `2d8ff5c`: suíte completa `npm run test:e2e -- --workers=1`
+aprovada, 23/23 em 6,3 minutos, exit 0 (`graphic-payable-e2e-full.log`), no
+mesmo SHA do build/E2E focal. Typecheck/lint/475 unitários/254 DB/build aprovados.
+Sem migration/backfill. Diff-check limpo; base de uso, main/development e
+worktrees anteriores preservadas. Prontidão V1 continua incompleta pelos itens
+explicitados acima; não há candidato final ou aceite empresarial declarado.
