@@ -236,3 +236,18 @@ base local explicitamente nomeada `erp_hml_e2e` e runtime correspondente;
 teste unitário cobre recusa da base usual/remota/divergente. Contas necessárias
 são cadastradas pela UI e a consulta SaaS usa busca para não depender da
 primeira página. Validação focal dessas mudanças ainda em execução.
+### Gate E2E completo — falhas de pré-condições, ainda não aprovado
+
+Runtime `4725051`, testes `419178c`: comando `npm run test:e2e -- --workers=1`
+via processo com `.env` isolado. Cinco cenários falharam: importação/provisão
+dependiam do fornecedor QA ausente; OS dependia de código duplicado preexistente;
+consulta financeira reutilizava contexto após sign-out e recebeu 403; fixture
+NF exigia STORAGE_PROVIDER apesar de o backend real ser selecionado por
+credenciais R2. Asserções não foram removidas. Fixtures corrigidas para criar
+fornecedor/trabalho próprio, separar contextos e usar getStorageConfig.
+Log completo em `homologacao-full-e2e.log` na worktree isolada.
+
+Fluxos financeiros focais, arte versionada, portal/AP, NF/AP e SaaS passaram
+nessa execução. O gate completo permanece vermelho até repetição aprovada;
+não há candidato pronto. Ambiente e roteiro fictício dos gestores documentados
+como preparação/rascunho, com as pendências técnicas explícitas.

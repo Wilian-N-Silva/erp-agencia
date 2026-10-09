@@ -84,12 +84,14 @@ test("graphics tabs preserve navigation, drafts and mobile layout", async ({
 });
 
 test("finance consultation does not grant operational editing", async ({
-  page,
+  page: setupPage, browser,
 }) => {
   test.setTimeout(90_000);
-  await signIn(page, "todos.perfis@formula.local");
-  const jobUrl = await createGraphicTestJob(page);
-  await page.request.post("/api/auth/sign-out", { data: {} });
+  await signIn(setupPage, "todos.perfis@formula.local");
+  const jobUrl = await createGraphicTestJob(setupPage);
+  const financeContext = await browser.newContext();
+  try {
+  const page = await financeContext.newPage();
   await signIn(page, "financeiro@formula.local");
   await page.goto(jobUrl);
   await page.getByRole("tab", { name: "1. Pedido", exact: true }).click();
@@ -103,4 +105,5 @@ test("finance consultation does not grant operational editing", async ({
   await expect(
     page.getByText("Resumo financeiro do trabalho", { exact: true }),
   ).toBeVisible();
+  } finally { await financeContext.close(); }
 });

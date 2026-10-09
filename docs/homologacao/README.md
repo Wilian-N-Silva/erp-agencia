@@ -8,6 +8,8 @@ Branch: `feature/homologacao-v1-grafica-financeiro`, criada de `development`.
 - [Matriz de prontidão e backlog](prontidao.md)
 - [Progresso e evidências](progresso.md)
 - [Fluxos financeiros em validação](fluxos-financeiros.md)
+- [Preparo do ambiente isolado](ambiente.md)
+- [Dados fictícios e roteiro dos gestores (rascunho)](roteiro-gestores.md)
 
 Não promover para main nem implantar produção nesta execução. Preservar bancos,
 worktrees, stash e dados de uso. Testes com writes usam ambientes isolados.

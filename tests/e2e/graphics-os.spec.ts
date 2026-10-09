@@ -1,3 +1,4 @@
+import { createGraphicTestJob } from "./helpers/graphics";
 import { expect, test } from "@playwright/test";
 
 test("graphic flow from competing quotes and rejection to OS, production, reconciliation and closure", async ({
@@ -93,6 +94,8 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     ).toBeVisible();
   }
   const code = `OS-E2E-${Date.now()}`;
+  const duplicateCode = `DUP-${Date.now()}`;
+  await createGraphicTestJob(page, duplicateCode);
   const supplierName = `Fornecedor ${code}`;
   await page.goto("/app/grafica");
   await page
@@ -133,7 +136,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     .fill("Trabalho fictício para validar GRF-005.");
   await page
     .getByRole("textbox", { name: "Código interno", exact: true })
-    .fill("QA-GRF-20260921");
+    .fill(duplicateCode);
   await page
     .getByRole("button", { name: "Criar trabalho", exact: true })
     .click();
@@ -161,7 +164,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("link", { name: "Editar", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Código interno", exact: true })
-    .fill("QA-GRF-20260921");
+    .fill(duplicateCode);
   await page
     .getByRole("button", { name: "Salvar alterações", exact: true })
     .click();

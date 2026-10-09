@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
 // Each test owns its job: no dependence on execution order or prior test runs.
-export async function createGraphicTestJob(page: Page) {
-  const code = `HML-E2E-${randomUUID()}`;
+export async function createGraphicTestJob(page: Page, code = `HML-E2E-${randomUUID()}`) {
   await page.goto("/app/grafica/novo");
   await page.getByRole("textbox", { name: "Código interno", exact: true }).fill(code);
   await page.getByRole("textbox", { name: "Título", exact: true }).fill(code);

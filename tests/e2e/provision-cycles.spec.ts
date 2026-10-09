@@ -1,3 +1,4 @@
+import { createTestSupplier } from "./helpers/finance";
 import { expect, test } from "@playwright/test";
 import { signInWithRetry } from "./helpers/auth";
 
@@ -6,6 +7,8 @@ test("planeja provisão, realiza uma única AP e cancela somente a próxima comp
   page.setDefaultTimeout(15_000);
   await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
   const name = `QA-provisao-${Date.now()}`;
+  const supplierName = `${name} fornecedor`;
+  await createTestSupplier(page, supplierName);
   await page.goto("/app/financeiro/provisoes");
   await page.locator("button").filter({ hasText: /^Nova provisão$/ }).click();
   const form = page.locator("form").filter({ has: page.locator('[name="estimatedMonthlyAmount"]') });
@@ -29,7 +32,7 @@ test("planeja provisão, realiza uma única AP e cancela somente a próxima comp
   await page.getByRole("button", { name: "Planejar ocorrência", exact: true }).click();
   await expect(first).toHaveCount(1);
   await first.getByText("Realizar ocorrência", { exact: true }).click();
-  await first.getByLabel("Fornecedor", { exact: true }).selectOption({ label: "Fornecedor QA Grafica B" });
+  await first.getByLabel("Fornecedor", { exact: true }).selectOption({ label: supplierName });
   await first.getByLabel("Valor efetivo (R$)", { exact: true }).fill("120,00");
   await first.getByRole("button", { name: "Gerar conta a pagar", exact: true }).click();
   await expect(first).toContainText("Realizada");

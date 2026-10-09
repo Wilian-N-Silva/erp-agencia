@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
 import { isolatedE2eDatabaseUrl } from "./isolated-database";
+import { getStorageConfig } from "../../../src/lib/storage";
 
 export async function createInvoiceDownloadFixture() {
   const db = new Client({ connectionString: isolatedE2eDatabaseUrl() });
@@ -10,7 +11,8 @@ export async function createInvoiceDownloadFixture() {
   const employee = randomUUID(), invoice = randomUUID(), file = randomUUID(), document = randomUUID();
   const name = `HML-NF-${employee}`, filename = `${name}.pdf`;
   const body = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF");
-  if (process.env.STORAGE_PROVIDER !== "local" || !process.env.LOCAL_UPLOAD_DIR) {
+  const storage = getStorageConfig();
+  if (storage.provider !== "local" || !process.env.LOCAL_UPLOAD_DIR) {
     await db.end();
     throw new Error("Invoice fixture requires isolated local file storage.");
   }
@@ -18,7 +20,7 @@ export async function createInvoiceDownloadFixture() {
     const { rows: [template] } = await db.query('select u.id,u.organization_id,e.area_id,e.position_id from "user" u join employees e on e.user_id=u.id where u.email=$1', ['pj.exemplo@formula.local']);
     if (!template) throw new Error("Run the fictitious demo seed in the isolated E2E database first.");
     const key = `${template.organization_id}/e2e-invoices/${file}.pdf`;
-    const destination = path.resolve(process.env.LOCAL_UPLOAD_DIR, key);
+    const destination = path.resolve(storage.localDir, key);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, body, { flag: 'wx' });
     await db.query('BEGIN');

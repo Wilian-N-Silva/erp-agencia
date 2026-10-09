@@ -1,3 +1,4 @@
+import { createTestSupplier } from "./helpers/finance";
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
 
@@ -21,6 +22,8 @@ test("historical preview, explicit review, import and provenance report", async 
     await accounts.getByRole("button", { name: "Adicionar conta", exact: true }).click();
     await expect(accounts.getByText("Conta Gráfica QA", { exact: true })).toBeVisible();
   }
+  const supplierName = `HML-fornecedor-import-${Date.now()}`;
+  await createTestSupplier(page, supplierName);
   const marker = `Histórico QA ${Date.now()}`;
   const workbook = new ExcelJS.Workbook();
   const sales = workbook.addWorksheet("Vendas");
@@ -84,7 +87,7 @@ test("historical preview, explicit review, import and provenance report", async 
   const cashOut = page.locator(".fg-card").filter({ has: page.getByText("Saídas · linha 2 · Saída de caixa", { exact: true }) });
   await cashOut.getByLabel("Descrição confirmada").fill(`Pagamento ${marker}`);
   await cashOut.getByRole("combobox", { name: "Conta do caixa", exact: true }).selectOption({ label: "Conta Gráfica QA" });
-  await cashOut.getByRole("combobox", { name: "Fornecedor identificado", exact: true }).selectOption({ label: "Fornecedor QA Grafica B" });
+  await cashOut.getByRole("combobox", { name: "Fornecedor identificado", exact: true }).selectOption({ label: supplierName });
   await cashOut.getByLabel("Justificativa da revisão").fill("Saída conferida no extrato; sem vínculo inferido");
   await cashOut.getByRole("button", { name: "Salvar revisão da linha" }).click();
   await expect(cashOut.getByText("Revisada", { exact: true })).toBeVisible();
