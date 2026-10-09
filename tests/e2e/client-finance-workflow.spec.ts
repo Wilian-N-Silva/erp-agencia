@@ -1,17 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { ensureTestFinancialAccount } from "./helpers/finance";
+import { signInWithRetry } from "./helpers/auth";
 
 test("cadastra cliente recorrente, gera conta a receber e concilia recebimento", async ({ page }) => {
   test.setTimeout(90_000);
   page.setDefaultTimeout(10_000);
   const password = process.env.DEMO_USER_PASSWORD;
   expect(password).toBeTruthy();
-  const login = () => page.request.post("/api/auth/sign-in/email", { data: { email: "todos.perfis@formula.local", password } });
-  let response = await login();
-  if (response.status() === 429) {
-    await new Promise(resolve => setTimeout(resolve, 31_000));
-    response = await login();
-  }
-  expect(response.ok()).toBe(true);
+  await signInWithRetry(page, "todos.perfis@formula.local", password!);
+  await ensureTestFinancialAccount(page);
   const marker = `QA-cliente-financeiro-${Date.now()}`;
   const now = new Date();
   const competence = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;

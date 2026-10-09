@@ -1,9 +1,11 @@
+import { ensureTestFinancialAccount } from "./helpers/finance";
 import { expect, test } from "@playwright/test";
 import { signInWithRetry } from "./helpers/auth";
 
 test("reverses a reconciled receipt and reopens the same client title", async ({ page }) => {
   test.setTimeout(150_000);
   await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
+  await ensureTestFinancialAccount(page);
   const marker = `HML-estorno-${Date.now()}`;
   const now = new Date();
   const competence = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;

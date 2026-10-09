@@ -1,3 +1,5 @@
+import { isolatedE2eDatabaseUrl } from "./helpers/isolated-database";
+import { ensureTestFinancialAccount } from "./helpers/finance";
 import { randomUUID } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { Client } from "pg";
@@ -7,8 +9,7 @@ import { signInWithRetry } from "./helpers/auth";
 test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor uma vez", async ({ browser }) => {
   test.setTimeout(180_000);
   loadEnvFile(".env");
-  const connectionString = process.env.DATABASE_DIRECT_URL!;
-  if (!["localhost", "127.0.0.1"].includes(new URL(connectionString).hostname)) throw new Error("Fixture permitida apenas no banco local de demonstração.");
+  const connectionString = isolatedE2eDatabaseUrl();
   const admin = new Client({ connectionString }); await admin.connect();
   const marker = `QA-PJ-${Date.now()}`;
   const ownId = randomUUID(), reviewerId = randomUUID(), financeId = randomUUID(), employeeId = randomUUID();
@@ -32,6 +33,7 @@ test("PJ solicita dias flexíveis, Jaci demo aprova venda e a NF recebe o valor 
   };
   try {
     await login(reviewer, reviewerEmail); await login(own, ownEmail);
+    await ensureTestFinancialAccount(reviewer);
     await reviewer.goto("/app/ferias");
     await reviewer.getByLabel("Usuária responsável pelas aprovações PJ (Jaci)").selectOption(reviewerId);
     await reviewer.getByRole("button", { name: "Salvar responsável PJ", exact: true }).click();

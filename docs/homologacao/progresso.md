@@ -221,3 +221,18 @@ Typecheck/lint, 451 unitários e 228 testes DB/38 arquivos aprovados
 obsoleto, reserva imutável, capacidade, AR/AP parcial/estorno e isolamento.
 O procedimento auditável para revisão/liberação de reservas históricas e as
 correções nas origens continuam pendentes; não há candidata final aprovada.
+### Evidência do incremento de ledger e preparação E2E
+
+Commit `4725051`: build aprovado em worktree isolada; 0054/0055 aplicadas também
+em `erp_hml_e2e`, sem tocar a base local usual. Quatro E2E focais passaram em
+43,2 s: cliente recorrente→AR→conciliação, recebimento de múltiplos títulos e
+saldo parcial, estorno com reabertura, correção/cancelamento motivado. Logs
+`build-ledger.log` e `ledger-e2e.log` na worktree de validação.
+
+Em preparação para o gate completo, testes de arte final e abas passam a criar
+seu próprio trabalho pela UI. Teste de download de NF cria documento fictício
+próprio em vez de depender de uma execução anterior. Fixtures SQL só aceitam
+base local explicitamente nomeada `erp_hml_e2e` e runtime correspondente;
+teste unitário cobre recusa da base usual/remota/divergente. Contas necessárias
+são cadastradas pela UI e a consulta SaaS usa busca para não depender da
+primeira página. Validação focal dessas mudanças ainda em execução.

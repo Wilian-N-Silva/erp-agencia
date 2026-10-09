@@ -1,16 +1,11 @@
+import { createGraphicTestJob } from "./helpers/graphics";
+import { signInWithRetry } from "./helpers/auth";
 import { expect, test } from "@playwright/test";
 
 test("uploads final artwork in production tab and retains downloadable versions", async ({ page }) => {
   test.setTimeout(90_000);
-  const login = () => page.request.post("/api/auth/sign-in/email", { data: { email: "todos.perfis@formula.local", password: process.env.DEMO_USER_PASSWORD } });
-  let response = await login();
-  if (response.status() === 429) {
-    await new Promise(resolve => setTimeout(resolve, 31_000));
-    response = await login();
-  }
-  expect(response.ok()).toBe(true);
-  await page.goto("/app/grafica");
-  await page.locator('a[href^="/app/grafica/"]').filter({ hasText: /^OS-E2E-/ }).first().click();
+  await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
+  await createGraphicTestJob(page);
   await page.getByRole("tab", { name: "5. Produção e entrega", exact: true }).click();
   const section = page.getByRole("region", { name: "Arquivos finais para produção" });
   const name = `arte-final-${Date.now()}.pdf`;

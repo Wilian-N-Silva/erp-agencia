@@ -1,9 +1,11 @@
+import { ensureTestFinancialAccount } from "./helpers/finance";
 import { expect, test } from "@playwright/test";
 import { signInWithRetry } from "./helpers/auth";
 
 test("um recebimento concilia dois títulos e outro quita o saldo parcial do cliente", async ({ page }) => {
   test.setTimeout(150_000);
   await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
+  await ensureTestFinancialAccount(page);
   const marker = `QA-multiplos-${Date.now()}`;
   const now = new Date();
   const competences = [0, 1].map(offset => {

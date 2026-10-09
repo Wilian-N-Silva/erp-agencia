@@ -1,14 +1,9 @@
+import { createGraphicTestJob } from "./helpers/graphics";
+import { signInWithRetry } from "./helpers/auth";
 import { expect, test, type Page } from "@playwright/test";
 
 async function signIn(page: Page, email: string) {
-  const request = () => page.request.post("/api/auth/sign-in/email", { data: { email, password: process.env.DEMO_USER_PASSWORD } });
-  let response = await request();
-  if (response.status() === 429) {
-    const seconds = Number(response.headers()["retry-after"] ?? 10);
-    await new Promise(resolve => setTimeout(resolve, (Math.min(Math.max(seconds, 1), 30) + 1) * 1000));
-    response = await request();
-  }
-  expect(response.status(), "Login deve respeitar o limite de autenticação").toBe(200);
+  await signInWithRetry(page, email, process.env.DEMO_USER_PASSWORD!);
 }
 
 test("graphics tabs preserve navigation, drafts and mobile layout", async ({
@@ -16,12 +11,7 @@ test("graphics tabs preserve navigation, drafts and mobile layout", async ({
 }) => {
   test.setTimeout(90_000);
   await signIn(page, "todos.perfis@formula.local");
-  await page.goto("/app/grafica");
-  await page
-    .locator('a[href^="/app/grafica/"]')
-    .filter({ hasText: /^OS-E2E-/ })
-    .first()
-    .click();
+  await createGraphicTestJob(page);
   await expect(
     page.getByRole("tab", { name: "Visão geral", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
@@ -97,13 +87,11 @@ test("finance consultation does not grant operational editing", async ({
   page,
 }) => {
   test.setTimeout(90_000);
+  await signIn(page, "todos.perfis@formula.local");
+  const jobUrl = await createGraphicTestJob(page);
+  await page.request.post("/api/auth/sign-out", { data: {} });
   await signIn(page, "financeiro@formula.local");
-  await page.goto("/app/grafica");
-  await page
-    .locator('a[href^="/app/grafica/"]')
-    .filter({ hasText: /^OS-E2E-/ })
-    .first()
-    .click();
+  await page.goto(jobUrl);
   await page.getByRole("tab", { name: "1. Pedido", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Editar pedido", exact: true }),

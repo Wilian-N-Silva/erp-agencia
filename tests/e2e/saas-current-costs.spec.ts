@@ -29,6 +29,7 @@ test("cancelamento retira custo dos indicadores e preserva o contrato", async ({
   await form.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();
   await expect.poll(async () => cents(await kpi("Custo mensal").innerText())).toBe(monthlyBefore + 8765);
   await expect.poll(async () => cents(await kpi("Custo anualizado").innerText())).toBe(annualBefore + 8765 * 12);
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   const href = await page.getByRole("link").filter({ hasText: marker }).getAttribute("href");
   expect(href).toBeTruthy();
   await page.goto(href!);
