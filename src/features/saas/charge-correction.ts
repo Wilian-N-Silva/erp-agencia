@@ -38,7 +38,7 @@ export async function correctSaasCharge(context: AccessContext, raw: unknown) {
     const values = { chargedAt: input.chargedAt, dueDate: input.dueDate, originalCurrency: input.originalCurrency, originalAmount: input.originalAmount,
       effectiveExchangeRate: input.effectiveExchangeRate, principalAmountBrl: centsToMoney(calculatePrincipalAmount(input.originalAmount, input.effectiveExchangeRate)),
       iofAmountBrl: input.iofAmountBrl, feeAmountBrl: input.feeAmountBrl, totalAmountBrl: input.totalAmountBrl, chargesIncludedInTotal: input.chargesIncludedInTotal, notes: input.notes };
-    const [after] = await tx.update(saasSubscriptionCharges).set(values).where(and(eq(saasSubscriptionCharges.id, before.id), eq(saasSubscriptionCharges.organizationId, org))).returning();
+    const [after] = await tx.update(saasSubscriptionCharges).set({ ...values, updatedAt: new Date() }).where(and(eq(saasSubscriptionCharges.id, before.id), eq(saasSubscriptionCharges.organizationId, org))).returning();
     const [afterPayable] = await tx.update(financialExpenses).set({ amount: input.totalAmountBrl, dueDate: input.dueDate, competence: before.competence, notes: input.notes !== before.notes ? input.notes : payable.notes, updatedAt: new Date() })
       .where(and(eq(financialExpenses.id, payable.id), eq(financialExpenses.organizationId, org))).returning();
     await writeAuditLog(context, { action: "update", entityType: "saas_subscription_charge", entityId: before.id, before, after, metadata: { financialExpenseId: payable.id, reason: input.reason } });

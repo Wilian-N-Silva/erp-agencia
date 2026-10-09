@@ -93,7 +93,10 @@ it("rolls back the payable and charge when audit fails", async () => {
 });
 
 it("enforces tenant RLS for direct access", async () => {
-  expect(await withTenantDb({ ...context, organizationId: otherOrg }, async tx => tx.execute(sql`select id from saas_subscription_charges where id=${randomUUID()}`))).toMatchObject({ rows: [] });
+  const known = await recordSaasCharge(context, charge());
+  expect(await listSaasCharges({ ...context, organizationId: otherOrg }, subscription)).toEqual([]);
+  expect(await withTenantDb({ ...context, organizationId: otherOrg }, async tx => tx.execute(sql`select id from saas_subscription_charges where id=${known.id}`))).toMatchObject({ rows: [] });
+  expect(await withTenantDb({ ...context, organizationId: otherOrg }, async tx => tx.execute(sql`select id from audit_logs where entity_id=${known.id}`))).toMatchObject({ rows: [] });
   expect(await getDb().execute(sql`select id from saas_subscription_charges`)).toMatchObject({ rows: [] });
 });
 

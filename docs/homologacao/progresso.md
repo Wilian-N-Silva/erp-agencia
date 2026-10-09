@@ -500,3 +500,11 @@ final de histórico/autor foi validada também em oito testes focais DB. Cobertu
 de vínculo estável, concorrência, payload/tenant/permissões, rollback, cache pago
 obsoleto com parcial real, estorno e correção posterior. Build/E2E ainda pendentes
 neste registro. Cancelamento da cobrança SaaS é o próximo ponto desta origem.
+
+Runtime `6d1134b`: build e E2E focal aprovados (`build-saas-correction-final.log`,
+`saas-correction-e2e-final.log`). Cadastro, reenvio sem duplicação, correção com
+câmbio/IOF, consulta dos valores anteriores/motivo e mesma AP com total corrigido
+validados. O primeiro E2E encontrou um bug real no link da AP: competência de
+dezembro abria o filtro financeiro de outubro. Link passou a levar competência
+e busca, sem contornar filtros no teste. Atualização explícita de updatedAt da
+cobrança em validação final; nenhum schema/migration novo.
