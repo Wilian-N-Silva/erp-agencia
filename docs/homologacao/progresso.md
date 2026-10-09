@@ -365,3 +365,33 @@ de recusa. Upgrade isolado 0050→0056 aprovado. Migration aplicada somente no
 banco isolado. Build/E2E focal ainda pendentes neste registro; não é gate final.
 Essa correção é necessária à integridade integrada, mas não conclui o fluxo de
 correção econômica de venda/contratação, que permanece P0 no backlog.
+
+Build de `62a2eec` aprovado (`build-job-integrity.log`). E2E integrado aprovado
+com runtime `62a2eec` e teste `6f07658` (`job-integrity-e2e-final.log`): trabalho,
+duas artes, AR parcelada, AP, pagamentos/recebimentos parciais, consulta Cliente,
+encerramento e arquivamento recusado com mensagem visível/valores preservados.
+A primeira execução falhou por seletor ambíguo entre alerta da aplicação e
+anunciador de rota do Next; seletor especificado, sem remover a verificação.
+
+### FIN-010/006 — revisão explícita da reserva histórica
+
+Acrescentado registro imutável de liberação conferida da reserva, preservando
+o baseline original. O saldo efetivo usa baseline menos liberações, somado às
+alocações ativas. Financeiro, Cliente, Gráfica, alertas, conciliação e estorno
+consultam esse saldo. Não cria caixa nem declara comprovada uma baixa antiga.
+Interface de Histórico em AR/AP mostra original, restante, confirmado e revisões;
+liberação exige finance.reverse, motivo, evidência e confirmação explícita.
+
+Migrations expansivas 0057/0058 geradas pelo drizzle-kit: tabela tenant/FKs/RLS,
+imutabilidade, limite concorrente e atualização dos guards de saldo. A primeira
+suíte identificou a matriz RLS ainda sem a tabela nova e o trigger executando
+antes da checagem RLS de INSERT. Matriz atualizada e nova 0058 recusa tenant
+antes da consulta do dono, sem editar 0057 já aplicada no ambiente isolado.
+Segunda suíte DB: 236 testes/40 arquivos aprovados (`legacy-review-db-final.log`),
+incluindo upgrade 0050→0058, AR/AP, liberação idempotente, conciliação posterior,
+estorno, RLS, anti-tampering, concorrência e rollback de auditoria. UI/build e
+gates após os últimos ajustes ainda em execução. Nenhuma migration de produção.
+
+Correções econômicas das origens permanecem P0. Esta entrega libera uma reserva
+indevida explicitamente conferida; não transforma automaticamente baixas
+históricas em movimentos e não fornece autorização para revisar sem evidência.

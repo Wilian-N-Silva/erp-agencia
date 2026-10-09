@@ -88,6 +88,13 @@ Se contexto estiver ausente, a policy deve resultar em deny, nunca “ver tudo�
 
 ### 5.5 Tabelas cobertas
 
+Homologação V1 acrescenta `financial_legacy_releases` à matriz tenant direta:
+RLS ativa/forçada, FKs compostas de organização/título/autor, eventos imutáveis
+e limite de liberação validado com lock do título. A inserção também verifica
+o contexto tenant antes do trigger consultar o título. Runtime precisa de
+`finance.reverse` no DAL/action; revisão não cria transação bancária. Testes
+cross-tenant, payload, concorrência e rollback em `finance-legacy-review.test.ts`.
+
 O baseline da SEC-003 classifica todas as tabelas existentes. A fonte de verdade
 executável da matriz é **src/lib/db/rls-policy-matrix.ts**:
 

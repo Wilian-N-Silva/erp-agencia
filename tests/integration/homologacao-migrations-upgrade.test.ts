@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { createDatabase } from "@/lib/db";
 
-it("upgrades 0050 through 0056 preserving historical obligations and captures unverified settlement separately", async () => {
+it("upgrades 0050 through 0058 preserving historical obligations and captures unverified settlement separately", async () => {
   const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOnIdle: true, max: 1 });
   const schema = `hml_upgrade_${randomUUID().replaceAll("-", "")}`;
   const org = randomUUID(), employee = randomUUID(), user = randomUUID(), invoice = randomUUID();
@@ -37,7 +37,7 @@ it("upgrades 0050 through 0056 preserving historical obligations and captures un
       await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${org},'Upgrade account','bank')`);
       await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'in',20,now(),${user})`);
       await tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_entry_id,amount,created_by_user_id) values (${org},${movement},${ar},20,${user})`);
-      for (const idx of [51, 52, 53, 54, 55, 56]) await apply(idx);
+      for (const idx of [51, 52, 53, 54, 55, 56, 57, 58]) await apply(idx);
       expect((await tx.execute(sql`select received_amount,legacy_settled_amount,status from financial_entries where id=${ar}`)).rows[0]).toEqual({ received_amount: '70.00', legacy_settled_amount: '50.00', status: 'received' });
       expect((await tx.execute(sql`select paid_amount,legacy_settled_amount,status from financial_expenses where id=${ap}`)).rows[0]).toEqual({ paid_amount: '0.00', legacy_settled_amount: '80.00', status: 'paid' });
       expect((await tx.execute(sql`select count(*)::int n from financial_transactions`)).rows[0].n).toBe(1);

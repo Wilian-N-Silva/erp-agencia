@@ -96,4 +96,19 @@ valores acima da obrigação. 0054 exige janela de manutenção, pois bloqueia
 temporariamente as quatro tabelas financeiras enquanto captura o legado.
 Validar backup/restauração e aplicar primeiro em cópia isolada conforme o
 runbook de migrations. Não liberar ou converter reservas por SQL em operação:
-um procedimento de revisão auditável do legado ainda é pendência da V1.
+o procedimento de revisão auditável está disponível no Histórico de AR/AP.
+
+### Revisão conferida da reserva antiga
+
+No Financeiro, abra **Histórico** no título e confira reserva original,
+reserva disponível e movimentos conciliados. Anexe documentos pela ligação
+de evidências quando necessário. Quem possui `finance.reverse` pode liberar
+parte ou toda a reserva indevida, com motivo, referência da evidência conferida
+e confirmação explícita. Exemplo: uma baixa duplicada de R$ 40 pode ser revisada
+em R$ 10; o original continua R$ 40 e a reserva restante passa a R$ 30.
+
+Isso reabre o saldo da obrigação, sem criar entrada/saída bancária. Pagamentos
+reais devem ser registrados como movimentações com evidência e conciliados;
+não registre novamente um dinheiro já representado por movimento existente.
+Reenvio da mesma revisão não duplica seu efeito. Revisões não podem ser apagadas
+ou alteradas; movimentos conciliados depois continuam estornáveis com histórico.

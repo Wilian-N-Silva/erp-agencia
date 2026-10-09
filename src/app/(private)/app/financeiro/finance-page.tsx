@@ -116,10 +116,10 @@ export async function renderFinancePage({
   const provisionActions: Record<string, ReactNode> = {};
 
   for (const entry of dashboard.entries) {
-    entryActions[entry.id] = <><Link href={`/app/financeiro/anexos/financial_entry/${entry.id}`}>Documentos</Link>{canWrite ? <EntryRowActions clientOptions={clientOptions} entry={entry} /> : null}</>;
+    entryActions[entry.id] = <><Link href={`/app/financeiro/anexos/financial_entry/${entry.id}`}>Documentos</Link><Link href={`/app/financeiro/historico/receivable/${entry.id}`}>Histórico</Link>{canWrite ? <EntryRowActions clientOptions={clientOptions} entry={entry} /> : null}</>;
   }
   for (const expense of dashboard.expenses) {
-    expenseActions[expense.id] = <><Link href={`/app/financeiro/anexos/financial_expense/${expense.id}`}>Documentos</Link>{canWrite ? <ExpenseRowActions expense={expense} masterData={masterData!} /> : null}</>;
+    expenseActions[expense.id] = <><Link href={`/app/financeiro/anexos/financial_expense/${expense.id}`}>Documentos</Link><Link href={`/app/financeiro/historico/payable/${expense.id}`}>Histórico</Link>{canWrite ? <ExpenseRowActions expense={expense} masterData={masterData!} /> : null}</>;
   }
 
   if (canWrite) {

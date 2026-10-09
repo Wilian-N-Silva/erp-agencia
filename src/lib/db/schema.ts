@@ -1195,6 +1195,29 @@ export const financialAllocations = pgTable(
   }),
 );
 
+export const financialLegacyReleases = pgTable("financial_legacy_releases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  financialEntryId: uuid("financial_entry_id"),
+  financialExpenseId: uuid("financial_expense_id"),
+  requestId: uuid("request_id").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  reason: text("reason").notNull(),
+  evidence: text("evidence").notNull(),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  entryTenantFk: foreignKey({ columns: [table.organizationId, table.financialEntryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "financial_legacy_release_entry_tenant_fk" }),
+  expenseTenantFk: foreignKey({ columns: [table.organizationId, table.financialExpenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "financial_legacy_release_expense_tenant_fk" }),
+  authorTenantFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "financial_legacy_release_author_tenant_fk" }),
+  requestUnique: uniqueIndex("financial_legacy_release_request_idx").on(table.organizationId, table.requestId),
+  entryIdx: index("financial_legacy_release_entry_idx").on(table.organizationId, table.financialEntryId),
+  expenseIdx: index("financial_legacy_release_expense_idx").on(table.organizationId, table.financialExpenseId),
+  positive: check("financial_legacy_release_positive", sql`${table.amount} > 0`),
+  target: check("financial_legacy_release_target", sql`(${table.financialEntryId} is not null) <> (${table.financialExpenseId} is not null)`),
+  reasonCheck: check("financial_legacy_release_reason", sql`length(trim(${table.reason})) between 10 and 2000 and length(trim(${table.evidence})) between 10 and 2000`),
+}));
+
 export const provisions = pgTable(
   "provisions",
   {

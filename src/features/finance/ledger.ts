@@ -12,8 +12,13 @@ export function activeTitleAllocations(type: "receivable" | "payable"): SQL<stri
 }
 
 export function titleSettledAmount(type: "receivable" | "payable"): SQL<string> {
+  return sql<string>`((${titleLegacyReserved(type)})::numeric + (${activeTitleAllocations(type)})::numeric)::numeric(12,2)::text`;
+}
+
+/** Original immutable baseline less explicitly reviewed releases; never cash. */
+export function titleLegacyReserved(type: "receivable" | "payable"): SQL<string> {
   const table = sql.identifier(type === "receivable" ? "financial_entries" : "financial_expenses");
-  return sql<string>`(${table}.legacy_settled_amount + (${activeTitleAllocations(type)})::numeric)::numeric(12,2)::text`;
+  return sql<string>`financial_legacy_reserved(${table}.organization_id, ${type === "receivable" ? sql`${table}.id` : sql`null::uuid`}, ${type === "payable" ? sql`${table}.id` : sql`null::uuid`})::numeric(12,2)::text`;
 }
 
 export function titleLastAllocationDate(type: "receivable" | "payable"): SQL<string | null> {

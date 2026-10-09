@@ -1,4 +1,6 @@
 "use server";
+import { titleLegacyReserved } from "@/features/finance/ledger";
+
 
 import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
 
@@ -610,7 +612,7 @@ async function syncClientPaymentReminders(
       amount: financialEntries.amount,
       receivedAmount: titleSettledAmount("receivable"),
       confirmedAmount: activeTitleAllocations("receivable"),
-      legacySettledAmount: financialEntries.legacySettledAmount,
+      legacySettledAmount: titleLegacyReserved("receivable"),
       dueDate: financialEntries.dueDate,
       receivedDate: titleLastAllocationDate("receivable"),
       status: financialEntries.status,

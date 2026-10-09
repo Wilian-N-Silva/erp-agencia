@@ -1,3 +1,4 @@
+import { titleLegacyReserved } from "@/features/finance/ledger";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { centsToMoney, moneyToCents, toDateKey } from "@/features/finance/rules";
@@ -291,7 +292,7 @@ async function lockTarget(
     const rows = await transaction
       .select({
         amount: financialEntries.amount,
-        legacyBaseline: financialEntries.legacySettledAmount,
+        legacyBaseline: titleLegacyReserved("receivable"),
         date: financialEntries.receivedDate,
         id: financialEntries.id,
         status: financialEntries.status,
@@ -319,7 +320,7 @@ async function lockTarget(
   const rows = await transaction
     .select({
       amount: financialExpenses.amount,
-      legacyBaseline: financialExpenses.legacySettledAmount,
+      legacyBaseline: titleLegacyReserved("payable"),
       date: financialExpenses.paidDate,
       id: financialExpenses.id,
       status: financialExpenses.status,

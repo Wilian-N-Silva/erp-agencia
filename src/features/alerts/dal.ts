@@ -1,3 +1,4 @@
+import { titleLegacyReserved } from "@/features/finance/ledger";
 import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
@@ -330,7 +331,7 @@ async function buildClientPaymentAlertCandidates(
       amount: financialEntries.amount,
       receivedAmount: titleSettledAmount("receivable"),
       confirmedAmount: activeTitleAllocations("receivable"),
-      legacySettledAmount: financialEntries.legacySettledAmount,
+      legacySettledAmount: titleLegacyReserved("receivable"),
       dueDate: financialEntries.dueDate,
       receivedDate: titleLastAllocationDate("receivable"),
       status: financialEntries.status,
@@ -414,7 +415,7 @@ async function buildFinancialExpenseAlertCandidates(
       amount: financialExpenses.amount,
       paidAmount: titleSettledAmount("payable"),
       confirmedAmount: activeTitleAllocations("payable"),
-      legacySettledAmount: financialExpenses.legacySettledAmount,
+      legacySettledAmount: titleLegacyReserved("payable"),
       dueDate: financialExpenses.dueDate,
       paidDate: titleLastAllocationDate("payable"),
       status: financialExpenses.status,
