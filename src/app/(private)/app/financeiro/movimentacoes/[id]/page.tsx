@@ -8,6 +8,8 @@ import { financialTransactionStatusLabels, type FinancialTransactionStatus } fro
 import { getCurrentAccessContext } from "@/lib/dal";
 import { can, canAny } from "@/lib/rbac";
 import { ReconciliationForm } from "./reconciliation-form";
+import { ReversalForm } from "./reversal-form";
+import { getFinancialTransactionReversal } from "@/features/finance-transactions/reversal";
 import { getGraphicSuggestions } from "@/features/graphics/reconciliation";
 import { GraphicSuggestionReviewForm } from "../../../grafica/reconciliation-forms";
 
@@ -22,6 +24,7 @@ export default async function ReconciliationPage({ params, searchParams }: { par
   const query = typeof q === "string" ? q.slice(0, 100) : "";
   const data = await getReconciliation(context, { transactionId: id, query });
   if (!data) notFound();
+  const reversal = await getFinancialTransactionReversal(context, id);
   const suggestions = await getGraphicSuggestions(context, { transactionId: id });
   return <Page>
     <PageHeader eyebrow="Financeiro" title="Conciliar movimentação" description="Relacione o dinheiro movimentado às contas a receber ou pagar." />
@@ -30,6 +33,7 @@ export default async function ReconciliationPage({ params, searchParams }: { par
       <p>{formatMoney(data.movement.amount)} · {financialTransactionStatusLabels[data.movement.status as FinancialTransactionStatus]}</p>
       <p className="text-sm">Referência: {data.movement.reference ?? "Não informada"} · {data.movement.occurredAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
       <p className="font-medium">Saldo a conciliar: {formatMoney(data.remaining)}</p>
+      {reversal ? <p className="mt-3 text-sm">Estorno registrado em {reversal.occurredAt.toLocaleDateString("pt-BR")} · Motivo: {reversal.reason}</p> : null}
     </Card>
     {suggestions.length ? <Card className="mt-5" title="Sugestões da Gráfica">
       <p className="mb-3 text-sm">Confira a parcela e a justificativa antes de confirmar. A confirmação concilia somente o valor sugerido.</p>
@@ -42,6 +46,7 @@ export default async function ReconciliationPage({ params, searchParams }: { par
       </div>)}
     </Card> : null}
     <Card className="mt-5" title="Vínculos confirmados">
+      {data.movement.status === "reversed" ? <p className="mb-3 text-sm">Vínculos históricos da movimentação estornada; não liquidam os títulos atualmente.</p> : null}
       {data.allocations.length ? <ul className="space-y-2">{data.allocations.map(row => <li key={row.id}>{row.description} · {formatMoney(row.amount)}</li>)}</ul> : <p className="text-sm text-muted-foreground">Nenhum vínculo confirmado.</p>}
     </Card>
     {data.movement.status !== "reversed" && moneyToCents(data.remaining) > 0 ? <Card className="mt-5" title="Escolher títulos">
@@ -49,5 +54,6 @@ export default async function ReconciliationPage({ params, searchParams }: { par
       {data.truncated ? <p className="mb-3 text-sm">Exibindo os primeiros 200 títulos. Refine a busca para localizar outros.</p> : null}
       {data.candidates.length ? can("finance.settle", context) ? <ReconciliationForm key={`${data.remaining}:${query}`} transactionId={id} remaining={data.remaining} candidates={data.candidates} /> : <p>Solicite a um usuário do Financeiro com permissão de liquidação para confirmar os vínculos.</p> : <p>Nenhum título aberto encontrado. Confira a busca ou cadastre a conta a receber/pagar antes de conciliar.</p>}
     </Card> : null}
+    {can("finance.reverse", context) && data.movement.status !== "reversed" ? <Card className="mt-5" title="Estornar movimentação"><ReversalForm transactionId={id} /></Card> : null}
   </Page>;
 }

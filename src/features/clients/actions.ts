@@ -408,7 +408,7 @@ async function markClientPaymentReceivedAction(formData: FormData) {
   const { context } = await requireClientFinancialWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
   markClientPaymentReceivedSchema.parse(formDataToObject(formData));
-  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
+  throw new Error("Baixa direta descontinuada. Registre a movimentação e concilie o título no Financeiro.");
 }
 
 async function updateClientInternalNotesAction(formData: FormData) {

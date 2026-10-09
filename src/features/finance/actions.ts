@@ -186,7 +186,7 @@ async function markFinancialEntryReceivedAction(formData: FormData) {
   const { context } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
   idSchema.parse(formDataToObject(formData));
-  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
+  throw new Error("Baixa direta descontinuada. Registre a movimentação e concilie o título no Financeiro.");
 }
 
 async function cancelFinancialEntryAction(formData: FormData) {
@@ -293,7 +293,7 @@ async function markFinancialExpensePaidAction(formData: FormData) {
   const { context } = await requireFinanceWriterContext();
   await enforceAuthenticatedRateLimit("reconciliation", context);
   idSchema.parse(formDataToObject(formData));
-  throw new Error("Baixa direta descontinuada. Registre a movimenta??o e concilie o t?tulo no Financeiro.");
+  throw new Error("Baixa direta descontinuada. Registre a movimentação e concilie o título no Financeiro.");
 }
 
 async function cancelFinancialExpenseAction(formData: FormData) {

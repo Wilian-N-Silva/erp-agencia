@@ -508,7 +508,7 @@ function PaymentsTab({
                   {canWriteFinance ? (
                     <td className="right">
                       {p.status !== "received" && p.status !== "cancelled" ? (
-                        <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimenta??o e conciliar" title="Registrar movimenta??o e conciliar"><CheckCircle2 size={14} /></Link>
+                        <Link href="/app/financeiro/movimentacoes" className="fg-icon-btn sm" aria-label="Registrar movimentação e conciliar" title="Registrar movimentação e conciliar"><CheckCircle2 size={14} /></Link>
                       ) : null}
                     </td>
                   ) : null}

@@ -358,6 +358,20 @@
       "when": 1791556902886,
       "tag": "0050_optimal_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791560896428,
+      "tag": "0051_tense_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791561124784,
+      "tag": "0052_reversal-capacity-guards",
+      "breakpoints": true
     }
   ]
 }

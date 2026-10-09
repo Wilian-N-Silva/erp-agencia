@@ -42,6 +42,8 @@ export const defaultRolePermissions: Record<
     "dashboard.read",
     "finance.read",
     "finance.write",
+    "finance.reverse",
+    "finance.settle",
     "finance.export",
     "finance.configure",
     "clients.read",

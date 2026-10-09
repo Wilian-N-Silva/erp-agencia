@@ -980,6 +980,21 @@ export const financialTransactions = pgTable(
   }),
 );
 
+export const financialTransactionReversals = pgTable("financial_transaction_reversals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  transactionId: uuid("transaction_id").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  reason: text("reason").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id),
+}, table => ({
+  transactionTenantFk: foreignKey({ columns: [table.organizationId, table.transactionId], foreignColumns: [financialTransactions.organizationId, financialTransactions.id], name: "financial_reversals_transaction_tenant_fk" }),
+  transactionUnique: uniqueIndex("financial_reversals_transaction_idx").on(table.organizationId, table.transactionId),
+  positiveAmount: check("financial_reversals_amount_check", sql`${table.amount} > 0`),
+  reasonLength: check("financial_reversals_reason_check", sql`length(trim(${table.reason})) >= 3`),
+}));
+
 export const financialEntries = pgTable(
   "financial_entries",
   {

@@ -369,7 +369,8 @@ async function sumTargetAllocations(
   const [row] = await transaction
     .select({ total: sql<string>`coalesce(sum(${financialAllocations.amount}), 0)` })
     .from(financialAllocations)
-    .where(and(eq(financialAllocations.organizationId, organizationId), targetCondition));
+    .innerJoin(financialTransactions, and(eq(financialTransactions.id, financialAllocations.transactionId), eq(financialTransactions.organizationId, financialAllocations.organizationId)))
+    .where(and(eq(financialAllocations.organizationId, organizationId), targetCondition, sql`${financialTransactions.status} <> 'reversed'`));
   return row?.total ?? "0.00";
 }
 

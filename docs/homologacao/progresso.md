@@ -37,3 +37,24 @@ Logs locais: `storage-local/homologacao/baseline-*` e `cutover-*`.
 Esta proteção não conclui FIN-010: ainda faltam fontes de leitura legadas explícitas,
 guards de edição/cancelamento e demais origens. Build/E2E desta candidata ainda
 pendentes; testes históricos não serão apresentados como aprovação desta V1.
+
+## HML-03 — estorno em validação
+
+Registro de estorno por movimentação, motivo obrigatório, permissão `finance.reverse`,
+histórico imutável e recálculo transacional dos títulos. Reenvio concorrente devolve
+o mesmo estorno. Alocações originais permanecem; somente movimentações ativas
+participam das somas. UI no detalhe da movimentação e audit de motivo/antes/depois.
+Correção de dinheiro lançado por engano: estornar e cadastrar movimento correto;
+nenhuma transferência bancária automática.
+
+0051 foi gerada por drizzle-kit para tabela/RLS/grant/trigger imutável e guard de
+títulos. Teste revelou que o trigger de capacidade antigo contava alocações
+estornadas. Como 0051 já estava aplicada no banco isolado, gerada migration custom
+0052 para corrigir o guard sem editar histórico. Ambas aplicadas somente em testes.
+
+215 testes de banco em 35 arquivos passaram (69,08 s), incluindo concorrência,
+AR/AP, nova conciliação após estorno, isolamento/RLS, payload, permissão e rollback.
+Unitários, lint e typecheck passaram antes do último E2E adicionado; próxima etapa
+revalida os gates e build/E2E no checkout separado `erp-agencia-hml-validation`.
+Esse checkout tem banco E2E novo `erp_hml_e2e`, seed apenas fictício e uploads próprios.
+Não é o ambiente local em uso nem a candidata empresarial aprovada.

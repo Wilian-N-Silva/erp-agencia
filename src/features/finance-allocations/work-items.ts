@@ -7,7 +7,7 @@ import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 /** Call inside the transaction that creates or locks the cash movement. */
 export async function syncReconciliationWorkItem(context: AccessContext, transactionId: string) {
-  assertCanAny(["finance.write", "finance.settle"], context);
+  assertCanAny(["finance.write", "finance.settle", "finance.reverse"], context);
   if (!context.organizationId) throw new AccessDeniedError();
   const organizationId = context.organizationId;
   return withTenantDb(context, async (tx) => {
