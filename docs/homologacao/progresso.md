@@ -58,3 +58,17 @@ Unitários, lint e typecheck passaram antes do último E2E adicionado; próxima 
 revalida os gates e build/E2E no checkout separado `erp-agencia-hml-validation`.
 Esse checkout tem banco E2E novo `erp_hml_e2e`, seed apenas fictício e uploads próprios.
 Não é o ambiente local em uso nem a candidata empresarial aprovada.
+
+### Evidência do checkpoint `abce9c0`
+
+436 unitários (67 arquivos), 215 de banco (35 arquivos), typecheck e lint verdes.
+Build aprovado na worktree isolada, migrations 0051/0052 e seed somente em
+`erp_hml_e2e`. `finance-reversal.spec.ts`: 1/1 aprovado, processo exit 0, registra
+cliente/AR, concilia R$100, estorna com motivo, preserva vínculos e confere AR
+reaberta com recebido R$0 no Cliente após reload. Logs: `build-reversal.log` e
+`reversal-e2e.log` na worktree; demais logs em storage-local/homologacao.
+
+Pendente: gate E2E completo preparado sem dependências de QA histórico; cobertura
+Gráfica→Financeiro→Cliente, relatórios de caixa com estorno por data, legado explícito,
+guards de edição/cancelamento, documentos financeiros, projeto/perfis e restart.
+O SHA acima é um checkpoint de desenvolvimento, não o candidato final homologável.

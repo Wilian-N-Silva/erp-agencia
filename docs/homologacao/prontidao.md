@@ -42,3 +42,11 @@ Tasks executadas em commits pequenos na branch dedicada, conforme autorização
 explícita deste Goal de percorrer o backlog integrado; não atualizar tarefas antigas
 para done com base apenas na existência de código.
 
+## Atualização após o reconhecimento
+
+HML-01 tem ambiente DB e E2E isolados preparados e baseline unitário/banco verde.
+HML-02 bloqueou os três endpoints de baixa direta e substituiu as ações da UI;
+fontes históricas e correções de títulos ainda estão em trabalho.
+HML-03 implementou estorno de movimentação com histórico imutável e saldo reaberto,
+testado em banco e navegador (`abce9c0`). Revisão de relatórios/integridade e E2E
+integrado obrigatório continuam pendentes antes do aceite técnico do candidato.
