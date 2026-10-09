@@ -699,3 +699,14 @@ Banco completo aprovado: 265 testes/41 arquivos (`graphic-suggestion-db.log`),
 478 unitários/81 arquivos, typecheck/lint e `git diff --check` aprovados. Build
 e E2E desta leitura aguardam checkpoint isolado. Migration 0061 já aplicada
 nas duas bases exclusivas de teste, sem tocar a base de uso ou produção.
+
+Runtime `94d00c8`: build aprovado (`build-graphic-sale.log`). E2E completo
+terminou **22/23**, exit 1 (`graphic-sale-e2e-full.log`); Gráfica integrada,
+venda corrigida/parcelas/Cliente/Financeiro e demais fluxos passaram. A falha
+pré-existente em `saas-removal` procurava o novo registro só na primeira página
+de 25; o contexto de erro mostrou 27 registros na base isolada preservada.
+Não é evidência de falha na criação nem gate aprovado. Corrigido o teste para
+buscar o próprio marcador antes da consulta/remoção e da conferência após
+reload; mesmo ajuste nos dois outros E2E SaaS com a mesma suposição. Mantidos
+asserts de criação, proteção do histórico e 404 por ID removido. Sem limpar
+dados, aumentar timeout/rate limit ou mudar produto. Repetição completa pendente.

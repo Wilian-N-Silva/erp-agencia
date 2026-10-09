@@ -24,6 +24,7 @@ test("SaaS preserves annual currency prices and updates documented estimates", a
   await create.getByLabel("Data da cotação").fill("2026-10-02");
   await create.getByLabel("Fonte da cotação").fill("Simulação QA");
   await create.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   const href = await page.getByRole("link").filter({ hasText: marker }).getAttribute("href");
   await page.goto(href!);
   const kpi = (label: string) => page.locator(".fg-kpi").filter({ has: page.getByText(label, { exact: true }) }).locator(".fg-kpi-value");

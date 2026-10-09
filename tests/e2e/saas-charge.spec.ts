@@ -19,6 +19,7 @@ test("registra cobrança SaaS efetiva com câmbio/IOF e cria AP uma única vez",
   await create.getByLabel("Data da cotação").fill("2026-10-01");
   await create.getByLabel("Fonte da cotação").fill("Fatura QA");
   await create.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   const href = await page.getByRole("link").filter({ hasText: marker }).getAttribute("href");
   expect(href).toBeTruthy();
   await page.goto(`${href}?tab=cobrancas`);

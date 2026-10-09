@@ -18,6 +18,7 @@ test("remove cadastro errado e mantém cancelamento como operação distinta", a
   await form.locator('[name="name"]').fill(marker);
   await form.locator('[name="category"]').fill("Validação fictícia");
   await form.getByRole("button", { name: "Cadastrar assinatura", exact: true }).click();
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   const link = page.getByRole("link").filter({ hasText: marker });
   await expect(link).toBeVisible();
   const href = await link.getAttribute("href");
@@ -27,13 +28,16 @@ test("remove cadastro errado e mantém cancelamento como operação distinta", a
   await page.getByLabel("Confirmo que esta assinatura foi cadastrada por engano.").check();
   await page.getByRole("button", { name: "Confirmar remoção", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/assinaturas$/);
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   await expect(page.getByRole("link").filter({ hasText: marker })).toHaveCount(0);
   await page.reload();
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill(marker);
   await expect(page.getByRole("link").filter({ hasText: marker })).toHaveCount(0);
   const removedResponse = await page.goto(href!);
   expect(removedResponse?.status()).toBe(404);
 
   await page.goto("/app/assinaturas");
+  await page.getByPlaceholder("Nome, fornecedor, categoria...").fill("Google Workspace");
   const workspace = await page.getByRole("link").filter({ hasText: "Google Workspace" }).getAttribute("href");
   await page.goto(`${workspace}?tab=contrato`);
   await page.getByRole("button", { name: "Remover cadastro incorreto", exact: true }).click();
