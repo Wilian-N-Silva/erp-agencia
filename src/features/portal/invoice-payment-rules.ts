@@ -52,3 +52,17 @@ export function deriveReimbursementInvoicePayment(
       : "Pagamento acompanha a quitação da NF",
   };
 }
+
+export function deriveDirectReimbursementPayment(status: ReimbursementStatus, paidAt: Date | null,
+  financialExpenseId: string | null, payment: ReturnType<typeof deriveInvoicePayment> | undefined) {
+  if (!financialExpenseId) return { status, paidAt, invoicePaymentLabel: status === "paid" ? "Pagamento histórico sem vínculo financeiro — requer conferência" : null };
+  const settled = payment?.payment.state === "settled";
+  return {
+    status: settled ? "paid" as const : "finance_approved" as const,
+    paidAt: settled ? payment.paidAt : null,
+    invoicePaymentLabel: !payment || payment.payment.state === "unavailable" ? "Conta a pagar avulsa indisponível — verificar no Financeiro"
+      : settled ? "Pago pela conciliação da conta a pagar avulsa"
+      : payment.payment.state === "partial" ? "Conta a pagar avulsa parcialmente paga"
+      : "Pagamento acompanha a conta a pagar avulsa",
+  };
+}

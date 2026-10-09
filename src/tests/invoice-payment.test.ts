@@ -25,3 +25,12 @@ it("preserves unlinked history and does not claim settlement of unavailable obli
   expect(deriveInvoicePayment({ ...input, payableStatus: "cancelled", paidAmount: "100.00" })).toMatchObject({ status: "approved", payment: { state: "unavailable" } });
   expect(deriveInvoicePayment({ ...input, payableAmount: null })).toMatchObject({ payment: { state: "unavailable" } });
 });
+import { deriveDirectReimbursementPayment } from "@/features/portal/invoice-payment-rules";
+
+it("derives direct reimbursement payment from its payable and preserves explicit historical warnings", () => {
+  expect(deriveDirectReimbursementPayment("paid", input.lastPaymentAt, null, undefined)).toMatchObject({ status: "paid", invoicePaymentLabel: expect.stringContaining("histórico") });
+  expect(deriveDirectReimbursementPayment("finance_approved", null, "payable", deriveInvoicePayment({ ...input, paidAmount: "40.00" }))).toMatchObject({ status: "finance_approved", paidAt: null, invoicePaymentLabel: expect.stringContaining("parcialmente") });
+  expect(deriveDirectReimbursementPayment("finance_approved", null, "payable", deriveInvoicePayment({ ...input, paidAmount: "100.00" }))).toMatchObject({ status: "paid", paidAt: input.lastPaymentAt });
+  expect(deriveDirectReimbursementPayment("paid", input.lastPaymentAt, "payable", deriveInvoicePayment({ ...input, paidAmount: "0.00" }))).toMatchObject({ status: "finance_approved", paidAt: null });
+  expect(deriveDirectReimbursementPayment("paid", input.lastPaymentAt, "payable", undefined)).toMatchObject({ status: "finance_approved", paidAt: null, invoicePaymentLabel: expect.stringContaining("indisponível") });
+});

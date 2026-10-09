@@ -650,6 +650,7 @@ async function hasLinkedOrigin(type: "receivable" | "payable", id: string, organ
         union all select financial_expense_id, organization_id from invoice_requests
         union all select financial_expense_id, organization_id from saas_subscription_charges
         union all select financial_expense_id, organization_id from provision_cycles
+        union all select financial_expense_id, organization_id from reimbursement_requests
       ) origins where organization_id=${organizationId} and id=${id}::uuid limit 1`);
   return result.rows.length > 0;
 }

@@ -1624,6 +1624,7 @@ export const reimbursementRequests = pgTable(
     includedInvoiceRequestId: uuid("included_invoice_request_id").references(
       () => invoiceRequests.id,
     ),
+    financialExpenseId: uuid("financial_expense_id"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1631,6 +1632,9 @@ export const reimbursementRequests = pgTable(
   },
   (table) => ({
     employeeIdx: index("reimbursements_employee_idx").on(table.employeeId),
+    payableIdx: uniqueIndex("reimbursements_payable_idx").on(table.financialExpenseId),
+    payableTenantFk: foreignKey({ columns: [table.organizationId, table.financialExpenseId], foreignColumns: [financialExpenses.organizationId, financialExpenses.id], name: "reimbursements_payable_tenant_fk" }),
+    exclusivePaymentOrigin: check("reimbursements_payment_origin_check", sql`${table.financialExpenseId} is null or ${table.includedInvoiceRequestId} is null`),
     statusIdx: index("reimbursements_status_idx").on(table.organizationId, table.status),
   }),
 );

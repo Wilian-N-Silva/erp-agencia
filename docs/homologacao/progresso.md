@@ -150,3 +150,31 @@ Cliente→movimentação→conciliação→estorno→Cliente→relatório. O rel
 o estorno de entrada em exatamente R$100 e manteve o valor após reload.
 Não foi executado o gate E2E completo neste checkpoint. Este SHA não é o
 candidato final. Sem alteração em bancos existentes/main/development.
+
+## HML-02 — reembolso avulso com origem única
+
+Substituída a baixa direta por geração explícita de AP para reembolso aprovado.
+Gestor financeiro informa competência, vencimento, categoria e centro de custo;
+valor e favorecido vêm do pedido/colaborador autorizado, sem inventar fornecedor.
+O reembolso tem FK tenant/índice único para AP. Linha é bloqueada na transação:
+gerações concorrentes devolvem a mesma AP e auditoria acompanha ambos os lados.
+Pedido com AP não pode entrar em NF; pedido vinculado à NF não pode gerar AP.
+
+O endpoint legado `markReimbursementPaidAction` não grava pagamento, mesmo para
+pedido avulso aprovado. A interface abre a geração da obrigação ou encaminha à
+conciliação. Portal/gestão derivam parcial/quitação/data das alocações de saída
+ativas e reabrem o estado após estorno, sem segunda gravação de pagamento.
+Pagamentos históricos sem AP permanecem preservados e identificados para revisão.
+
+Migration 0053 gerada por drizzle-kit: coluna nullable, FK tenant, unicidade,
+exclusão de dupla origem e trigger que preserva vínculo/valor/favorecido após AP.
+Sem backfill, sem novas obrigações para o histórico e sem alteração em migration
+anterior. Aplicada apenas ao banco isolado de testes. Teste de upgrade real
+0050→0053 em schema novo comprovou preservação, ausência de AP inventada e guards.
+
+450 unitários/70 arquivos e 226 DB/38 arquivos aprovados; typecheck/lint verdes.
+Testes novos: concorrência, parcial/integral/estorno, own-scope, organização,
+permissões, payload, rollback de auditoria, dupla origem e recusa da baixa direta.
+Logs `reimbursement-*.log` e `hml-upgrade.log` em storage-local/homologacao.
+Build/E2E do novo fluxo ainda em validação. Legado das demais obrigações segue
+pendente; não considerar a candidata pronta.

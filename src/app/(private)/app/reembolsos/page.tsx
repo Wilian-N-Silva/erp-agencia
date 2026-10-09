@@ -1,4 +1,7 @@
-import { Ban, Check, CheckCircle2, DollarSign, FileMinus2, FilePlus2 } from "lucide-react";
+import Link from "next/link";
+import { getFinanceMasterData } from "@/features/finance-master-data/dal";
+import { ReimbursementPayableSheet } from "./reimbursement-payable-sheet";
+import { Ban, Check, CheckCircle2, FileMinus2, FilePlus2 } from "lucide-react";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -8,7 +11,6 @@ import {
   approveReimbursementByManagerAction,
   excludeReimbursementFromInvoiceAction,
   includeReimbursementInInvoiceAction,
-  markReimbursementPaidAction,
   rejectReimbursementByFinanceAction,
   rejectReimbursementByManagerAction,
 } from "@/features/portal/actions";
@@ -22,7 +24,6 @@ import {
   canApproveReimbursementByFinance,
   canApproveReimbursementByManager,
   canIncludeReimbursementInInvoice,
-  canMarkReimbursementPaid,
   invoiceRequestStatusLabels,
 } from "@/features/portal/rules";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
@@ -56,6 +57,7 @@ export default async function ReimbursementsPage() {
   const reimbursements = await listReimbursements(context);
   const openInvoicesByEmployee = await loadOpenInvoicesForReimbursements(context, reimbursements);
   const canCreate = can("reimbursements.write", context);
+  const masterData = can("finance.write", context) && can("reimbursements.approve_finance", context) ? await getFinanceMasterData(context) : null;
 
   const rowActions: Record<string, ReactNode> = {};
   const detailActions: Record<string, ReactNode> = {};
@@ -68,7 +70,10 @@ export default async function ReimbursementsPage() {
     };
     const canManagerApprove = canApproveReimbursementByManager(context, target);
     const canFinanceApprove = canApproveReimbursementByFinance(context, target);
-    const canPay = !reimbursement.includedInvoiceRequestId && canMarkReimbursementPaid(context, target);
+    const canPay = Boolean(reimbursement.financialExpenseId ? can("finance.read", context) : !reimbursement.includedInvoiceRequestId && reimbursement.status === "finance_approved" && masterData);
+    const payableAction = reimbursement.financialExpenseId
+      ? <Link href="/app/financeiro/movimentacoes">Registrar pagamento e conciliar</Link>
+      : masterData ? <ReimbursementPayableSheet id={reimbursement.id} masterData={masterData} /> : null;
     const eligibleInvoices = (openInvoicesByEmployee.get(reimbursement.employeeId) ?? []).filter(
       (invoice) =>
         canIncludeReimbursementInInvoice(
@@ -77,7 +82,7 @@ export default async function ReimbursementsPage() {
           { employeeId: reimbursement.employeeId, status: invoice.status },
         ),
     );
-    const showInclude = reimbursement.status === "finance_approved" && eligibleInvoices.length > 0;
+    const showInclude = !reimbursement.financialExpenseId && reimbursement.status === "finance_approved" && eligibleInvoices.length > 0;
     const showExclude =
       reimbursement.status === "included_in_invoice" && can("invoices.write", context);
 
@@ -86,6 +91,7 @@ export default async function ReimbursementsPage() {
         canManagerApprove={canManagerApprove}
         canFinanceApprove={canFinanceApprove}
         canPay={canPay}
+        payableAction={payableAction}
         reimbursementId={reimbursement.id}
       />
     );
@@ -95,6 +101,7 @@ export default async function ReimbursementsPage() {
         canManagerApprove={canManagerApprove}
         canFinanceApprove={canFinanceApprove}
         canPay={canPay}
+        payableAction={payableAction}
         showInclude={showInclude}
         showExclude={showExclude}
         eligibleInvoices={eligibleInvoices}
@@ -141,11 +148,13 @@ function RowActionForms({
   canManagerApprove,
   canFinanceApprove,
   canPay,
+  payableAction,
   reimbursementId,
 }: {
   canManagerApprove: boolean;
   canFinanceApprove: boolean;
   canPay: boolean;
+  payableAction: ReactNode;
   reimbursementId: string;
 }) {
   if (!canManagerApprove && !canFinanceApprove && !canPay) return null;
@@ -184,22 +193,7 @@ function RowActionForms({
           </button>
         </RateLimitedActionForm>
       ) : null}
-      {canPay ? (
-        <RateLimitedActionForm
-          action={markReimbursementPaidAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={reimbursementId} />
-          <button
-            type="submit"
-            className="fg-icon-btn sm"
-            aria-label="Marcar pago"
-            title="Marcar pago"
-          >
-            <DollarSign size={13} />
-          </button>
-        </RateLimitedActionForm>
-      ) : null}
+      {canPay ? payableAction : null}
     </>
   );
 }
@@ -208,6 +202,7 @@ function DetailActionForms({
   canManagerApprove,
   canFinanceApprove,
   canPay,
+  payableAction,
   showInclude,
   showExclude,
   eligibleInvoices,
@@ -216,6 +211,7 @@ function DetailActionForms({
   canManagerApprove: boolean;
   canFinanceApprove: boolean;
   canPay: boolean;
+  payableAction: ReactNode;
   showInclude: boolean;
   showExclude: boolean;
   eligibleInvoices: OpenInvoiceOption[];
@@ -272,17 +268,7 @@ function DetailActionForms({
           </RateLimitedActionForm>
         </>
       ) : null}
-      {canPay ? (
-        <RateLimitedActionForm
-          action={markReimbursementPaidAction}
-          style={{ display: "inline" }}
-        >
-          <input name="id" type="hidden" value={reimbursementId} />
-          <Button type="submit" variant="primary" size="sm" icon={<DollarSign size={13} />}>
-            Marcar pago
-          </Button>
-        </RateLimitedActionForm>
-      ) : null}
+      {canPay ? payableAction : null}
       {showInclude ? (
         <IncludeInInvoiceSheet
           reimbursementId={reimbursementId}

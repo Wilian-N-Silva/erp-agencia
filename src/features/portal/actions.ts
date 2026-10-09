@@ -54,7 +54,6 @@ import {
   canApproveReimbursementByManager,
   canExcludeReimbursementFromInvoice,
   canIncludeReimbursementInInvoice,
-  canMarkReimbursementPaid,
   canReviewInvoice,
   canSubmitInvoiceRequest,
   hasInvoiceDivergence,
@@ -528,6 +527,7 @@ async function includeReimbursementInInvoiceAction(formData: FormData) {
   const { context, organizationId } = await requireInvoiceWriterContext();
   const input = includeReimbursementSchema.parse(formDataToObject(formData));
   const reimbursementBefore = await getReimbursementForWrite(input.reimbursementId, organizationId);
+  if (reimbursementBefore.financialExpenseId) throw new Error("Reembolso com conta a pagar avulsa não pode ser incluído em NF.");
   const invoiceBefore = await getInvoiceForWrite(input.invoiceRequestId, organizationId);
 
   if (
@@ -651,24 +651,8 @@ async function markReimbursementPaidAction(formData: FormData) {
   await enforceAuthenticatedRateLimit("reconciliation", context);
   const input = idSchema.parse(formDataToObject(formData));
   const before = await getReimbursementForWrite(input.id, context.organizationId);
-
-  if (before.includedInvoiceRequestId) {
-    throw new Error("Este reembolso acompanha a quitação da NF no Financeiro.");
-  }
-
-  if (
-    !canMarkReimbursementPaid(context, {
-      employeeId: before.employeeId,
-      managerEmployeeId: before.managerEmployeeId,
-      status: before.status,
-    })
-  ) {
-    throw new AccessDeniedError();
-  }
-
-  await updateReimbursementStatus(context, before, "paid", "status_change", {
-    paidAt: new Date(),
-  });
+  if (before.includedInvoiceRequestId) throw new Error("Este reembolso acompanha a quitação da NF no Financeiro.");
+  throw new Error("Baixa direta descontinuada. Gere a conta a pagar do reembolso avulso e concilie no Financeiro.");
 }
 
 type AuthorizedContext = AccessContext & { organizationId: string };
@@ -809,6 +793,7 @@ async function getReimbursementForWrite(id: string, organizationId: string | nul
       managerEmployeeId: employees.managerEmployeeId,
       status: reimbursementRequests.status,
       includedInvoiceRequestId: reimbursementRequests.includedInvoiceRequestId,
+      financialExpenseId: reimbursementRequests.financialExpenseId,
     })
     .from(reimbursementRequests)
     .innerJoin(employees, eq(reimbursementRequests.employeeId, employees.id))

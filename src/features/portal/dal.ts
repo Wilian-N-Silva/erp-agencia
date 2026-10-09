@@ -12,7 +12,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
-import { deriveInvoicePayment, deriveReimbursementInvoicePayment } from "./invoice-payment-rules";
+import { deriveInvoicePayment, deriveReimbursementInvoicePayment, deriveDirectReimbursementPayment } from "./invoice-payment-rules";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
 import {
@@ -81,6 +81,7 @@ export type ReimbursementListItem = {
   status: ReimbursementStatus;
   fileId: string | null;
   includedInvoiceRequestId: string | null;
+  financialExpenseId: string | null;
   invoicePaymentLabel: string | null;
   paidAt: Date | null;
   notes: string | null;
@@ -250,6 +251,7 @@ async function listReimbursements(
       status: reimbursementRequests.status,
       fileId: reimbursementRequests.fileId,
       includedInvoiceRequestId: reimbursementRequests.includedInvoiceRequestId,
+      financialExpenseId: reimbursementRequests.financialExpenseId,
       paidAt: reimbursementRequests.paidAt,
       notes: reimbursementRequests.notes,
       createdAt: reimbursementRequests.createdAt,
@@ -283,6 +285,7 @@ async function listReimbursements(
 
   const invoicePayments = await loadInvoicePayments(organizationId, scoped.flatMap(row =>
     row.includedInvoiceRequestId ? [{ id: row.includedInvoiceRequestId, employeeId: row.employeeId }] : []));
+  const directPayments = await loadDirectReimbursementPayments(organizationId, scoped.filter(row => row.financialExpenseId));
   const approverIds = new Set<string>();
   for (const row of scoped) {
     if (row.managerApproverUserId) approverIds.add(row.managerApproverUserId);
@@ -303,8 +306,10 @@ async function listReimbursements(
 
   return scoped.map((row) => ({
     ...row,
-    ...deriveReimbursementInvoicePayment(row.status as ReimbursementStatus, row.paidAt,
-      row.includedInvoiceRequestId, invoicePayments.get(`${row.includedInvoiceRequestId}:${row.employeeId}`)),
+    ...(row.financialExpenseId || !row.includedInvoiceRequestId
+      ? deriveDirectReimbursementPayment(row.status as ReimbursementStatus, row.paidAt, row.financialExpenseId, directPayments.get(row.id))
+      : deriveReimbursementInvoicePayment(row.status as ReimbursementStatus, row.paidAt,
+        row.includedInvoiceRequestId, invoicePayments.get(`${row.includedInvoiceRequestId}:${row.employeeId}`))),
     managerApproverName: row.managerApproverUserId
       ? approverNameById.get(row.managerApproverUserId) ?? null
       : null,
@@ -448,3 +453,21 @@ const tenantListInvoiceRequests = bindTenantContext(listInvoiceRequests);
 const tenantListReimbursements = bindTenantContext(listReimbursements);
 const tenantListInvoiceEmployeeOptions = bindTenantContext(listInvoiceEmployeeOptions);
 const tenantListOpenInvoicesForEmployee = bindTenantContext(listOpenInvoicesForEmployee);
+
+// IDs come from reimbursement rows already authorized for own/team/all scope above.
+async function loadDirectReimbursementPayments(org: string, scoped: readonly { id: string; employeeId: string }[]) {
+  const payments = new Map<string, ReturnType<typeof deriveInvoicePayment>>();
+  if (!scoped.length) return payments;
+  const result = await db.execute(sql`select r.id,r.financial_expense_id,e.amount,e.status,
+    coalesce(sum(case when t.id is not null then a.amount else 0 end),0)::text as paid,
+    max(t.occurred_at) as paid_at
+    from reimbursement_requests r left join financial_expenses e on e.id=r.financial_expense_id and e.organization_id=r.organization_id and e.deleted_at is null
+    left join financial_allocations a on a.financial_expense_id=e.id and a.organization_id=r.organization_id
+    left join financial_transactions t on t.id=a.transaction_id and t.organization_id=r.organization_id and t.direction='out' and t.status <> 'reversed'
+    where r.organization_id=${org} and (${sql.join(scoped.map(row => sql`(r.id=${row.id}::uuid and r.employee_id=${row.employeeId}::uuid)`),sql` or `)})
+    group by r.id,e.id`);
+  for (const row of result.rows) payments.set(String(row.id), deriveInvoicePayment({ status: "approved", paidAt: null,
+    financialExpenseId: row.financial_expense_id as string, payableAmount: row.amount as string | null,
+    payableStatus: row.status as string | null, paidAmount: String(row.paid), lastPaymentAt: row.paid_at ? new Date(String(row.paid_at)) : null }));
+  return payments;
+}

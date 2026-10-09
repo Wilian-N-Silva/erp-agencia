@@ -1,18 +1,12 @@
 import { expect, test, type Page, type BrowserContext } from "@playwright/test";
+import { signInWithRetry } from "./helpers/auth";
 
 async function loginDemo(page: Page, email: string, password: string | undefined) {
-  const request = () => page.request.post("/api/auth/sign-in/email", { data: { email, password } });
-  let response = await request();
-  if (response.status() === 429) {
-    const seconds = Number(response.headers()["retry-after"] ?? 10);
-    await new Promise(resolve => setTimeout(resolve, (Math.min(Math.max(seconds, 1), 30) + 1) * 1000));
-    response = await request();
-  }
-  expect(response.ok(), `Login ${email}: HTTP ${response.status()}`).toBe(true);
+  await signInWithRetry(page, email, password!);
 }
 
 test("reembolso com PDF passa pelo gestor e financeiro; perfis de gestão acessam suas rotinas", async ({ browser }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const password = process.env.DEMO_USER_PASSWORD;
   expect(password).toBeTruthy();
   const marker = `QA-MANUAL-REI-${Date.now()}`;
@@ -52,11 +46,36 @@ test("reembolso com PDF passa pelo gestor e financeiro; perfis de gestão acessa
     await finance.getByPlaceholder("Buscar colaborador, descrição ou área...").fill(marker);
     const row = finance.locator("tbody tr").filter({ hasText: marker });
     await row.getByRole("button", { name: "Aprovar (financeiro)", exact: true }).click();
-    await expect(row.getByRole("button", { name: "Marcar pago", exact: true })).toBeVisible();
-    await row.getByRole("button", { name: "Marcar pago", exact: true }).click();
-    await expect(row.getByText("Pago", { exact: true })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Marcar pago", exact: true })).toHaveCount(0);
+    await row.getByRole("button", { name: "Gerar conta a pagar", exact: true }).last().click();
+    const payable = finance.locator(".fg-sheet-root.open");
+    await payable.getByLabel("Vencimento", { exact: true }).fill("2026-10-15");
+    await payable.getByLabel("Competência", { exact: true }).fill("2026-10");
+    await payable.getByLabel("Categoria", { exact: true }).selectOption({ index: 1 });
+    await payable.getByRole("button", { name: "Confirmar conta a pagar", exact: true }).click();
+    await expect(row).toContainText("Pagamento acompanha a conta a pagar avulsa");
+    for (const [index, amount] of ["10,00", "15,00"].entries()) {
+      await finance.goto("/app/financeiro/movimentacoes");
+      await finance.getByRole("combobox", { name: /^Conta financeira/ }).selectOption({ label: "Conta Gráfica QA" });
+      await finance.getByRole("combobox", { name: /^Direção/ }).selectOption("out");
+      await finance.getByRole("textbox", { name: /^Valor/ }).fill(amount);
+      await finance.getByLabel("Referência", { exact: true }).fill(`${marker}-${index}`);
+      await finance.getByRole("button", { name: "Registrar movimentação", exact: true }).click();
+      await finance.getByRole("row").filter({ has: finance.getByRole("cell", { name: `${marker}-${index}`, exact: true }) }).getByRole("link", { name: "Conciliar", exact: true }).click();
+      await finance.getByLabel("Buscar por descrição, código do trabalho ou contraparte", { exact: true }).fill(marker);
+      await finance.getByRole("button", { name: "Buscar títulos", exact: true }).click();
+      await finance.getByLabel(`Valor para Reembolso avulso - ${marker}`, { exact: true }).fill(amount);
+      await finance.getByRole("checkbox", { name: "Conferi os títulos e valores e confirmo a conciliação.", exact: true }).check();
+      await finance.getByRole("button", { name: "Confirmar conciliação", exact: true }).click();
+      await expect(finance.getByText("Saldo a conciliar: R$ 0,00", { exact: true })).toBeVisible();
+      await employee.reload();
+      await expect(employee.locator("article").filter({ hasText: marker })).toContainText(index === 0 ? "Conta a pagar avulsa parcialmente paga" : "Pago pela conciliação da conta a pagar avulsa");
+    }
+    await finance.getByLabel("Motivo do estorno").fill("Segundo pagamento registrado por engano");
+    await finance.getByRole("button", { name: "Confirmar estorno", exact: true }).click();
+    await expect(finance.getByText(/Motivo: Segundo pagamento registrado por engano/)).toBeVisible();
     await employee.reload();
-    await expect(employee.locator("article").filter({ hasText: marker }).getByText("Pago", { exact: true })).toBeVisible();
+    await expect(employee.locator("article").filter({ hasText: marker })).toContainText("Conta a pagar avulsa parcialmente paga");
 
     for (const [email, routes] of [
       ["rh@formula.local", ["/app/colaboradores", "/app/ferias", "/app/documentos", "/app/nfs"]],

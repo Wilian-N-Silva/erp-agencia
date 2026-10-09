@@ -201,10 +201,6 @@ export function canApproveReimbursementByFinance(context: AccessContext, target:
   );
 }
 
-export function canMarkReimbursementPaid(context: AccessContext, target: ReimbursementTarget) {
-  return target.status === "finance_approved" && can("reimbursements.approve_finance", context);
-}
-
 export function normalizePortalTab(value: string | undefined) {
   return value === "nfs" || value === "reembolsos" || value === "dados" ? value : "inicio";
 }
