@@ -508,3 +508,9 @@ validados. O primeiro E2E encontrou um bug real no link da AP: competência de
 dezembro abria o filtro financeiro de outubro. Link passou a levar competência
 e busca, sem contornar filtros no teste. Atualização explícita de updatedAt da
 cobrança em validação final; nenhum schema/migration novo.
+
+Checkpoint `2e76442`: build e E2E focal novamente aprovados no mesmo runtime
+(`build-saas-correction-verified.log`, `saas-correction-e2e-verified.log`). Oito
+testes DB focais aprovados, incluindo leitura cruzada com ID real de cobrança
+e auditoria. Atualização de updatedAt verificada. O cancelamento da cobrança e
+o E2E completo no candidato final continuam pendentes; não há aceite humano.

@@ -122,3 +122,11 @@ conciliação, tenant e audit. Migration 0059 expansiva aplicada somente em test
 465 unitários/241 DB, typecheck/lint/build e E2E focal aprovados. Origens
 Gráfica/NF/SaaS/reembolso, relatórios, perfis/referências e restart continuam
 pendentes; não há candidato final nem aceite humano declarado.
+
+`2e76442` entrega correção de cobranças SaaS pela origem com motivo, controle de
+concorrência, mesma AP, auditoria transacional e bloqueio de saldo liquidado.
+Leitura de pagamentos passa pelo ledger; histórico de correções permanece
+consultável. Link da AP leva a competência correta. 469 unitários/245 DB,
+typecheck/lint/build e E2E focal aprovados (oito DB focais no runtime final).
+Sem migration nova. Cancelamento SaaS, demais origens e validação completa do
+candidato permanecem no backlog; isso não conclui a homologação.
