@@ -41,6 +41,12 @@ test("reembolso com PDF passa pelo gestor e financeiro; perfis de gestão acessa
     await expect(employee.locator("article").filter({ hasText: marker }).getByText("Aprovado pelo gestor", { exact: true })).toBeVisible();
 
     const finance = await signIn("financeiro@formula.local");
+    await finance.goto("/app/financeiro/cadastros");
+    const category = finance.locator("form").filter({ has: finance.getByRole("button", { name: "Adicionar categoria", exact: true }) });
+    await category.locator('[name="name"]').fill(`Categoria ${marker}`);
+    await category.locator('[name="nature"]').selectOption("expense");
+    await category.getByRole("button", { name: "Adicionar categoria", exact: true }).click();
+    await expect(finance.getByText(`Categoria ${marker}`, { exact: true })).toBeVisible();
     await finance.goto("/app/reembolsos");
     await finance.getByRole("tab", { name: /^Todos/ }).click();
     await finance.getByPlaceholder("Buscar colaborador, descrição ou área...").fill(marker);
@@ -51,7 +57,7 @@ test("reembolso com PDF passa pelo gestor e financeiro; perfis de gestão acessa
     const payable = finance.locator(".fg-sheet-root.open");
     await payable.getByLabel("Vencimento", { exact: true }).fill("2026-10-15");
     await payable.getByLabel("Competência", { exact: true }).fill("2026-10");
-    await payable.getByLabel("Categoria", { exact: true }).selectOption({ index: 1 });
+    await payable.getByLabel("Categoria", { exact: true }).selectOption({ label: `Categoria ${marker}` });
     await payable.getByRole("button", { name: "Confirmar conta a pagar", exact: true }).click();
     await expect(row).toContainText("Pagamento acompanha a conta a pagar avulsa");
     for (const [index, amount] of ["10,00", "15,00"].entries()) {

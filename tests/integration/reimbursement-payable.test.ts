@@ -76,6 +76,9 @@ it("creates exactly one payable concurrently, derives partial/full payment and r
 });
 it("rejects legacy payment, unapproved requests, tampering, wrong organization and missing permission", async () => {
   for (const status of ["submitted", "paid"]) await expect(createReimbursementPayable(context, input(await request(status)))).rejects.toThrow();
+  const historical = await request();
+  await admin.execute(sql`update reimbursement_requests set paid_at=now() where id=${historical}`);
+  await expect(createReimbursementPayable(context, input(historical))).rejects.toThrow("históricos");
   const id = await request();
   await expect(createReimbursementPayable({ ...context, organizationId: other }, input(id))).rejects.toThrow();
   await expect(createReimbursementPayable({ ...context, permissions: ["finance.write"] }, input(id))).rejects.toThrow();

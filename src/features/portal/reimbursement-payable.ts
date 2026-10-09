@@ -23,7 +23,7 @@ export async function createReimbursementPayable(context: AccessContext, raw: un
     if (!before) throw new AccessDeniedError();
     if (before.includedInvoiceRequestId) throw new ReimbursementPayableError("Reembolso incluído em NF não pode gerar pagamento avulso.");
     if (before.financialExpenseId) return { expenseId: before.financialExpenseId };
-    if (before.status !== "finance_approved") throw new ReimbursementPayableError("Somente reembolso aprovado pelo Financeiro pode gerar conta a pagar. Pagamentos históricos exigem revisão.");
+    if (before.status !== "finance_approved" || before.paidAt) throw new ReimbursementPayableError("Somente reembolso aprovado pelo Financeiro pode gerar conta a pagar. Pagamentos históricos exigem revisão.");
     const [employee] = await tx.select({ name: employees.fullName }).from(employees).where(and(eq(employees.id, before.employeeId), eq(employees.organizationId, org))).limit(1);
     const [category] = await tx.select().from(financialCategories).where(and(eq(financialCategories.id, input.categoryId), eq(financialCategories.organizationId, org), eq(financialCategories.isActive, true))).limit(1);
     const [center] = input.costCenterId ? await tx.select().from(costCenters).where(and(eq(costCenters.id, input.costCenterId), eq(costCenters.organizationId, org), eq(costCenters.isActive, true))).limit(1) : [null];
