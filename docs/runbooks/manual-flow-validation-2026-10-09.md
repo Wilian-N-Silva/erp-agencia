@@ -40,7 +40,7 @@ registrados manualmente; não há geração automática de cobrança/AP por cicl
 integração está prevista em `SAA-004` (`feature/saas-finance-integration`). A
 estimativa não deve ser tratada como valor pago.
 
-A regra informada para o cadastro de colaboradores é que todos são PJ. O banco demo
-atual ainda contém os fixtures `Lideranca Demo` e `Colaborador CLT Exemplo` como CLT,
-além de `Admin Local` como sócio. Isso não altera o fluxo PJ validado, mas precisa ser
-corrigido no mockup/seed antes de apresentar a lista como exclusivamente PJ.
+A regra informada para o cadastro de colaboradores é que todos são PJ. O seed foi
+ajustado para que Liderança Demo e Colaborador PJ Ferias sejam PJ, e foi aplicado
+na base local; Admin Local permanece como sócio responsável pela administração, não
+como colaborador operacional.

@@ -44,7 +44,6 @@ import {
   userRoles,
   users,
   organizations,
-  vacationBalances,
 } from "./schema";
 
 const require = createRequire(import.meta.url);
@@ -103,7 +102,7 @@ async function main() {
       demoEmployeeId,
     );
     await seedLifecycleDemoData(organization.id, seedActorUserId, demoEmployeeId);
-    await seedCltVacationDemoData(organization.id, seedActorUserId, leadershipEmployeeId ?? ownerEmployeeId);
+    await seedPjVacationDemoData(organization.id, seedActorUserId, leadershipEmployeeId ?? ownerEmployeeId);
   }
 
   console.log("Seed complete:");
@@ -573,7 +572,7 @@ async function seedLeadershipDemoEmployee(
       corporateEmail: "lideranca@formula.local",
       positionId: position.id,
       areaId: area.id,
-      employmentType: "clt",
+      employmentType: "pj",
       startDate: "2026-05-01",
       status: "active",
       workModel: "Hibrido",
@@ -588,6 +587,7 @@ async function seedLeadershipDemoEmployee(
         corporateEmail: "lideranca@formula.local",
         positionId: position.id,
         areaId: area.id,
+        employmentType: "pj",
         status: "active",
         updatedAt: new Date(),
       },
@@ -893,7 +893,7 @@ async function seedPeopleDemoData(
   return employee.id;
 }
 
-async function seedCltVacationDemoData(
+async function seedPjVacationDemoData(
   organizationId: string,
   responsibleUserId?: string,
   managerEmployeeId?: string | null,
@@ -924,12 +924,12 @@ async function seedCltVacationDemoData(
     .values({
       organizationId,
       registrationNumber: "FG-00004",
-      fullName: "Colaborador CLT Exemplo",
-      corporateEmail: "clt.exemplo@formula.local",
+      fullName: "Colaborador PJ Ferias",
+      corporateEmail: "pj.ferias@formula.local",
       positionId: position.id,
       areaId: area.id,
       managerEmployeeId: managerEmployeeId ?? null,
-      employmentType: "clt",
+      employmentType: "pj",
       startDate: employmentStartDate,
       status: "active",
       workModel: "Hibrido",
@@ -941,29 +941,29 @@ async function seedCltVacationDemoData(
     .onConflictDoUpdate({
       target: [employees.organizationId, employees.registrationNumber],
       set: {
-        fullName: "Colaborador CLT Exemplo",
-        corporateEmail: "clt.exemplo@formula.local",
+        fullName: "Colaborador PJ Ferias",
+        corporateEmail: "pj.ferias@formula.local",
         positionId: position.id,
         areaId: area.id,
         managerEmployeeId: managerEmployeeId ?? null,
-        employmentType: "clt",
+        employmentType: "pj",
         status: "active",
         updatedAt: new Date(),
       },
     })
     .returning();
 
-  await ensureVacationBalance(employee.id, "2024-04-01", {
+  await ensureTimeOffRequest(employee.id, "2026-10-20", "2026-11-03", {
     organizationId,
     employeeId: employee.id,
-    periodStart: "2024-04-01",
-    periodEnd: "2025-03-31",
-    concessionDeadline: "2026-03-31",
-    daysAcquired: 30,
-    daysSold: 0,
-    status: "active",
-    notes: "Primeiro periodo aquisitivo (demonstracao).",
-    createdByUserId: responsibleUserId,
+    type: "planned_pause",
+    startDate: "2026-10-20",
+    endDate: "2026-11-03",
+    businessDays: 15,
+    soldDays: 0,
+    status: "requested",
+    requestedByUserId: responsibleUserId,
+    notes: "Pausa de 15 dias corridos para demonstracao do fluxo PJ.",
   });
 
   return employee.id;
@@ -1246,29 +1246,6 @@ async function ensureReimbursementRequest(
   }
 
   await db.insert(reimbursementRequests).values(values);
-}
-
-async function ensureVacationBalance(
-  employeeId: string,
-  periodStart: string,
-  values: typeof vacationBalances.$inferInsert,
-) {
-  const [existing] = await db
-    .select({ id: vacationBalances.id })
-    .from(vacationBalances)
-    .where(
-      and(
-        eq(vacationBalances.employeeId, employeeId),
-        eq(vacationBalances.periodStart, periodStart),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    return;
-  }
-
-  await db.insert(vacationBalances).values(values);
 }
 
 async function ensureTimeOffRequest(
