@@ -47,6 +47,14 @@ evidências também estão reunidos em **Documentos e histórico**.
 
 ## Relação com o Financeiro
 
+Na aba **Produção e entrega**, use **Arquivo final do trabalho** para anexar o
+PDF, PNG ou JPG destinado ao fornecedor ou à impressão própria. O envio exige
+permissão de produção; a consulta segue a permissão de leitura da Gráfica.
+Cada envio cria uma nova versão, sem substituir a anterior. Os arquivos ficam
+disponíveis para download privado nessa aba, inclusive depois do encerramento.
+O limite de tamanho segue `UPLOAD_MAX_BYTES` e aparece no formulário. Anexar
+a arte não altera a etapa operacional nem registra envio automático ao fornecedor.
+
 A Gráfica pode sugerir vínculos entre movimentações e títulos. O Financeiro confere
 e confirma a conciliação. Encaminhe a Jaciane referência, valor, data e trabalho
 corretos; não trate sugestão como pagamento confirmado.

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { registerGraphicOs } from "@/features/graphics/os-registration";
+import { uploadFinalArtwork, listFinalArtwork, getFinalArtworkDownload } from "@/features/graphics/final-artwork";
 import { findDuplicateOsJobs, getGraphicOsDownload, getGraphicOsVersions } from "@/features/graphics/os-dal";
 import { recordClientDecision, getClientDecisions, getClientEvidence } from "@/features/graphics/client-decision";
 import { advanceGraphicProduction, getGraphicProduction } from "@/features/graphics/production";
@@ -62,7 +63,7 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_sales disable trigger graphic_sales_immutable`);
     await tx.execute(sql`alter table graphic_sale_installments disable trigger graphic_sale_installments_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "work_items", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "work_items", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "documents", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
@@ -76,6 +77,26 @@ afterAll(async () => {
   });
   await admin.$client.end();
   await getDb().$client.end();
+});
+
+it("versions final artwork, isolates job/tenant access and rolls storage back on audit failure", async () => {
+  const operator: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "graphics.production_write"] };
+  const first = await uploadFinalArtwork(operator, { jobId: jobs[2] }, pdf());
+  const second = await uploadFinalArtwork(operator, { jobId: jobs[2] }, pdf());
+  expect(second.version).toBe(first.version + 1);
+  expect((await listFinalArtwork(operator, jobs[2])).map(row => row.document.id)).toEqual([second.id, first.id]);
+  expect(await getFinalArtworkDownload(operator, jobs[2], first.id)).not.toBeNull();
+  expect(await getFinalArtworkDownload(operator, jobs[0], first.id)).toBeNull();
+  expect(await getFinalArtworkDownload(contexts[1], jobs[2], first.id)).toBeNull();
+  await expect(uploadFinalArtwork(contexts[0], { jobId: jobs[2] }, pdf())).rejects.toThrow();
+  await expect(uploadFinalArtwork(operator, { jobId: jobs[1] }, pdf())).rejects.toThrow();
+  await expect(uploadFinalArtwork(operator, { jobId: jobs[2], organizationId: orgs[1] }, pdf())).rejects.toThrow();
+  audit.fail = true;
+  const removals = storage.remove.mock.calls.length;
+  try { await expect(uploadFinalArtwork(operator, { jobId: jobs[2] }, pdf())).rejects.toThrow("audit"); }
+  finally { audit.fail = false; }
+  expect(storage.remove.mock.calls.length).toBe(removals + 1);
+  expect(await listFinalArtwork(operator, jobs[2])).toHaveLength(2);
 });
 
 it("registers OS and an audited revision, keeps documents and does not create AR/AP", async () => {

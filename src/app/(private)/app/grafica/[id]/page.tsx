@@ -48,6 +48,9 @@ import { canRegisterOs } from "@/features/graphics/os-rules";
 import { GraphicOsForm } from "../os-form";
 import { ClientDecisionForm } from "../client-decision-form";
 import { ProductionForm } from "../production-form";
+import { FinalArtworkForm } from "../final-artwork-form";
+import { listFinalArtwork } from "@/features/graphics/final-artwork";
+import { getUploadMaxBytes } from "@/features/documents/rules";
 import { CommitmentForm } from "../commitment-form";
 import { GraphicSaleForm } from "../sale-form";
 import { getGraphicSale } from "@/features/graphics/sale";
@@ -114,6 +117,7 @@ export default async function GraphicJobDetailPage({
   const currentOs = osVersions[0];
   const clientDecisions = await getClientDecisions(context, id);
   const production = await getGraphicProduction(context, id);
+  const finalArtwork = await listFinalArtwork(context, id);
   const lastStage = production[0];
   const commitments = await getGraphicCommitments(context, id);
   const sale = await getGraphicSale(context, id);
@@ -669,6 +673,16 @@ export default async function GraphicJobDetailPage({
           ))}
         </Card>
         <Card title="Produção e entrega">
+          <section className="mb-6 grid gap-3" aria-label="Arquivos finais para produção">
+            <h3 className="font-semibold">Arquivo final do trabalho</h3>
+            {canProduce ? <FinalArtworkForm jobId={id} maxBytes={getUploadMaxBytes()} /> : null}
+            {finalArtwork.length ? <ol className="grid gap-2">
+              {finalArtwork.map(({ document, file }, index) => <li key={document.id} className="rounded-md border p-3 text-sm">
+                <a className="font-medium underline" href={`/app/grafica/${id}/arquivos-finais/${document.id}/download`}>{file.originalName}</a>
+                <p>Versão {document.version}{index === 0 ? " · Mais recente" : ""} · {formatDateTime(document.createdAt)}</p>
+              </li>)}
+            </ol> : <p className="text-sm text-muted-foreground">Nenhum arquivo final anexado.</p>}
+          </section>
           {job.operationalStatus === "waiting" && lastStage ? (
             <div
               role="status"
