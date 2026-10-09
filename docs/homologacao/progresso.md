@@ -321,3 +321,25 @@ ação roda no servidor); a primeira execução desse teste falhou no File do js
 Proteções reais preservadas. Adicionada recusa de tenant ausente antes do rate
 limit. Validação unitária/typecheck/lint desse complemento em execução. Manual
 de gestão atualizado. Sem migrations/backfills novos neste incremento.
+### FIN-008 — incremento validado
+
+Runtime `4c5d86f`, teste ampliado `ee1afcf`: build aprovado
+(`build-attachments-final.log`) e E2E focal aprovado (`attachments-final-e2e.log`).
+O cenário cobre AR com duas versões, documento em movimentação, AP cadastrada
+com fornecedor/categoria pela UI, downloads com bytes corretos, consulta
+Financeiro e recusa 404 para o portal. 456 unitários/73 arquivos e typecheck/lint
+aprovados. 231 testes DB/39 arquivos aprovados no incremento `673a779`; a mudança
+posterior acrescenta recusa antecipada de tenant ausente e seus testes unitários.
+
+Nenhuma nova migration/backfill. Segurança revisada: autenticação, finance.write
+no upload, permissões financeiras na leitura, organização/dono no DAL e RLS
+existente, Zod strict/anti-tampering, rate limit persistido antes do upload,
+auditoria, transação e compensação de storage. Versões preservadas e nomes de
+arquivo com controles/path rejeitados. UI tem labels, estado pendente e retorno
+acessível; componentes servidor consultam acesso antes de renderizar.
+
+Este resultado não substitui o gate completo no SHA final, prova de restart ou
+conclusão das correções de origens/revisão legada e relatórios/perfis/referências.
+O Goal segue ativo e sem candidato final aprovado. Próxima prioridade P0:
+procedimento seguro e auditável para correções financeiras das origens/legado,
+sem alterar fatos imutáveis nem permitir duplicação de pagamentos.
