@@ -136,3 +136,17 @@ Teste de banco comprovou passagem de mês, horário próximo da meia-noite UTC,
 saldo inicial, compensação posterior sem reescrever setembro, RLS/organização,
 permissão, payload e aviso de legado inconsistente. Sem migration/backfill.
 Revisão do legado das obrigações, demais relatórios e E2E completo seguem pendentes.
+
+### Evidência do checkpoint `c773ccc`
+
+Typecheck, lint e 446 unitários aprovados; suíte serial isolada de banco com
+221 testes/36 arquivos aprovada. A asserção adicional do estorno de saída passou
+também na repetição focal de 5 testes de `finance-reversals.test.ts`.
+Logs `cash-*.log` em `storage-local/homologacao`.
+
+Build aprovado na worktree isolada (`build-cash-report.log`). Dois E2E passaram
+(`cash-and-correction-e2e.log`): correção/cancelamento com motivo e
+Cliente→movimentação→conciliação→estorno→Cliente→relatório. O relatório aumentou
+o estorno de entrada em exatamente R$100 e manteve o valor após reload.
+Não foi executado o gate E2E completo neste checkpoint. Este SHA não é o
+candidato final. Sem alteração em bancos existentes/main/development.

@@ -50,3 +50,11 @@ fontes históricas e correções de títulos ainda estão em trabalho.
 HML-03 implementou estorno de movimentação com histórico imutável e saldo reaberto,
 testado em banco e navegador (`abce9c0`). Revisão de relatórios/integridade e E2E
 integrado obrigatório continuam pendentes antes do aceite técnico do candidato.
+
+Em `09f05e5`, correções/cancelamentos passaram a exigir motivo, lock tenant,
+auditoria e proteção de liquidação/origens; 220 DB e 444 unitários aprovados.
+Em `d65a67f`, vencidos considera saldo parcial restante. Em `c773ccc`, relatório
+de caixa consulta eventos e estornos por data sem somar conciliações novamente;
+446 unitários, 221 DB, build e dois E2E focais aprovados. Legado explícito,
+correções das origens, reembolso avulso, documentos/perfis e E2E completo continuam
+na fila. Não há ainda candidato técnico aprovado para homologação.
