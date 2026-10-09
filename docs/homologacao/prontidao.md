@@ -149,3 +149,12 @@ correção/cancelamento manual, SaaS e provisões agora relêem saldo depois do 
 Sem migration nova. Próxima prioridade: reservas pós-lock em conciliação,
 estorno e revisão histórica; depois venda/cancelamentos gráficos e demais origens.
 Relatórios, referências/perfis e restart continuam no escopo, ainda sem aceite final.
+
+`fdff1ed`: conciliação, estorno e revisão histórica relêem a reserva efetiva
+depois do lock. Seis casos reais concorrentes AR/AP verificam capacidade,
+ledger/cache/auditoria e preservação de revisões/alocações/estornos; código
+anterior falhou nos seis casos, corrigido passou. 475 unitários/260 DB,
+typecheck/lint/build e **23/23 E2E completos** aprovados, sem migration nova.
+Próxima tarefa viável: correção de venda/parcelas gráfica preservando a origem
+imutável. Cancelamentos gráficos, NF/reembolso, relatórios, referências/perfis
+e restart ainda exigem conclusão antes do candidato final.

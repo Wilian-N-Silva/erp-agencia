@@ -642,3 +642,12 @@ persistência após restart e revisão dos entregáveis finais continuam no esco
 
 DB completo aprovado: 260 testes/41 arquivos (`locked-reserve-db.log`), exit 0.
 `git diff --check` limpo. Build e E2E aguardam checkpoint Git isolado.
+
+Runtime `fdff1ed`: build aprovado (`build-locked-reserve.log`) e suíte completa
+`npm run test:e2e -- --workers=1` aprovada, 23/23 em 6,4 minutos, exit 0
+(`locked-reserve-e2e-full.log`), no mesmo SHA. Typecheck/lint/475 unitários/
+260 DB aprovados. Sem migration/backfill ou mudança em main/development,
+produção, base de uso ou worktrees anteriores. Nenhum gate atual falhando.
+Próxima tarefa: correção da venda e parcelas da Gráfica com histórico imutável
+e indicadores coerentes. Demais pendências V1 continuam; sem candidato final
+ou declaração de homologação empresarial concluída.
