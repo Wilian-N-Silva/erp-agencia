@@ -183,3 +183,12 @@ cadastro navegável ou action de criação de projeto. Falta concluir esse camin
 compartilhado sem intervenção técnica. Cancelamentos gráficos, NF/reembolso,
 perfis distintos, seed fictício consistente e prova explícita de restart continuam
 no backlog. V1 incompleta, sem candidato final ou homologação humana declarada.
+
+**Encerramento no recorte solicitado:** em 09/10/2026 o integrador pediu commitar
+para a fase de homologação, adiar a fila e parar o Goal. Runtime `d9d28f5` aprovado
+em typecheck/lint/build, 478 unitários, 265 DB e **23/23 E2E completos**. As falhas
+de paginação anteriores foram corrigidas sem mudar produto ou apagar dados.
+Consulte [checkpoint.md](checkpoint.md) para SHA/evidências e
+[pos-homologacao.md](pos-homologacao.md) para limitações/próxima versão.
+O recorte implementado está entregue para revisão humana; não equivale a concluir
+todo o escopo original ou ao aceite da diretoria. Execução encerrada por solicitação.

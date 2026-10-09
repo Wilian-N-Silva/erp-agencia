@@ -17,6 +17,7 @@ seguinte em [pós-homologação](pos-homologacao.md). O aceite da diretoria é p
 - [Preparo do ambiente isolado](ambiente.md)
 - [Dados fictícios e roteiro dos gestores (rascunho)](roteiro-gestores.md)
 - [Pendências e limitações da versão seguinte](pos-homologacao.md)
+- [Checkpoint e resultados da entrega](checkpoint.md)
 
 Não promover para main nem implantar produção nesta execução. Preservar bancos,
 worktrees, stash e dados de uso. Testes com writes usam ambientes isolados.

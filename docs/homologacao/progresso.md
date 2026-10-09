@@ -727,3 +727,19 @@ restrito ao teste busca códigos seed antes da contagem e o cliente nominal ante
 da consulta; mantém todos os asserts e a cobrança recorrente desabilitada.
 Sem alterar produto, seed, dados, timeout, permissões ou rate limit. Verificação
 final pendente antes de registrar o resultado deste checkpoint.
+
+Fechamento validado no runtime `d9d28f5f9bcd8c1e752b2771f52fa1986f51f182`:
+typecheck/lint/build, 478 unitários/81 arquivos, 265 DB/41 arquivos e **23/23
+E2E completos** aprovados, exit 0. Logs `hml-close-*` no storage-local e na
+worktree de validação; build em `build-hml-close.log`. Nenhum gate final falhando.
+Os ajustes de paginação preservaram todos os asserts, e os dois cenários que
+falharam nas execuções anteriores passaram na suíte final.
+
+[checkpoint.md](checkpoint.md) identifica SHA, mudanças, migration, resultados,
+ambiente e limites. [pos-homologacao.md](pos-homologacao.md) registra toda a fila
+adiada, incluindo produção própria, parcelamentos adicionais e produtos próprios.
+O commit de documentação posterior não altera código/testes/migrations validados.
+Branch dedicada publicada no GitHub; sem merge em main/development ou deployment.
+Bancos de uso, worktrees anteriores e stash preservados. A entrega do recorte
+solicitado está encerrada; não retomar a fila automaticamente. Homologação humana
+e escopo original completo não foram declarados concluídos.
