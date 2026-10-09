@@ -5,6 +5,8 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { recordSaasCharge, listSaasCharges } from "@/features/saas/charge-dal";
+import { correctSaasCharge, saasChargeRevision } from "@/features/saas/charge-correction";
+import { reverseFinancialTransaction } from "@/features/finance-transactions/reversal";
 
 const audit = vi.hoisted(() => ({ fail: false }));
 vi.mock("@/lib/audit", async original => {
@@ -45,6 +47,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   audit.fail = false;
+  await admin.transaction(async tx => {
+    for (const [table, trigger] of [["financial_transaction_reversals", "financial_reversals_immutable"], ["financial_allocations", "financial_allocations_immutable_guard"]]) {
+      await tx.execute(sql.raw(`alter table ${table} disable trigger ${trigger}`));
+      await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
+      await tx.execute(sql.raw(`alter table ${table} enable trigger ${trigger}`));
+    }
+  });
+  for (const table of ["work_items", "financial_transactions", "financial_accounts"]) await admin.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
   await admin.execute(sql`delete from audit_logs where organization_id in (${org},${otherOrg})`);
   await admin.execute(sql`delete from saas_subscription_charges where organization_id in (${org},${otherOrg})`);
   await admin.execute(sql`delete from financial_expenses where organization_id in (${org},${otherOrg})`);
@@ -85,4 +95,52 @@ it("rolls back the payable and charge when audit fails", async () => {
 it("enforces tenant RLS for direct access", async () => {
   expect(await withTenantDb({ ...context, organizationId: otherOrg }, async tx => tx.execute(sql`select id from saas_subscription_charges where id=${randomUUID()}`))).toMatchObject({ rows: [] });
   expect(await getDb().execute(sql`select id from saas_subscription_charges`)).toMatchObject({ rows: [] });
+});
+
+const reviewer: AccessContext = { ...context, permissions: [...context.permissions, "finance.reverse"] };
+it("corrects the recorded exchange data and the same AP without altering estimates, creating cash or repeating audit", async () => {
+  const before = await recordSaasCharge(context, charge(subscription, "2027-01"));
+  const request = { ...charge(subscription, before.competence), chargeId: before.id, revision: saasChargeRevision(before), reason: "Cotação conferida no extrato", effectiveExchangeRate: "7", totalAmountBrl: "855" };
+  const after = await correctSaasCharge(reviewer, request);
+  expect(after).toMatchObject({ id: before.id, financialExpenseId: before.financialExpenseId, totalAmountBrl: "855.00", principalAmountBrl: "840.00", effectiveExchangeRate: "7.000000" });
+  expect((await correctSaasCharge(reviewer, request)).id).toBe(before.id);
+  expect((await admin.execute(sql`select amount,competence from financial_expenses where id=${before.financialExpenseId}`)).rows[0]).toEqual({ amount: "855.00", competence: "2027-01" });
+  expect((await admin.execute(sql`select cycle_amount from saas_subscriptions where id=${subscription}`)).rows[0].cycle_amount).toBe("120.00");
+  expect((await admin.execute(sql`select count(*)::int n from audit_logs where entity_type='saas_subscription_charge' and action='update' and entity_id=${before.id}`)).rows[0].n).toBe(1);
+  expect((await admin.execute(sql`select count(*)::int n from financial_transactions where organization_id=${org}`)).rows[0].n).toBe(0);
+  expect((await listSaasCharges(context, subscription)).find(row => row.id === before.id)?.corrections).toEqual([expect.objectContaining({ amountBefore: "795.00", amountAfter: "855.00", reason: request.reason })]);
+  await expect(correctSaasCharge(reviewer, { ...request, totalAmountBrl: "860" })).rejects.toThrow(/alterada/);
+});
+it("rejects tenant, permissions, changed competence and injected financial IDs", async () => {
+  const before = await recordSaasCharge(context, charge(subscription, "2027-02"));
+  const request = { ...charge(subscription, before.competence), chargeId: before.id, revision: saasChargeRevision(before), reason: "Correção conferida", totalAmountBrl: "800" };
+  await expect(correctSaasCharge(context, request)).rejects.toThrow();
+  await expect(correctSaasCharge({ ...reviewer, organizationId: otherOrg }, request)).rejects.toThrow();
+  await expect(correctSaasCharge(reviewer, { ...request, competence: "2027-03" })).rejects.toThrow(/competência/);
+  await expect(correctSaasCharge(reviewer, { ...request, financialExpenseId: randomUUID() })).rejects.toThrow();
+  audit.fail = true;
+  try { await expect(correctSaasCharge(reviewer, request)).rejects.toThrow("audit unavailable"); } finally { audit.fail = false; }
+  expect((await listSaasCharges(context, subscription)).find(row => row.id === before.id)?.totalAmountBrl).toBe("795.00");
+  expect((await admin.execute(sql`select amount from financial_expenses where id=${before.financialExpenseId}`)).rows[0].amount).toBe("795.00");
+});
+it("reads partial settlement from allocations despite a paid cache and allows correction after an audited reversal", async () => {
+  const before = await recordSaasCharge(context, charge(subscription, "2027-03"));
+  const request = { ...charge(subscription, before.competence), chargeId: before.id, revision: saasChargeRevision(before), reason: "Correção após estorno", totalAmountBrl: "800" };
+  const account = randomUUID(), movement = randomUUID();
+  await admin.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${org},'SaaS QA account','bank')`);
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'out',100,now(),${user})`);
+  await withTenantDb(context, tx => tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_expense_id,amount,created_by_user_id) values (${org},${movement},${before.financialExpenseId},100,${user})`));
+  await admin.execute(sql`update financial_expenses set paid_amount=795,status='paid' where id=${before.financialExpenseId}`);
+  expect((await listSaasCharges(context, subscription)).find(row => row.id === before.id)).toMatchObject({ financialExpenseStatus: "partial", confirmedAmount: "100.00", settledAmount: "100.00" });
+  await expect(correctSaasCharge(reviewer, request)).rejects.toThrow(/Estorne/);
+  await reverseFinancialTransaction(reviewer, { transactionId: movement, reason: "Pagamento registrado indevidamente" });
+  expect((await listSaasCharges(context, subscription)).find(row => row.id === before.id)).toMatchObject({ financialExpenseStatus: "open", confirmedAmount: "0.00" });
+  await correctSaasCharge(reviewer, request);
+  expect((await listSaasCharges(context, subscription)).find(row => row.id === before.id)?.totalAmountBrl).toBe("800.00");
+});
+it("serializes competing revisions instead of silently overwriting another correction", async () => {
+  const before = await recordSaasCharge(context, charge(subscription, "2027-04"));
+  const request = { ...charge(subscription, before.competence), chargeId: before.id, revision: saasChargeRevision(before), reason: "Conferência da cotação" };
+  const result = await Promise.allSettled([correctSaasCharge(reviewer, { ...request, totalAmountBrl: "800" }), correctSaasCharge(reviewer, { ...request, totalAmountBrl: "810" })]);
+  expect(result.filter(row => row.status === "fulfilled")).toHaveLength(1);
 });

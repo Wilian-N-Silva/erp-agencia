@@ -478,3 +478,25 @@ corrige valor/vencimento, cancela a cobrança realizada e consulta a mesma AP
 cancelada, preservando estimativa, valor/link e histórico. Nenhum arquivo/banco
 habitual alterado, nenhuma migration de produção. Full E2E no candidato final
 permanece necessário após as demais correções.
+
+### FIN-006/010 — correção e leitura canônica da cobrança SaaS
+
+Correção pela origem exige finance.write + finance.reverse, motivo e revisão
+esperada, com rate limit persistido de conciliação. Locks assinatura→cobrança→AP;
+atualização/auditoria dos dois registros na mesma transação. Competência/link/
+estimativa preservados, sem outra AP/caixa. Reenvio é idempotente; revisão obsoleta
+não sobrescreve outra correção. Saldo canônico liquidado/reserva bloqueia correção
+até estorno/revisão. Schema Zod strict reaproveita validações de moeda/câmbio/IOF.
+
+A leitura anterior usava o status cached da AP e podia mostrar pagamento sem
+conciliação. Lista/status/valor conciliado agora usam ledger, com tenant explícito
+no join e aviso de histórico reservado. Histórico de correções consultável na
+origem usa fatos auditados do mesmo tenant/cobrança; expõe somente data, valores,
+cotação, responsável e motivo, sem IP/user-agent ou logs de outros domínios.
+
+Sem schema/migration/backfill novo. Typecheck/lint e 469 unitários/78 arquivos
+aprovados; 245 DB/40 arquivos aprovados (`saas-correction-db-final.log`). A consulta
+final de histórico/autor foi validada também em oito testes focais DB. Cobertura
+de vínculo estável, concorrência, payload/tenant/permissões, rollback, cache pago
+obsoleto com parcial real, estorno e correção posterior. Build/E2E ainda pendentes
+neste registro. Cancelamento da cobrança SaaS é o próximo ponto desta origem.

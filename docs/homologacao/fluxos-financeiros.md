@@ -126,3 +126,17 @@ cobrança realizada** e informe o motivo. Com finance.write e finance.reverse,
 o sistema cancela ocorrência e AP atomicamente, sem excluir o vínculo, valores,
 estimativa ou documentos. Qualquer liquidação precisa ser estornada/revisada
 antes. A mesma ocorrência cancelada não pode gerar outra AP por reenvio.
+
+### Correção de cobrança efetiva de assinatura
+
+Na assinatura, abra **Cobranças → Corrigir cobrança** na competência desejada.
+Informe os dados conferidos da fatura/extrato e o motivo. O sistema mantém a
+mesma cobrança, competência e AP, recalcula o principal com a cotação informada
+e atualiza o total/vencimento da obrigação na mesma transação. Não altera a
+estimativa do contrato nem cria caixa. Exige finance.write e finance.reverse.
+
+Liquidação parcial/integral ou reserva antiga bloqueia a correção até estorno
+ou revisão. Se outra pessoa já corrigiu, atualize a página antes de prosseguir.
+Os valores anteriores, cotação, responsável e motivo ficam consultáveis no
+**Histórico de correções**, além da auditoria completa. O status de pagamento e
+o valor conciliado na assinatura usam as mesmas alocações ativas do Financeiro.

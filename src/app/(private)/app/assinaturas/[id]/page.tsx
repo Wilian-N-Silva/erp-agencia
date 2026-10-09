@@ -31,9 +31,9 @@ import {
   saasUserStatusLabels,
   type SaasSubscriptionStatus,
 } from "@/features/saas/rules";
-import { formatDate, formatMoney } from "@/features/finance/rules";
+import { formatDate, formatMoney, moneyToCents } from "@/features/finance/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
-import { canAny } from "@/lib/rbac";
+import { can, canAny } from "@/lib/rbac";
 import { RemoveSubscriptionForm } from "../remove-subscription-form";
 import { SaasBillingFields } from "@/features/saas/billing-fields";
 import { updateSaasBillingFormAction } from "@/features/saas/actions";
@@ -264,7 +264,7 @@ export default async function SaasDetailPage({ params, searchParams }: PageProps
         ) : null}
 
         {activeTab === "cobrancas" ? (
-          <CobrancasTab subscription={subscription} charges={charges} canWrite={canWriteFinance} />
+          <CobrancasTab subscription={subscription} charges={charges} canWrite={canWriteFinance} canCorrect={canWriteFinance && can("finance.reverse", context)} />
         ) : null}
 
         {activeTab === "contrato" ? (
@@ -517,17 +517,19 @@ function CobrancasTab({
   subscription,
   charges,
   canWrite,
+  canCorrect,
 }: {
   subscription: SaasSubscriptionListItem;
   charges: Awaited<ReturnType<typeof listSaasCharges>>;
   canWrite: boolean;
+  canCorrect: boolean;
 }) {
   return <div className="fg-grid fg-grid-2">
     {canWrite && subscription.status !== "cancelled" ? <Card title="Registrar cobrança efetiva" description="Use os dados da fatura/extrato. A ação cria uma única conta a pagar para a competência.">
       <SaasChargeForm subscriptionId={subscription.id} billing={subscription.billing} />
     </Card> : null}
     <Card title="Histórico de cobranças" padding={false}>
-      {charges.length === 0 ? <p className="fg-empty-desc" style={{ padding: 20 }}>Nenhuma cobrança efetiva registrada.</p> : <div className="fg-table-wrap" style={{ border: 0, borderRadius: 0 }}><table className="fg-table fg-table-regular"><thead><tr><th>Competência</th><th>Original</th><th>Câmbio</th><th>Total BRL</th><th>Conta a pagar</th></tr></thead><tbody>{charges.map(charge => <tr key={charge.id}><td>{charge.competence}<br /><span className="fg-cell-sub">cobrado em {formatDate(charge.chargedAt)}</span></td><td className="fg-tabular">{charge.originalCurrency} {charge.originalAmount}</td><td className="fg-tabular">{charge.effectiveExchangeRate}</td><td className="fg-tabular fg-cell-strong">{formatMoney(charge.totalAmountBrl)}<br /><span className="fg-cell-sub">principal {formatMoney(charge.principalAmountBrl)} · IOF {formatMoney(charge.iofAmountBrl)} · tarifa {formatMoney(charge.feeAmountBrl)}</span></td><td>{charge.financialExpenseId ? <Link href={`/app/financeiro/saidas?query=${encodeURIComponent(subscription.name)}` as Route} className="fg-cell-link">{charge.financialExpenseStatus === "paid" ? "Paga" : "Em aberto"}</Link> : "Sem vínculo"}</td></tr>)}</tbody></table></div>}
+      {charges.length === 0 ? <p className="fg-empty-desc" style={{ padding: 20 }}>Nenhuma cobrança efetiva registrada.</p> : <div className="fg-table-wrap" style={{ border: 0, borderRadius: 0 }}><table className="fg-table fg-table-regular"><thead><tr><th>Competência</th><th>Original</th><th>Câmbio</th><th>Total BRL</th><th>Conta a pagar</th></tr></thead><tbody>{charges.map(charge => <tr key={charge.id}><td>{charge.competence}<br /><span className="fg-cell-sub">cobrado em {formatDate(charge.chargedAt)}</span></td><td className="fg-tabular">{charge.originalCurrency} {charge.originalAmount}</td><td className="fg-tabular">{charge.effectiveExchangeRate}</td><td className="fg-tabular fg-cell-strong">{formatMoney(charge.totalAmountBrl)}<br /><span className="fg-cell-sub">principal {formatMoney(charge.principalAmountBrl)} · IOF {formatMoney(charge.iofAmountBrl)} · tarifa {formatMoney(charge.feeAmountBrl)}</span></td><td>{charge.financialExpenseId ? <Link href={`/app/financeiro/saidas?query=${encodeURIComponent(subscription.name)}` as Route} className="fg-cell-link">{charge.financialExpenseStatus === null ? "Vínculo indisponível" : moneyToCents(charge.reservedAmount) > 0 ? "Histórico a conferir" : charge.financialExpenseStatus === "settled" ? "Liquidado" : charge.financialExpenseStatus === "partial" ? "Parcialmente liquidado" : charge.financialExpenseStatus === "overdue" ? "Vencido" : charge.financialExpenseStatus === "cancelled" ? "Cancelado" : "Em aberto"}</Link> : "Sem vínculo"}<p className="fg-cell-sub">Conciliado: {formatMoney(charge.confirmedAmount)}</p>{canCorrect && charge.financialExpenseId ? <details><summary>Corrigir cobrança de {charge.competence}</summary><SaasChargeForm subscriptionId={subscription.id} billing={subscription.billing} initialCharge={charge} /></details> : null}{charge.corrections.length ? <details><summary>Histórico de correções de {charge.competence}</summary><ul>{charge.corrections.map(item => <li key={item.id}><p>De {formatMoney(item.amountBefore)} para {formatMoney(item.amountAfter)} em {new Date(item.occurredAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p><p>Cotação: {item.rateBefore} para {item.rateAfter} · Responsável: {item.actorName ?? "Usuário indisponível"}</p><p>Motivo: {item.reason ?? "Não informado"}</p></li>)}</ul></details> : null}</td></tr>)}</tbody></table></div>}
     </Card>
   </div>;
 }
