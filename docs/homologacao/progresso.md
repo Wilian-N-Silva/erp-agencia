@@ -471,3 +471,10 @@ Typecheck/lint e 465 unitários/76 arquivos aprovados. O teste existente de
 cancelamento esperava common_mutation; atualizado para a proteção mais restrita
 reconciliation. Três novos testes de Server Action cobrem acesso, tenant, payload,
 rate limit e erros seguros. Build/E2E focal seguem pendentes neste registro.
+
+`041abd6`: build aprovado (`build-provision-cancel.log`) e E2E focal aprovado
+(`provision-cancel-e2e.log`) na worktree isolada. Gestor planeja, realiza uma AP,
+corrige valor/vencimento, cancela a cobrança realizada e consulta a mesma AP
+cancelada, preservando estimativa, valor/link e histórico. Nenhum arquivo/banco
+habitual alterado, nenhuma migration de produção. Full E2E no candidato final
+permanece necessário após as demais correções.

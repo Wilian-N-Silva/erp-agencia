@@ -114,3 +114,11 @@ finance.write + finance.reverse e recusa de liquidação real mesmo com cache ze
 239 DB, 462 unitários, typecheck/lint/build e E2E focal aprovados. Cancelamento
 de ocorrência realizada ainda pendente. O checkpoint anterior aprovou 23/23
 E2E completos (runtime d895330/testes cd00f93); repetir no candidato final.
+
+`041abd6` conclui cancelamento de provisão realizada sem liquidação: AP e
+ocorrência canceladas na mesma transação, vínculo imutável e guards diferidos
+contra estados divergentes. Financeiro com estorno/motivo, rate limit de
+conciliação, tenant e audit. Migration 0059 expansiva aplicada somente em testes.
+465 unitários/241 DB, typecheck/lint/build e E2E focal aprovados. Origens
+Gráfica/NF/SaaS/reembolso, relatórios, perfis/referências e restart continuam
+pendentes; não há candidato final nem aceite humano declarado.
