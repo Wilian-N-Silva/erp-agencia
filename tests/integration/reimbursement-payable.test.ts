@@ -89,6 +89,15 @@ it("rolls back source and payable on audit failure", async () => {
   expect((await admin.execute(sql`select financial_expense_id from reimbursement_requests where id=${id}`)).rows[0].financial_expense_id).toBeNull();
 });
 
+it("preserves approved obligations for an archived employee", async () => {
+  const id = await request();
+  await admin.execute(sql`update employees set deleted_at=now() where id=${employee}`);
+  try {
+    const payable = await createReimbursementPayable(context, input(id));
+    expect((await admin.execute(sql`select supplier,amount from financial_expenses where id=${payable.expenseId}`)).rows[0]).toEqual({ supplier: "Employee reimbursement", amount: "100.00" });
+  } finally { await admin.execute(sql`update employees set deleted_at=null where id=${employee}`); }
+});
+
 it("blocks direct settlement and mutually exclusive invoice/payable origins on the server", async () => {
   // The binding mock reads the synchronous value to enter the same real tenant transaction.
   current.mockReturnValue({ ...context, permissions: [...context.permissions, "invoices.write"] });
