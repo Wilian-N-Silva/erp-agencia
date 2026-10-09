@@ -251,3 +251,17 @@ Fluxos financeiros focais, arte versionada, portal/AP, NF/AP e SaaS passaram
 nessa execução. O gate completo permanece vermelho até repetição aprovada;
 não há candidato pronto. Ambiente e roteiro fictício dos gestores documentados
 como preparação/rascunho, com as pendências técnicas explícitas.
+### Repetição dos cenários afetados
+
+Testes `83401ab`, runtime `4725051`: seis cenários em 2,7 min, cinco aprovados.
+Importação histórica com revisão/conciliação, abas/mobile, consulta Financeiro
+sem edição operacional, download de NF e provisões passaram. OS ainda dependia
+do segundo fornecedor QA ausente; corrigido em `87d8794`, junto à seleção da
+aba atual de edição. Repetição do cenário de OS em execução. Logs
+`fixtures-recheck-e2e.log` e `graphics-ledger-e2e.log` na worktree isolada.
+
+Gates confirmados neste checkpoint: typecheck/lint; 452 unitários/71 arquivos;
+228 DB/38 arquivos (runtime `4725051`); build do mesmo runtime. Gate E2E
+completo anterior teve 16/21 aprovados e segue sem aprovação final. Próximos
+incrementos incluem comprovantes financeiros, correções de origens/revisão
+legada, relatórios restantes e perfis/referências antes do candidato final.
