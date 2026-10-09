@@ -42,6 +42,7 @@ test("reembolso com PDF passa pelo gestor e financeiro; perfis de gestão acessa
 
     const finance = await signIn("financeiro@formula.local");
     await finance.goto("/app/financeiro/cadastros");
+    await finance.locator("details").filter({ has: finance.locator('[name="nature"]') }).first().locator("summary").click();
     const category = finance.locator("form").filter({ has: finance.getByRole("button", { name: "Adicionar categoria", exact: true }) });
     await category.locator('[name="name"]').fill(`Categoria ${marker}`);
     await category.locator('[name="nature"]').selectOption("expense");
