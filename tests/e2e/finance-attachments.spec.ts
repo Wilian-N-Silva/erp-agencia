@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { signInWithRetry } from "./helpers/auth";
-import { ensureTestFinancialAccount } from "./helpers/finance";
+import { createTestSupplier, ensureTestFinancialAccount } from "./helpers/finance";
 
 test("financial receipts retain versions and enforce finance access", async ({ page, browser }) => {
   test.setTimeout(150_000);
@@ -61,4 +61,31 @@ test("financial receipts retain versions and enforce finance access", async ({ p
   await expect(page.getByRole("status")).toContainText("Documento anexado");
   await page.reload();
   await expect(page.getByRole("link", { name: `${marker}-movement.pdf`, exact: true })).toBeVisible();
+  await createTestSupplier(page, marker);
+  await page.goto("/app/financeiro/cadastros");
+  const categories = page.locator(".fg-card").filter({ has: page.getByText("Categorias financeiras", { exact: true }) });
+  await categories.getByText("Novo cadastro", { exact: true }).click();
+  const category = categories.locator("form").filter({ has: page.getByRole("button", { name: "Adicionar categoria", exact: true }) });
+  await category.locator('[name="name"]').fill(marker);
+  await category.locator('[name="nature"]').selectOption("expense");
+  await category.getByRole("button", { name: "Adicionar categoria", exact: true }).click();
+  await expect(categories.getByText(marker, { exact: true })).toBeVisible();
+  await page.goto("/app/financeiro/saidas");
+  await page.getByRole("button", { name: "Nova conta a pagar", exact: true }).last().click();
+  await sheet.locator('[name="supplierId"]').selectOption({ label: marker });
+  await sheet.locator('[name="categoryId"]').selectOption({ label: marker });
+  await sheet.locator('[name="description"]').fill(marker);
+  await sheet.locator(".fg-input-wrap").filter({ has: page.locator('[name="amount"]') }).locator('input[type="text"]').fill("100,00");
+  await sheet.locator('[name="dueDate"]').fill("2026-10-15");
+  await sheet.locator('[name="competence"]').fill("2026-10");
+  await sheet.getByRole("button", { name: "Criar conta a pagar", exact: true }).click();
+  await expect(sheet.getByRole("status")).toHaveText("Alteração registrada.");
+  await page.goto(`/app/financeiro/saidas?q=${marker}&competence=2026-10`);
+  await page.getByRole("row").filter({ hasText: marker }).getByRole("link", { name: "Documentos", exact: true }).click();
+  await page.getByLabel("Arquivo financeiro").setInputFiles({ name: `${marker}-payable.pdf`, mimeType: "application/pdf", buffer: body });
+  await page.getByRole("button", { name: "Anexar documento", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Documento anexado");
+  await page.reload();
+  const payableLink = page.getByRole("link", { name: `${marker}-payable.pdf`, exact: true });
+  expect(await (await page.request.get((await payableLink.getAttribute("href"))!)).body()).toEqual(body);
 });
