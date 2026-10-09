@@ -37,6 +37,8 @@ test("legacy reviews preserve original amounts, reopen obligations and restrict 
     const portal = await restricted.newPage();
     await signInWithRetry(portal, "pj.exemplo@formula.local", process.env.DEMO_USER_PASSWORD!);
     await portal.goto(url);
-    await expect(portal).toHaveURL(/acesso-negado/);
+    await expect(portal).toHaveURL(/\/portal$/);
+    await expect(portal.getByText(marker, { exact: true })).toHaveCount(0);
+    await expect(portal.getByRole("button", { name: "Liberar reserva revisada", exact: true })).toHaveCount(0);
   } finally { await restricted.close(); }
 });
