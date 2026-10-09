@@ -158,3 +158,28 @@ typecheck/lint/build e **23/23 E2E completos** aprovados, sem migration nova.
 Próxima tarefa viável: correção de venda/parcelas gráfica preservando a origem
 imutável. Cancelamentos gráficos, NF/reembolso, relatórios, referências/perfis
 e restart ainda exigem conclusão antes do candidato final.
+
+Atualização GRF/FIN: `94d00c8` entrega correção da venda e parcelas por revisões
+imutáveis (0061), mesmas ARs, preservação da OS/origem, motivo, autor e snapshots,
+auditoria, controle concorrente e bloqueio de liquidação/reserva. Resumo/dashboard
+usam total vigente. 478 unitários/263 DB/typecheck/lint/build aprovados. E2E
+integrado passou, mas a suíte completa terminou 22/23: teste de remoção SaaS
+presumia que o registro novo estaria na primeira página. Não é gate completo
+aprovado. `a173785` corrige busca por marcadores nas fixtures SaaS; repetição
+completa em andamento.
+
+`25cd0ad` elimina leitura de cache legado na sugestão de conciliação gráfica.
+Dois testes negativos reproduziram recusa válida/aceitação acima do saldo real;
+corrigidos passaram, sem criar caixa/reserva pela sugestão. 478 unitários/265 DB,
+typecheck/lint/build aprovados. Aceitação pelo Financeiro continua revalidando
+ledger/capacidade. Não houve migration adicional.
+
+Revisão do código real confirma: caixa mensal está em `finance/cash-report.ts`
+e `/app/financeiro/relatorios`; obrigações/indicadores por competência existem
+no DAL e dashboard financeiro. Auditar clareza e cobertura de aceite desses
+resultados, evitando recriar relatórios funcionais. `graphic_projects` tem
+schema/RLS, validação tenant e seleção no trabalho/importação; não foi encontrado
+cadastro navegável ou action de criação de projeto. Falta concluir esse caminho
+compartilhado sem intervenção técnica. Cancelamentos gráficos, NF/reembolso,
+perfis distintos, seed fictício consistente e prova explícita de restart continuam
+no backlog. V1 incompleta, sem candidato final ou homologação humana declarada.

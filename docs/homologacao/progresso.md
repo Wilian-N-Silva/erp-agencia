@@ -710,3 +710,20 @@ buscar o próprio marcador antes da consulta/remoção e da conferência após
 reload; mesmo ajuste nos dois outros E2E SaaS com a mesma suposição. Mantidos
 asserts de criação, proteção do histórico e 404 por ID removido. Sem limpar
 dados, aumentar timeout/rate limit ou mudar produto. Repetição completa pendente.
+
+### Encerramento solicitado pelo integrador
+
+Em 09/10/2026 o integrador reduziu a execução: commitar para a fase de
+homologação e anotar tudo para a versão seguinte. Novas implementações suspensas
+por essa instrução; [pos-homologacao.md](pos-homologacao.md) concentra a fila,
+prioridades, evidências, critérios e limitações. O escopo original completo
+não foi declarado concluído nem o aceite empresarial realizado.
+
+Runtime `a173785`: build aprovado (`build-graphic-suggestion.log`); segunda
+suíte completa terminou 22/23, exit 1 (`graphic-suggestion-e2e-full.log`). Os
+três cenários SaaS corrigidos passaram. A falha de `critical-flows` foi outra
+suposição de primeira página: quatro dos cinco clientes seed visíveis. Ajuste
+restrito ao teste busca códigos seed antes da contagem e o cliente nominal antes
+da consulta; mantém todos os asserts e a cobrança recorrente desabilitada.
+Sem alterar produto, seed, dados, timeout, permissões ou rate limit. Verificação
+final pendente antes de registrar o resultado deste checkpoint.
