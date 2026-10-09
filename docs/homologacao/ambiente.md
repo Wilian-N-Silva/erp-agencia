@@ -94,3 +94,22 @@ precisa de revisão explícita, sem inventar vínculo ou restaurar por suposiç�
 Não remover colunas/guards ou voltar ao índice antigo depois de registrar uma
 substituta: ele rejeitaria o histórico da mesma competência. Rollback operacional
 usa backup validado/janela de manutenção ou correção expansiva, preservando fatos.
+
+Consulta de pré-flight (somente leitura, migrator autorizado, primeiro na cópia;
+não expõe documentos ou dados pessoais):
+
+```sql
+SELECT count(*) AS cobrancas,
+  count(*) FILTER (WHERE e.status = 'cancelled') AS ap_ja_cancelada,
+  count(*) FILTER (WHERE e.id IS NULL) AS ap_ausente,
+  count(*) FILTER (WHERE e.deleted_at IS NOT NULL) AS ap_arquivada,
+  count(*) FILTER (WHERE s.id IS NULL OR s.deleted_at IS NOT NULL) AS origem_indisponivel
+FROM saas_subscription_charges c
+LEFT JOIN financial_expenses e
+  ON e.organization_id = c.organization_id AND e.id = c.financial_expense_id
+LEFT JOIN saas_subscriptions s
+  ON s.organization_id = c.organization_id AND s.id = c.subscription_id;
+```
+
+Não executar correções por SQL a partir dessas contagens. Registrar divergências
+e revisar evidências/vínculos antes de considerar a base pronta para homologação.

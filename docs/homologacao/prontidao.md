@@ -130,3 +130,12 @@ consultável. Link da AP leva a competência correta. 469 unitários/245 DB,
 typecheck/lint/build e E2E focal aprovados (oito DB focais no runtime final).
 Sem migration nova. Cancelamento SaaS, demais origens e validação completa do
 candidato permanecem no backlog; isso não conclui a homologação.
+
+`1095c53` conclui cancelamento SaaS pela origem com AP na mesma transação,
+motivo/confirmação/auditoria e bloqueio de liquidação/reserva. Reenvio não afeta
+uma substituta; índice parcial permite apenas uma cobrança ativa por competência
+e preserva a anterior cancelada. Remoção de assinatura com cobranças bloqueada
+no servidor/banco. 0060 expansiva com backfill factual, aplicada só em testes.
+Typecheck/lint/472 unitários/251 DB/build e **23/23 E2E completos** aprovados no
+checkpoint. Gráfica/NF/reembolso, demais relatórios, referências/perfis e restart
+continuam pendentes. Próxima tarefa viável: correção financeira pela origem gráfica.

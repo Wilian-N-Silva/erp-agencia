@@ -539,3 +539,26 @@ AccessContext explícito. Typecheck final, DB completo, build e E2E em execuçã
 Typecheck final aprovado (`saas-cancel-typecheck-final.log`). DB completo
 aprovado: 251 testes/41 arquivos (`saas-cancel-db.log`), incluindo RLS, migration
 e regressões das demais origens. Build e navegador aguardam o checkpoint Git.
+
+Revisão de segurança: sessão na action, ambas permissões no servidor/DAL, Zod
+strict, IDs filtrados por organização/assinatura/AP e RLS existente preservado.
+Rate limit persistido, dinheiro sem float, locks e auditoria transacional.
+Sem novos uploads, alteração de sessão ou exposição de segredos; documentos
+financeiros continuam ligados à mesma AP privada. Nenhuma tabela de negócio
+nova ou mudança de policy. Worktrees anteriores e base habitual preservadas.
+
+Checkpoint técnico `1095c53a1c50d84f5036701e1dfb143cec0a7716`: build aprovado
+(`build-saas-cancel.log`), E2E focal aprovado (`saas-cancel-e2e.log`) e comando
+completo `npm run test:e2e -- --workers=1` aprovado: 23/23, 6,3 minutos,
+exit 0 (`saas-cancel-e2e-full.log`), na worktree isolada com esse mesmo SHA.
+O cenário SaaS verifica valores antes/depois, motivo, AP cancelada preservada,
+substituta na mesma competência e uma AP ativa. 0060 aplicada também no banco
+isolado E2E. Typecheck/lint/472 unitários/251 DB aprovados nos logs desta seção.
+`git diff --check` limpo. Nenhum gate obrigatório conhecido falhando neste
+checkpoint; isso não é candidato final nem conclusão da homologação humana.
+
+Próxima origem P0: Gráfica. `sale.ts`/`commitment.ts` já criam AR/AP uma vez;
+`0034`/`0036` protegem os registros de origem com imutabilidade. O Financeiro
+genérico recusa edição econômica desses títulos, mas falta correção pela origem.
+Implementar sem reescrever venda/contratação históricas, mantendo conciliação,
+resumo, parcelas e auditoria concordantes. Não recriar o fluxo gráfico existente.
