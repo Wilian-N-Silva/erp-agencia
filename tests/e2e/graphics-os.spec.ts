@@ -1,5 +1,5 @@
 import { createTestSupplier } from "./helpers/finance";
-import { createGraphicTestJob } from "./helpers/graphics";
+import { createGraphicTestJob, uploadTestArtworkVersions } from "./helpers/graphics";
 import { expect, test } from "@playwright/test";
 
 test("graphic flow from competing quotes and rejection to OS, production, reconciliation and closure", async ({
@@ -98,6 +98,12 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   const duplicateCode = `DUP-${Date.now()}`;
   await createGraphicTestJob(page, duplicateCode);
   const supplierName = `Fornecedor ${code}`;
+  const clientName = `Cliente ${code}`;
+  await page.goto("/app/clientes/novo");
+  await page.locator('[name="name"]').fill(clientName);
+  await page.getByRole("button", { name: "Criar cliente", exact: true }).click();
+  await expect(page.getByRole("heading", { name: clientName, exact: true })).toBeVisible();
+  const clientUrl = page.url();
   const alternativeSupplier = `Alternativa ${code}`;
   await createTestSupplier(page, alternativeSupplier);
   await page.goto("/app/grafica");
@@ -127,7 +133,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     .fill("QA - Registro de OS externa");
   await page
     .getByRole("combobox", { name: "Cliente", exact: true })
-    .selectOption({ label: "Horizonte Eventos - Grafica" });
+    .selectOption({ label: clientName });
   await page
     .getByRole("combobox", { name: "Responsável", exact: true })
     .selectOption({ label: "Lideranca Demo" });
@@ -380,6 +386,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     }),
   ).toHaveCount(0);
   await tab("5. Produção e entrega");
+  await uploadTestArtworkVersions(page);
   await panel("Contratar fornecedor");
   await page
     .getByLabel("Data da contratação", { exact: true })
@@ -474,7 +481,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("textbox", { name: /^Valor/ }).fill("1950,00");
   await page
     .getByLabel("Cliente", { exact: true })
-    .selectOption({ label: "Horizonte Eventos - Grafica" });
+    .selectOption({ label: clientName });
   await page.getByLabel("Referência", { exact: true }).fill(code);
   await page
     .getByRole("button", { name: "Registrar movimentação", exact: true })
@@ -674,23 +681,24 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     page.getByText("Nenhum trabalho encontrado", { exact: true }),
   ).toBeVisible();
   await expect(dashboardFinance).toContainText("R$ 0,00");
+  for (const [index, paymentAmount] of ["300,00", "900,00"].entries()) {
   await page.goto("/app/financeiro/movimentacoes");
   await page
     .getByRole("combobox", { name: /^Conta financeira/ })
     .selectOption({ label: "Conta Gráfica QA" });
   await page.getByRole("combobox", { name: /^Direção/ }).selectOption("out");
-  await page.getByRole("textbox", { name: /^Valor/ }).fill("1200,00");
+  await page.getByRole("textbox", { name: /^Valor/ }).fill(paymentAmount);
   await page
     .getByRole("combobox", { name: "Fornecedor", exact: true })
     .selectOption({ label: alternativeSupplier });
-  await page.getByLabel("Referência", { exact: true }).fill(`PAG-${code}`);
+  await page.getByLabel("Referência", { exact: true }).fill(`PAG-${code}-${index}`);
   await page
     .getByRole("button", { name: "Registrar movimentação", exact: true })
     .click();
   await page
     .getByRole("row")
     .filter({
-      has: page.getByRole("cell", { name: `PAG-${code}`, exact: true }),
+      has: page.getByRole("cell", { name: `PAG-${code}-${index}`, exact: true }),
     })
     .getByRole("link", { name: "Conciliar", exact: true })
     .click();
@@ -706,7 +714,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     .getByLabel(`Valor para Gráfica ${code} · QA - Registro de OS externa`, {
       exact: true,
     })
-    .fill("1200,00");
+    .fill(paymentAmount);
   await page
     .getByRole("checkbox", {
       name: "Conferi os títulos e valores e confirmo a conciliação.",
@@ -725,6 +733,16 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   ).toBeVisible();
   await page.goto(jobUrl);
   await expect(financeSummary).toContainText("Pago e conciliado");
-  await expect(financeSummary.locator("dl")).toContainText("R$ 1.200,00");
+  await expect(financeSummary.locator("dl")).toContainText(index === 0 ? "R$ 300,00" : "R$ 1.200,00");
+  }
   await expect(financeSummary).toContainText("R$ 750,00");
+  await page.goto(`${clientUrl}?tab=pagamentos`);
+  for (const amount of ["R$ 500,00", "R$ 1.450,00"]) {
+    const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: amount, exact: true }) });
+    await expect(row).toHaveCount(1);
+    await expect(row.getByRole("cell").nth(2)).toHaveText(amount);
+    await expect(row.getByRole("cell").nth(3)).toHaveText(amount);
+    await expect(row).toContainText("Recebido");
+  }
+
 });
