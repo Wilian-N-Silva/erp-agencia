@@ -1,3 +1,4 @@
+import { createTestSupplier } from "./helpers/finance";
 import { createGraphicTestJob } from "./helpers/graphics";
 import { expect, test } from "@playwright/test";
 
@@ -97,6 +98,8 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   const duplicateCode = `DUP-${Date.now()}`;
   await createGraphicTestJob(page, duplicateCode);
   const supplierName = `Fornecedor ${code}`;
+  const alternativeSupplier = `Alternativa ${code}`;
+  await createTestSupplier(page, alternativeSupplier);
   await page.goto("/app/grafica");
   await page
     .getByRole("link", { name: "Consultar e cadastrar fornecedores" })
@@ -161,7 +164,8 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     page.getByRole("heading", { name: "QA - Registro de OS externa" }),
   ).toBeVisible();
   const createdUrl = page.url();
-  await page.getByRole("link", { name: "Editar", exact: true }).click();
+  await tab("1. Pedido");
+  await panel("Editar pedido");
   await page
     .getByRole("textbox", { name: "Código interno", exact: true })
     .fill(duplicateCode);
@@ -219,7 +223,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await panel("Nova cotação");
   await page
     .getByRole("combobox", { name: "Fornecedor", exact: true })
-    .selectOption({ label: "Fornecedor QA Grafica B" });
+    .selectOption({ label: alternativeSupplier });
   await page
     .getByRole("textbox", { name: "Valor cotado", exact: true })
     .fill("1200,00");
@@ -678,7 +682,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await page.getByRole("textbox", { name: /^Valor/ }).fill("1200,00");
   await page
     .getByRole("combobox", { name: "Fornecedor", exact: true })
-    .selectOption({ label: "Fornecedor QA Grafica B" });
+    .selectOption({ label: alternativeSupplier });
   await page.getByLabel("Referência", { exact: true }).fill(`PAG-${code}`);
   await page
     .getByRole("button", { name: "Registrar movimentação", exact: true })
