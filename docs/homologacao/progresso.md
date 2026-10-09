@@ -293,3 +293,18 @@ Próxima task viável: FIN-008, anexos/comprovantes em AR/AP/movimentação usan
 storage/documentos existentes, validação de dono/organização, versionamento,
 download autorizado e auditoria. A V1 não está pronta enquanto esse fluxo e
 os demais bloqueios listados na matriz não forem resolvidos e revalidados.
+### FIN-008 — anexos financeiros em validação
+
+AR/AP e movimentações ganharam acesso a documentos vinculados, com PDF/PNG/JPG,
+assinatura/limite/checksum, storage privado e versões por tipo. Upload exige
+finance.write e limite persistido de upload; leitura/download exige permissão
+financeira e dono da mesma organização. Permissão de documentos genéricos não
+concede acesso financeiro. Exclusão pela ação genérica bloqueada; versões
+anteriores preservadas. Upload não altera saldos nem cria conciliações.
+
+Sem nova tabela/migration: reutiliza files/documents com RLS existente.
+Transação trava o dono para serializar versões e reverte metadados/auditoria,
+com compensação do objeto armazenado se a transação falhar. 453 unitários e
+231 DB/39 arquivos passaram; typecheck/lint verdes. Logs attachments-*.log em
+storage-local/homologacao. Build/E2E focal e revisão final ainda em execução;
+não considerar FIN-008 aceito nem a candidata final pronta neste checkpoint.

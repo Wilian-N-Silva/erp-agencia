@@ -3,6 +3,8 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { bindTenantContext, db } from "@/lib/db";
 import { documents, employees, files, invoiceRequests } from "@/lib/db/schema";
 import { canReadInvoiceRequest } from "@/features/portal/rules";
+import { isFinancialDocumentOwner } from "@/features/finance/attachment-rules";
+import { getFinancialAttachmentOwner } from "@/features/finance/attachments";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan, assertCanAny } from "@/lib/rbac";
 
@@ -90,6 +92,8 @@ async function listDocuments(
 
   return rows
     .filter((row) => {
+      // Financial documents are consulted through their validated financial owner.
+      if (isFinancialDocumentOwner(row.ownerType)) return false;
       if (filters.ownerEmployeeId && row.ownerEmployeeId !== filters.ownerEmployeeId) {
         return false;
       }
@@ -143,6 +147,11 @@ async function getDocumentForAccess(context: AccessContext, id: string) {
     sensitivity: row.sensitivity as FileSensitivity,
     visibility: row.visibility as DocumentVisibility,
   };
+
+  if (isFinancialDocumentOwner(row.ownerType)) {
+    await getFinancialAttachmentOwner(context, { ownerType: row.ownerType, ownerId: row.ownerId });
+    return row;
+  }
 
   if (!canReadDocument(context, target) && !canReadOwnDocument(context, target)) {
     // Invoice access grants only its actual attached PDF, never all employee documents.

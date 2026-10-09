@@ -29,6 +29,7 @@ export default async function ReconciliationPage({ params, searchParams }: { par
   return <Page>
     <PageHeader eyebrow="Financeiro" title="Conciliar movimentação" description="Relacione o dinheiro movimentado às contas a receber ou pagar." />
     <Link href="/app/financeiro/movimentacoes" className="text-sm text-primary underline">Voltar às movimentações</Link>
+    <Link href={`/app/financeiro/anexos/financial_transaction/${id}`} className="text-sm text-primary underline">Documentos e comprovantes</Link>
     <Card className="mt-5" title={data.movement.direction === "in" ? "Entrada de dinheiro" : "Saída de dinheiro"}>
       <p>{formatMoney(data.movement.amount)} · {financialTransactionStatusLabels[data.movement.status as FinancialTransactionStatus]}</p>
       <p className="text-sm">Referência: {data.movement.reference ?? "Não informada"} · {data.movement.occurredAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>

@@ -115,15 +115,14 @@ export async function renderFinancePage({
   const expenseActions: Record<string, ReactNode> = {};
   const provisionActions: Record<string, ReactNode> = {};
 
+  for (const entry of dashboard.entries) {
+    entryActions[entry.id] = <><Link href={`/app/financeiro/anexos/financial_entry/${entry.id}`}>Documentos</Link>{canWrite ? <EntryRowActions clientOptions={clientOptions} entry={entry} /> : null}</>;
+  }
+  for (const expense of dashboard.expenses) {
+    expenseActions[expense.id] = <><Link href={`/app/financeiro/anexos/financial_expense/${expense.id}`}>Documentos</Link>{canWrite ? <ExpenseRowActions expense={expense} masterData={masterData!} /> : null}</>;
+  }
+
   if (canWrite) {
-    for (const entry of dashboard.entries) {
-      entryActions[entry.id] = (
-        <EntryRowActions clientOptions={clientOptions} entry={entry} />
-      );
-    }
-    for (const expense of dashboard.expenses) {
-      expenseActions[expense.id] = <ExpenseRowActions expense={expense} masterData={masterData!} />;
-    }
     for (const provision of dashboard.provisions) {
       provisionActions[provision.id] = (
         <ProvisionRowActions id={provision.id} status={provision.status} />
@@ -142,8 +141,8 @@ export async function renderFinancePage({
       newEntryAction={newEntryAction}
       newExpenseAction={newExpenseAction}
       newProvisionAction={newProvisionAction}
-      entryActions={canWrite ? entryActions : undefined}
-      expenseActions={canWrite ? expenseActions : undefined}
+      entryActions={entryActions}
+      expenseActions={expenseActions}
       provisionActions={canWrite ? provisionActions : undefined}
     />
   );

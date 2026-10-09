@@ -15,6 +15,7 @@ import {
 } from "@/lib/rate-limit";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { formDataToObject } from "@/lib/validation";
+import { isFinancialDocumentOwner } from "@/features/finance/attachment-rules";
 import {
   createStorageKey,
   getSha256Hex,
@@ -278,6 +279,8 @@ async function getDocumentForWrite(id: string, organizationId: string) {
   if (!document) {
     throw new AccessDeniedError();
   }
+
+  if (isFinancialDocumentOwner(document.ownerType)) throw new AccessDeniedError();
 
   return document;
 }
