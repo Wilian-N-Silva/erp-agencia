@@ -89,3 +89,21 @@ checagem adicional do dono financeiro. Histórico protegido da exclusão genéri
 Gates/resultados exatos em progresso.md; gate completo do candidato precisa
 ser repetido após os demais incrementos. Restart e cobertura integrada de AP
 com documentos ainda requerem evidência final.
+
+## Incrementos CORE/GRF e revisão legada
+
+`62a2eec..6f07658`: cliente protegido após OS/vínculo financeiro e trabalho com
+AP/AR não pode ser arquivado. Banco/servidor/UI cobertos; encerramento continua
+separado de quitação. Build e E2E integrado verdes.
+
+`d895330..cd00f93`: Histórico de AR/AP permite liberação explícita de reserva
+conferida, com motivo/evidência/finance.reverse. Baseline preservado e nenhuma
+movimentação de caixa criada. Leituras integradas, capacidade de conciliação e
+estorno consideram o restante. 462 unitários, 236 DB, typecheck/lint/build e E2E
+focal verdes. Migrations 0057/0058 somente em bancos isolados. Suite E2E completa
+em execução no checkpoint; correção das origens e demais aceites seguem abertos.
+
+Problema concreto na próxima origem: provisão realizada direciona a correção ao
+Financeiro, que corretamente recusa alteração econômica de título gerado. É
+necessário corrigir pela ocorrência, preservando estimativa/link/AP/auditoria e
+recusando saldo liquidado até estorno/revisão. Não recriar provisões/ciclos.

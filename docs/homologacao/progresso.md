@@ -395,3 +395,12 @@ gates após os últimos ajustes ainda em execução. Nenhuma migration de produ�
 Correções econômicas das origens permanecem P0. Esta entrega libera uma reserva
 indevida explicitamente conferida; não transforma automaticamente baixas
 históricas em movimentos e não fornece autorização para revisar sem evidência.
+
+Runtime `d895330`, teste `cd00f93`: build e E2E de revisão aprovados
+(`build-legacy-review.log`, `legacy-review-e2e-final.log`). E2E integrado Gráfica
+também aprovado no runtime novo (`legacy-review-e2e.log`). A primeira asserção
+do portal esperava acesso-negado, mas o layout existente o redireciona ao portal;
+teste ajustado para essa fronteira real e confirma ausência dos dados/formulário.
+Typecheck/lint e 462 unitários/75 arquivos verdes; repetição DB no commit aprovada
+com 236 testes/40 arquivos (`legacy-review-db-commit.log`). E2E completo ainda
+em execução; não há declaração de aprovação dos gates finais do candidato.
