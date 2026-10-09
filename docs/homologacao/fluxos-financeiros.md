@@ -178,3 +178,23 @@ Resumo e dashboard da Gráfica usam essa mesma obrigação. Uma AP cancelada ou
 com liquidação/reserva histórica não pode ser corrigida por esse fluxo: estorne
 o pagamento indevido ou revise a reserva antes. Se outra pessoa corrigiu,
 atualize a página. O encerramento operacional não impede conferir a obrigação.
+
+### Correção da venda e parcelas gráficas
+
+No trabalho, abra **Financeiro → Corrigir venda e parcelas**. Exige
+finance.write e finance.reverse. Informe valor total, competência, valores e
+vencimentos das parcelas existentes, além do motivo conferido com o cliente.
+A soma deve corresponder ao total; todos os vínculos originais são mantidos.
+Não acrescenta/remove parcelas, não altera o cliente ou a OS externa e não
+registra dinheiro. As mesmas ARs passam a representar a obrigação corrigida.
+
+Cada revisão preserva valores anteriores/novos, parcelas, responsável, data e
+motivo em histórico imutável e auditoria transacional. Venda e documentos
+originais continuam consultáveis. Gráfica, Cliente e Financeiro apresentam as
+mesmas obrigações atuais; margem e total contratado usam a última revisão.
+
+Recebimento parcial/integral, reserva histórica ou parcela cancelada bloqueia
+a operação: estorne ou revise antes de corrigir. Se outra pessoa corrigiu,
+atualize a página. Encerramento operacional não impede a conferência financeira.
+Cancelamento da venda ou alteração da quantidade de parcelas continua pendente;
+não contorne essa restrição cancelando ARs isoladas no Financeiro.

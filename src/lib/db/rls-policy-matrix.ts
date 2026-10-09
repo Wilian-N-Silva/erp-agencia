@@ -30,6 +30,7 @@ export const directTenantPolicyTables = [
   "graphic_production_events",
   "graphic_supplier_commitments",
   "graphic_sales",
+  "graphic_sale_revisions",
   "graphic_reconciliation_suggestions",
   "graphic_sale_installments",
   "graphic_os_versions",

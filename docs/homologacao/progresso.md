@@ -651,3 +651,29 @@ produção, base de uso ou worktrees anteriores. Nenhum gate atual falhando.
 Próxima tarefa: correção da venda e parcelas da Gráfica com histórico imutável
 e indicadores coerentes. Demais pendências V1 continuam; sem candidato final
 ou declaração de homologação empresarial concluída.
+
+### GRF/FIN — correção da venda parcelada pela origem
+
+Correção com finance.write + finance.reverse, motivo, revisão esperada e rate
+limit persistente de conciliação. Locks do trabalho, venda e ARs em ordem;
+saldo relido depois do lock. Atualiza as mesmas ARs e registra revisão imutável
+e auditoria na mesma transação. Preserva venda original, OS, cliente, parcelas
+e documentos; não cria títulos nem caixa. Reenvio equivalente é idempotente.
+Leituras do valor contratado/resumo/dashboard usam o total da última revisão.
+
+0061 expansiva: RLS forçada, FKs tenant/autor, sequência de revisão, validação
+de snapshots/soma/vínculos/estado sem liquidação e guards diferidos contra
+divergência entre revisão e ARs. Sem backfill ou alteração de migrations antigas.
+Aplicada somente em ambiente de banco isolado. Segurança também cobre payload
+estrito/IDOR/RBAC, rollback de auditoria e histórico imutável; não toca sessão,
+uploads ou segredos. Testes novos verificam idempotência, concorrência real,
+IDs preservados, bloqueio de recebimento parcial, tenant e adulteração SQL.
+Upgrade de 0050 a 0061 confirma preservação do histórico sem revisões inventadas.
+E2E integrado ampliado: venda original R$1.950 corrigida para R$2.000, mesmas
+duas ARs R$500/R$1.500; Gráfica, Financeiro e Cliente devem concordar, mantendo
+custo corrigido R$1.250 e margem R$750. Gates em validação; não é candidato final.
+
+Typecheck/lint e 478 unitários/81 arquivos aprovados (`graphic-sale-*`). Banco
+completo: 263 testes/41 arquivos, exit 0 (`graphic-sale-db.log`), incluindo
+upgrade e matriz RLS. `git diff --check` limpo. Build/E2E aguardam checkpoint
+Git e aplicação da 0061 somente na base isolada de navegador.

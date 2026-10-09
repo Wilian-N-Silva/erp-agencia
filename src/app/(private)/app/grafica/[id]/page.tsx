@@ -54,6 +54,7 @@ import { getUploadMaxBytes } from "@/features/documents/rules";
 import { CommitmentForm } from "../commitment-form";
 import { GraphicPayableCorrectionForm } from "@/features/graphics/payable-correction-form";
 import { GraphicSaleForm } from "../sale-form";
+import { GraphicSaleCorrectionForm } from "@/features/graphics/sale-correction-form";
 import { getGraphicSale } from "@/features/graphics/sale";
 import {
   canReadGraphicFinance,
@@ -822,7 +823,7 @@ export default async function GraphicJobDetailPage({
           {sale ? (
             <div className="grid gap-3 text-sm">
               <p className="font-semibold">
-                Valor contratado: {formatMoney(sale.sale.amount)}
+                Valor contratado atual: {formatMoney(sale.effectiveAmount)}
               </p>
               <p>
                 Contas a receber criadas. Recebimento acompanhado pelo
@@ -836,6 +837,8 @@ export default async function GraphicJobDetailPage({
                   </li>
                 ))}
               </ol>
+              {context.permissions.includes("finance.write") && context.permissions.includes("finance.reverse") ? <details><summary>Corrigir venda e parcelas</summary><GraphicSaleCorrectionForm jobId={id} saleId={sale.sale.id} revision={sale.revision} amount={sale.effectiveAmount} competence={sale.effectiveCompetence} installments={sale.installments}/></details> : null}
+              {sale.corrections.length ? <details><summary>Histórico de correções da venda</summary><p>Venda original: {formatMoney(sale.sale.amount)} · {sale.sale.competence}</p><ol>{sale.corrections.map(item=><li key={item.id}><p>Revisão {item.version}: de {formatMoney(item.beforeAmount)} para {formatMoney(item.amount)} · Competência: {item.beforeCompetence} para {item.competence}</p><p>{formatDateTime(item.createdAt)} · {item.actorName ?? "Responsável registrado na auditoria"} · Motivo: {item.reason}</p><ul>{item.installments.map(row=><li key={row.entryId}>Parcela: {formatMoney(row.amount)} · Vencimento: {row.dueDate}</li>)}</ul></li>)}</ol></details> : null}
             </div>
           ) : currentOs &&
             context.permissions.includes("graphics.client_approval_write") &&

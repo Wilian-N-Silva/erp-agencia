@@ -12,6 +12,8 @@ import { contractGraphicSupplier, getGraphicCommitments } from "@/features/graph
 import { correctGraphicPayable } from "@/features/graphics/payable-correction";
 import { reverseFinancialTransaction } from "@/features/finance-transactions/reversal";
 import { registerGraphicSale, getGraphicSale } from "@/features/graphics/sale";
+import { correctGraphicSale } from "@/features/graphics/sale-correction";
+import { graphicSaleRevisions } from "@/lib/db/schema";
 import { getGraphicFinanceSummary } from "@/features/graphics/finance-summary";
 import { getGraphicDashboard } from "@/features/graphics/dashboard";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
@@ -68,9 +70,10 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_production_events disable trigger graphic_production_events_immutable`);
     await tx.execute(sql`alter table graphic_supplier_commitments disable trigger graphic_supplier_commitments_immutable`);
     await tx.execute(sql`alter table graphic_sales disable trigger graphic_sales_immutable`);
+    await tx.execute(sql`alter table graphic_sale_revisions disable trigger graphic_sale_revisions_immutable`);
     await tx.execute(sql`alter table graphic_sale_installments disable trigger graphic_sale_installments_immutable`);
     for (const org of orgs) {
-      for (const table of ["audit_logs", "work_items", "financial_transaction_reversals", "financial_allocations", "financial_transactions", "financial_accounts", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "documents", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
+      for (const table of ["audit_logs", "work_items", "financial_transaction_reversals", "financial_allocations", "financial_transactions", "financial_accounts", "graphic_sale_revisions", "graphic_sale_installments", "graphic_sales", "financial_entries", "graphic_supplier_commitments", "financial_expenses", "financial_categories", "graphic_production_events", "graphic_client_decisions", "graphic_os_versions", "documents", "files", "graphic_supplier_quotes", "graphic_jobs", "suppliers", "clients", "employees", "positions", "areas", "user"]) {
         await tx.execute(sql`delete from ${sql.identifier(table)} where organization_id=${org}`);
       }
       await tx.execute(sql`delete from organizations where id=${org}`);
@@ -80,6 +83,7 @@ afterAll(async () => {
     await tx.execute(sql`alter table graphic_production_events enable trigger graphic_production_events_immutable`);
     await tx.execute(sql`alter table graphic_supplier_commitments enable trigger graphic_supplier_commitments_immutable`);
     await tx.execute(sql`alter table graphic_sales enable trigger graphic_sales_immutable`);
+    await tx.execute(sql`alter table graphic_sale_revisions enable trigger graphic_sale_revisions_immutable`);
     await tx.execute(sql`alter table graphic_sale_installments enable trigger graphic_sale_installments_immutable`);
     await tx.execute(sql`alter table financial_allocations enable trigger financial_allocations_immutable_guard`);
     await tx.execute(sql`alter table financial_transaction_reversals enable trigger financial_reversals_immutable`);
@@ -499,4 +503,64 @@ it("reads a fresh settlement after waiting for an AP lock held by an in-flight r
   if (result.status === "rejected") expect(result.reason.message).toMatch(/Estorne/);
   expect((await getGraphicCommitments(financialReviewer, jobs[2]))[0].amount).toBe(before.amount);
   await reverseFinancialTransaction(financialReviewer, { transactionId: movement, reason: "Estorno de fixture de concorrência" });
+});
+
+it("corrects a graphic sale atomically, preserving its original sale, installments and cash", async () => {
+  const rollback = new Error("Rollback sale correction scenario");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    const before = (await getGraphicSale(financialReviewer, jobs[2]))!;
+    const request = { jobId: jobs[2], saleId: before.sale.id, revision: before.revision, amount: "1600", competence: "2026-10", reason: "Valores conferidos com o cliente", installments: before.installments.map((row, i) => ({ entryId: row.entryId, amount: i === 0 ? "550" : "1050", dueDate: i === 0 ? "2026-10-10" : "2026-11-10" })) };
+    const cashBefore = (await tx.execute(sql`select count(*) as count from financial_transactions where organization_id=${orgs[0]}`)).rows;
+    await correctGraphicSale(financialReviewer, request);
+    await correctGraphicSale(financialReviewer, request);
+    const after = (await getGraphicSale(financialReviewer, jobs[2]))!;
+    expect(after.sale).toEqual(before.sale);
+    expect(after.installments.map(row => row.id)).toEqual(before.installments.map(row => row.id));
+    expect(after.installments.map(row => row.entryId)).toEqual(before.installments.map(row => row.entryId));
+    expect(after.installments.map(row => row.amount)).toEqual(["550.00", "1050.00"]);
+    expect(after).toMatchObject({ effectiveAmount: "1600.00", effectiveCompetence: "2026-10", corrections: [expect.objectContaining({ version: 1, beforeAmount: "1500.00", amount: "1600.00", reason: request.reason, createdByUserId: userIds[0] })] });
+    expect(await getGraphicFinanceSummary(financialReviewer, jobs[2])).toMatchObject({ contracted: "1600.00", receivableTotal: "1600.00", receivableOpen: "1600.00" });
+    expect((await tx.execute(sql`select count(*) as count from financial_transactions where organization_id=${orgs[0]}`)).rows).toEqual(cashBefore);
+    await expect(correctGraphicSale(financialReviewer, { ...request, amount: "1700", installments: request.installments.map((row, i) => ({ ...row, amount: i === 0 ? "650" : "1050" })) })).rejects.toThrow(/alterada/);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+
+it("denies sale correction with foreign IDs, missing permissions, partial receipts or failed audit", async () => {
+  const before = (await getGraphicSale(financialReviewer, jobs[2]))!;
+  const request = { jobId: jobs[2], saleId: before.sale.id, revision: before.revision, amount: "1600", competence: before.effectiveCompetence, reason: "Correção conferida da venda", installments: before.installments.map((row, i) => ({ entryId: row.entryId, amount: i === 0 ? "600" : "1000", dueDate: row.dueDate })) };
+  const denied: AccessContext[] = [contexts[0], { ...financialReviewer, organizationId: orgs[1], userId: userIds[1] }, { ...financialReviewer, permissions: ["finance.write"] }];
+  for (const context of denied) await expect(correctGraphicSale(context, request)).rejects.toThrow();
+  await expect(correctGraphicSale(financialReviewer, { ...request, installments: request.installments.map((row, i) => i === 0 ? { ...row, entryId: randomUUID() } : row) })).rejects.toThrow(/parcelas/);
+  audit.fail = true;
+  try { await expect(correctGraphicSale(financialReviewer, request)).rejects.toThrow("Simulated audit failure"); } finally { audit.fail = false; }
+  expect((await getGraphicSale(financialReviewer, jobs[2]))!.revision).toBe(before.revision);
+  const rollback = new Error("Rollback sale receipt fixture");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    const account = randomUUID(), movement = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${orgs[0]},'Sale correction QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${orgs[0]},${account},'in',10,now(),${userIds[0]})`);
+    await createFinancialAllocations(financialReviewer, { transactionId: movement, allocations: [{ targetType: "receivable", targetId: before.installments[0].entryId, amount: "10" }] });
+    await expect(correctGraphicSale(financialReviewer, request)).rejects.toThrow(/Estorne/);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+
+it("commits only one competing sale revision and enforces immutable tenant-scoped history and final AR agreement", async () => {
+  const before = (await getGraphicSale(financialReviewer, jobs[2]))!;
+  const base = { jobId: jobs[2], saleId: before.sale.id, revision: before.revision, competence: "2026-10", reason: "Conferência da venda com o cliente" };
+  const results = await Promise.allSettled([1600, 1700].map(amount => correctGraphicSale(financialReviewer, { ...base, amount: String(amount), installments: before.installments.map((row, i) => ({ entryId: row.entryId, amount: String(i === 0 ? amount - 1000 : 1000), dueDate: "2026-10-15" })) })));
+  expect(results.filter(row => row.status === "fulfilled")).toHaveLength(1);
+  const after = (await getGraphicSale(financialReviewer, jobs[2]))!;
+  expect(after.corrections).toHaveLength(1);
+  expect(after.sale).toEqual(before.sale);
+  expect(after.effectiveAmount).toBe(after.corrections[0].amount);
+  expect((await getGraphicFinanceSummary(financialReviewer, jobs[2]))!.contracted).toBe(after.effectiveAmount);
+  expect(await getDb().select().from(graphicSaleRevisions)).toEqual([]);
+  expect(await withTenantDb(contexts[1], tx => tx.select().from(graphicSaleRevisions))).toEqual([]);
+  for (const command of [sql`update graphic_sale_revisions set reason='Tampered history' where id=${after.corrections[0].id}`, sql`delete from graphic_sale_revisions where id=${after.corrections[0].id}`, sql`update financial_entries set amount=amount+1 where id=${after.installments[0].entryId}`, sql`update financial_entries set status='cancelled' where id=${after.installments[0].entryId}`]) {
+    await expect(withTenantDb(financialReviewer, tx => tx.execute(command))).rejects.toMatchObject({ cause: { code: "23514" } });
+  }
+  await expect(withTenantDb(financialReviewer, tx => tx.insert(graphicSaleRevisions).values({ organizationId: orgs[0], saleId: before.sale.id, version: 2, beforeAmount: after.effectiveAmount, amount: "1.00", beforeCompetence: after.effectiveCompetence, competence: after.effectiveCompetence, beforeInstallments: after.installments.map(({ entryId, amount, dueDate, competence }) => ({ entryId, amount, dueDate, competence })), installments: after.corrections[0].installments, reason: "Invalid installment total", createdByUserId: userIds[0] }))).rejects.toMatchObject({ cause: { code: "23514" } });
+  expect((await getGraphicSale(financialReviewer, jobs[2]))!.revision).toBe(after.revision);
 });

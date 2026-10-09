@@ -1455,6 +1455,28 @@ export const graphicSaleInstallments = pgTable("graphic_sale_installments", {
   entryFk: foreignKey({ columns: [table.organizationId, table.entryId], foreignColumns: [financialEntries.organizationId, financialEntries.id], name: "graphic_sale_installments_entry_tenant_fk" }),
 }));
 
+export type GraphicSaleRevisionInstallment = { entryId: string; amount: string; dueDate: string; competence: string };
+export const graphicSaleRevisions = pgTable("graphic_sale_revisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  saleId: uuid("sale_id").notNull(),
+  version: integer("version").notNull(),
+  beforeAmount: numeric("before_amount", { precision: 12, scale: 2 }).notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  beforeCompetence: text("before_competence").notNull(),
+  competence: text("competence").notNull(),
+  beforeInstallments: jsonb("before_installments").$type<GraphicSaleRevisionInstallment[]>().notNull(),
+  installments: jsonb("installments").$type<GraphicSaleRevisionInstallment[]>().notNull(),
+  reason: text("reason").notNull(),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  versionIdx: uniqueIndex("graphic_sale_revisions_version_idx").on(table.organizationId, table.saleId, table.version),
+  saleFk: foreignKey({ columns: [table.organizationId, table.saleId], foreignColumns: [graphicSales.organizationId, graphicSales.id], name: "graphic_sale_revisions_sale_tenant_fk" }),
+  userFk: foreignKey({ columns: [table.organizationId, table.createdByUserId], foreignColumns: [users.organizationId, users.id], name: "graphic_sale_revisions_user_tenant_fk" }),
+  stateCheck: check("graphic_sale_revisions_state_check", sql`${table.version} > 0 and ${table.beforeAmount} > 0 and ${table.amount} > 0 and length(trim(${table.reason})) between 5 and 1000 and ${table.beforeCompetence} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$' and ${table.competence} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$' and jsonb_typeof(${table.beforeInstallments})='array' and jsonb_typeof(${table.installments})='array'`),
+}));
+
 export const graphicReconciliationSuggestions = pgTable("graphic_reconciliation_suggestions", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id),

@@ -490,12 +490,23 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
       { exact: true },
     ),
   ).toBeVisible();
+  await page.getByText("Corrigir venda e parcelas", { exact: true }).click();
+  await page.getByLabel("Valor corrigido da venda", { exact: true }).fill("2000,00");
+  await page.getByLabel("Valor corrigido da parcela 2", { exact: true }).fill("1500,00");
+  await page.getByLabel("Motivo da correção da venda", { exact: true }).fill("Venda conferida com o cliente para homologação");
+  await page.getByRole("button", { name: "Salvar correção da venda", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Venda corrigida nas mesmas contas a receber" })).toBeVisible();
+  await page.getByText("Histórico de correções da venda", { exact: true }).click();
+  const saleHistory = page.locator("details").filter({ has: page.getByText("Histórico de correções da venda", { exact: true }) });
+  await expect(saleHistory).toContainText("R$ 1.950,00");
+  await expect(saleHistory).toContainText("R$ 2.000,00");
+  await expect(saleHistory).toContainText("Venda conferida com o cliente para homologação");
   const jobUrl = page.url();
   await page.goto("/app/financeiro/movimentacoes");
   await page
     .getByRole("combobox", { name: /^Conta financeira/ })
     .selectOption({ label: "Conta Gráfica QA" });
-  await page.getByRole("textbox", { name: /^Valor/ }).fill("1950,00");
+  await page.getByRole("textbox", { name: /^Valor/ }).fill("2000,00");
   await page
     .getByLabel("Cliente", { exact: true })
     .selectOption({ label: clientName });
@@ -565,7 +576,7 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   ).toBeVisible();
   await page.goto(reconciliationUrl);
   await expect(
-    page.getByText("Saldo a conciliar: R$ 1.950,00", { exact: true }),
+    page.getByText("Saldo a conciliar: R$ 2.000,00", { exact: true }),
   ).toBeVisible();
   await page
     .getByLabel("Justificativa da revisão", { exact: true })
@@ -580,11 +591,11 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
     .getByRole("button", { name: "Registrar revisão", exact: true })
     .click();
   await expect(
-    page.getByText("Saldo a conciliar: R$ 1.450,00", { exact: true }),
+    page.getByText("Saldo a conciliar: R$ 1.500,00", { exact: true }),
   ).toBeVisible();
   await page
     .getByLabel(`Valor para Gráfica ${code} · Saldo`, { exact: true })
-    .fill("1450,00");
+    .fill("1500,00");
   await page
     .getByRole("checkbox", {
       name: "Conferi os títulos e valores e confirmo a conciliação.",
@@ -611,8 +622,8 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
       has: page.getByText("Resumo financeiro do trabalho", { exact: true }),
     });
   await expect(financeSummary).toContainText("Recebido e conciliado");
-  await expect(financeSummary.locator("dl")).toContainText("R$ 1.950,00");
-  await expect(financeSummary).toContainText("R$ 700,00");
+  await expect(financeSummary.locator("dl")).toContainText("R$ 2.000,00");
+  await expect(financeSummary).toContainText("R$ 750,00");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
     page.getByRole("heading", {
@@ -680,8 +691,8 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   const dashboardFinance = page
     .locator(".fg-card")
     .filter({ has: page.getByText("Visão financeira", { exact: true }) });
-  await expect(dashboardFinance).toContainText("R$ 1.950,00");
-  await expect(dashboardFinance).toContainText("R$ 700,00");
+  await expect(dashboardFinance).toContainText("R$ 2.000,00");
+  await expect(dashboardFinance).toContainText("R$ 750,00");
   await expect(
     page.getByRole("link", { name: "Encerrado: 1", exact: true }),
   ).toBeVisible();
@@ -752,9 +763,9 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await expect(financeSummary).toContainText("Pago e conciliado");
   await expect(financeSummary.locator("dl")).toContainText(index === 0 ? "R$ 300,00" : "R$ 1.250,00");
   }
-  await expect(financeSummary).toContainText("R$ 700,00");
+  await expect(financeSummary).toContainText("R$ 750,00");
   await page.goto(`${clientUrl}?tab=pagamentos`);
-  for (const amount of ["R$ 500,00", "R$ 1.450,00"]) {
+  for (const amount of ["R$ 500,00", "R$ 1.500,00"]) {
     const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: amount, exact: true }) });
     await expect(row).toHaveCount(1);
     await expect(row.getByRole("cell").nth(2)).toHaveText(amount);
@@ -767,5 +778,5 @@ test("graphic flow from competing quotes and rejection to OS, production, reconc
   await expect(page.getByRole("alert").filter({ hasText: "histórico financeiro vinculado" })).toBeVisible();
   await page.reload();
   await expect(financeSummary).toContainText("R$ 1.250,00");
-  await expect(financeSummary).toContainText("R$ 1.950,00");
+  await expect(financeSummary).toContainText("R$ 2.000,00");
 });

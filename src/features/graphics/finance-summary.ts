@@ -41,7 +41,7 @@ export async function getGraphicFinanceSummaries(context: AccessContext, rawJobI
       )
       select
         (select count(*)::int from graphic_reconciliation_suggestions where organization_id=${organizationId} and job_id=job.id and status='pending') as "pendingSuggestions",
-        (select amount::text from graphic_sales where organization_id=${organizationId} and job_id=job.id) as contracted,
+        (select coalesce((select r.amount from graphic_sale_revisions r where r.organization_id=s.organization_id and r.sale_id=s.id order by r.version desc limit 1),s.amount)::text from graphic_sales s where s.organization_id=${organizationId} and s.job_id=job.id) as contracted,
         coalesce((select jsonb_agg(jsonb_build_object('amount',amount::text,'settled',settled::text,'allocated',allocated::text,'dueDate',due_date,'cancelled',cancelled,'archived',archived)) from ar), '[]') as receivables,
         coalesce((select jsonb_agg(jsonb_build_object('amount',amount::text,'settled',settled::text,'allocated',allocated::text,'dueDate',due_date,'cancelled',cancelled,'archived',archived)) from ap), '[]') as payables,
         (select count(distinct t.id)::int from financial_transactions t join financial_allocations a on a.transaction_id=t.id and a.organization_id=t.organization_id

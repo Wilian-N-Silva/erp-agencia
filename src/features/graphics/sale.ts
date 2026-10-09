@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, isNull } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
 import { db, withTenantDb } from "@/lib/db";
-import { financialEntries, graphicClientDecisions, graphicJobs, graphicOsVersions, graphicSaleInstallments, graphicSales } from "@/lib/db/schema";
+import { financialEntries, graphicClientDecisions, graphicJobs, graphicOsVersions, graphicSaleInstallments, graphicSaleRevisions, graphicSales, users } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { GraphicFlowError } from "./client-decision-rules";
 import { graphicSaleSchema } from "./sale-rules";
 import { canReadGraphicJobs } from "./rules";
+import { graphicSaleRevisionToken } from "./sale-correction-rules";
 
 export async function registerGraphicSale(context: AccessContext, raw: unknown) {
   assertCan("graphics.client_approval_write", context);
@@ -40,9 +41,11 @@ export async function getGraphicSale(context: AccessContext, jobId: string) {
     const [sale] = await db.select().from(graphicSales).where(and(eq(graphicSales.organizationId, context.organizationId!), eq(graphicSales.jobId, jobId))).limit(1);
     if (!sale) return null;
     const installments = await db.select({ id: graphicSaleInstallments.id, ordinal: graphicSaleInstallments.ordinal, label: graphicSaleInstallments.label,
-      entryId: financialEntries.id, amount: financialEntries.amount, dueDate: financialEntries.dueDate })
+      entryId: financialEntries.id, amount: financialEntries.amount, dueDate: financialEntries.dueDate, competence: financialEntries.competence })
       .from(graphicSaleInstallments).innerJoin(financialEntries, and(eq(financialEntries.id, graphicSaleInstallments.entryId), eq(financialEntries.organizationId, graphicSaleInstallments.organizationId)))
       .where(and(eq(graphicSaleInstallments.organizationId, context.organizationId!), eq(graphicSaleInstallments.saleId, sale.id))).orderBy(asc(graphicSaleInstallments.ordinal));
-    return { sale, installments };
+    const corrections=await db.select({...getTableColumns(graphicSaleRevisions),actorName:users.name}).from(graphicSaleRevisions).leftJoin(users,and(eq(users.organizationId,graphicSaleRevisions.organizationId),eq(users.id,graphicSaleRevisions.createdByUserId))).where(and(eq(graphicSaleRevisions.organizationId,context.organizationId!),eq(graphicSaleRevisions.saleId,sale.id))).orderBy(desc(graphicSaleRevisions.version));
+    const effectiveAmount=corrections[0]?.amount ?? sale.amount, effectiveCompetence=corrections[0]?.competence ?? sale.competence;
+    return { sale, installments, corrections, effectiveAmount, effectiveCompetence, revision:graphicSaleRevisionToken({saleId:sale.id,revisionId:corrections[0]?.id ?? null,amount:effectiveAmount,competence:effectiveCompetence,installments:installments.map(({entryId,amount,dueDate,competence})=>({entryId,amount,dueDate,competence}))}) };
   });
 }

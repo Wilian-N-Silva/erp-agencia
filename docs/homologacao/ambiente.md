@@ -70,6 +70,21 @@ reais de autenticação; não aumentar limites para deixar a suíte passar.
 
 ## Persistência e atualização
 
+0061 adiciona revisões imutáveis da venda gráfica, com RLS forçada, FKs de
+organização e autor, sequência por venda e validação diferida de concordância
+com as mesmas ARs. É expansiva, sem backfill: não corrige divergências antigas
+por suposição e não reescreve vendas, OS, parcelas, documentos ou caixa.
+Atualize primeiro uma cópia isolada e compare IDs, valores e quantidades antes
+e depois. Revise vendas históricas cujo total não corresponda às ARs ativas;
+não crie revisões ou vínculos automaticamente. O teste de upgrade 0050→0061
+preserva obrigações/reservas e confirma ausência de revisões inventadas.
+
+Depois de registrar revisão, não volte o código para uma leitura que ignore
+esse histórico nem remova guards/tabela: isso mostraria o total original em
+vez da obrigação atual. Rollback exige backup validado/janela de manutenção ou
+correção expansiva. A migration é aplicada apenas nas bases isoladas de testes
+nesta execução; produção não está autorizada.
+
 Após criar registros/arquivos, parar e iniciar somente a aplicação. Não remover
 container, volume ou diretório de arquivos. Conferir IDs, valores, versões e
 bytes dos downloads após restart. Esse aceite ainda precisa de evidência final.
