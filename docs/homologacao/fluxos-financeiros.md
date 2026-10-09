@@ -112,3 +112,13 @@ reais devem ser registrados como movimentações com evidência e conciliados;
 não registre novamente um dinheiro já representado por movimento existente.
 Reenvio da mesma revisão não duplica seu efeito. Revisões não podem ser apagadas
 ou alteradas; movimentos conciliados depois continuam estornáveis com histórico.
+
+### Cobrança realizada de provisão
+
+Em **Provisões → Ocorrências**, abra **Corrigir cobrança realizada** na ocorrência.
+Gestão/Financeiro com permissão de estorno pode corrigir valor e vencimento da AP,
+com motivo. A estimativa original, competência, fornecedor e vínculo são mantidos;
+não cria outra AP nem caixa. Antes de corrigir um título com liquidação, estorne
+as movimentações indevidas ou revise a reserva antiga com evidência. Não use a
+edição genérica de contas para contradizer a origem. Cancelar uma previsão ainda
+planejada permanece disponível; cancelar uma ocorrência realizada está pendente.

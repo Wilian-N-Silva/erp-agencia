@@ -12,7 +12,7 @@ vi.mock("@/lib/audit", async original => {
     return actual.writeAuditLog(...args);
   } };
 });
-import { cancelProvisionCycle, listProvisionCycles, planProvisionCycle, realizeProvisionCycle } from "@/features/provisions/dal";
+import { cancelProvisionCycle, correctRealizedProvisionCycle, listProvisionCycles, planProvisionCycle, realizeProvisionCycle } from "@/features/provisions/dal";
 import { getFinanceDashboard } from "@/features/finance/dal";
 import { buildFinanceCsv } from "@/features/finance/export";
 const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOnIdle: true });
@@ -25,11 +25,19 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   auditFailure.enabled = false;
+  await admin.transaction(async tx => {
+    await tx.execute(sql`alter table financial_allocations disable trigger financial_allocations_immutable_guard`);
+    await tx.execute(sql`delete from financial_allocations where organization_id=${org}`);
+    await tx.execute(sql`alter table financial_allocations enable trigger financial_allocations_immutable_guard`);
+  });
+  await admin.execute(sql`delete from financial_transactions where organization_id=${org}`);
+  await admin.execute(sql`delete from financial_accounts where organization_id=${org}`);
   for (const table of ["audit_logs", "provision_cycles", "financial_expenses", "provisions", "suppliers", "user"])
     await admin.execute(sql`delete from ${sql.identifier(table)} where organization_id in (${org},${other})`);
   await admin.execute(sql`delete from organizations where id in (${org},${other})`);
   await admin.$client.end(); await getDb().$client.end();
 });
+
 async function provision(recurring = true) {
   const id = randomUUID();
   await admin.execute(sql`insert into provisions (id,organization_id,name,category,estimated_monthly_amount,recurring) values (${id},${org},'QA cycle','SaaS',100,${recurring})`);
@@ -102,4 +110,39 @@ it("rolls back AP and cycle transition together on audit failure", async () => {
   finally { auditFailure.enabled = false; }
   expect((await admin.execute(sql`select count(*)::int n from financial_expenses where organization_id=${org}`)).rows[0].n).toBe(before);
   expect((await listProvisionCycles(context)).find(row => row.id === cycle.id)).toMatchObject({ status: "planned", financialExpenseId: null });
+});
+
+it("corrects the realized source without another AP, cash movement or loss of the estimate", async () => {
+  const cycle = await realizeProvisionCycle(context, realize((await planProvisionCycle(context, plan(await provision()))).id));
+  const reviewer: AccessContext = { ...context, permissions: [...context.permissions, "finance.reverse"] };
+  const request = { id: cycle.id, amount: "145,67", dueDate: "2026-11-20", reason: "Valor confirmado na cobrança externa" };
+  const count = (await admin.execute(sql`select count(*)::int n from financial_expenses where organization_id=${org}`)).rows[0].n;
+  await correctRealizedProvisionCycle(reviewer, request);
+  await correctRealizedProvisionCycle(reviewer, request);
+  expect((await listProvisionCycles(context)).find(row => row.id === cycle.id)).toMatchObject({ estimatedAmount: "100.00", financialExpenseId: cycle.financialExpenseId, actualAmount: "145.67", actualDueDate: "2026-11-20" });
+  expect((await admin.execute(sql`select count(*)::int n from financial_expenses where organization_id=${org}`)).rows[0].n).toBe(count);
+  expect((await admin.execute(sql`select count(*)::int n from audit_logs where entity_type='financial_expense' and metadata->>'origin'='provision_cycle_correction' and entity_id=${cycle.financialExpenseId}`)).rows[0].n).toBe(1);
+});
+
+it("rejects correction without reversal permission, tenant scope, strict fields or when partially reconciled despite stale cache", async () => {
+  const cycle = await realizeProvisionCycle(context, realize((await planProvisionCycle(context, plan(await provision()))).id));
+  const reviewer: AccessContext = { ...context, permissions: [...context.permissions, "finance.reverse"] };
+  const request = { id: cycle.id, amount: "145.67", dueDate: "2026-11-20", reason: "Correção conferida" };
+  await expect(correctRealizedProvisionCycle(context, request)).rejects.toThrow();
+  await expect(correctRealizedProvisionCycle({ ...reviewer, organizationId: other }, request)).rejects.toThrow();
+  await expect(correctRealizedProvisionCycle(reviewer, { ...request, supplierId: foreignSupplier })).rejects.toThrow();
+  const account = randomUUID(), movement = randomUUID();
+  await admin.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${org},'Correction account','bank')`);
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'out',1,now(),${user})`);
+  await withTenantDb(context, tx => tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_expense_id,amount,created_by_user_id) values (${org},${movement},${cycle.financialExpenseId},1,${user})`));
+  await expect(correctRealizedProvisionCycle(reviewer, request)).rejects.toThrow(/Estorne/);
+  expect((await admin.execute(sql`select amount,paid_amount from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0]).toEqual({ amount: "123.45", paid_amount: "0.00" });
+});
+
+it("rolls back the source correction when audit is unavailable", async () => {
+  const cycle = await realizeProvisionCycle(context, realize((await planProvisionCycle(context, plan(await provision()))).id));
+  auditFailure.enabled = true;
+  try { await expect(correctRealizedProvisionCycle({ ...context, permissions: [...context.permissions, "finance.reverse"] }, { id: cycle.id, amount: "150", dueDate: "2026-12-10", reason: "Correção do documento externo" })).rejects.toThrow("audit failure"); }
+  finally { auditFailure.enabled = false; }
+  expect((await admin.execute(sql`select amount,due_date::text from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0]).toEqual({ amount: "123.45", due_date: "2026-11-02" });
 });

@@ -43,6 +43,18 @@ test("planeja provisão, realiza uma única AP e cancela somente a próxima comp
   await expect(payable).toContainText("120,00");
   await expect(payable).not.toContainText("Liquidado");
   await page.goto("/app/financeiro/provisoes/ciclos");
+  await first.getByText("Corrigir cobrança realizada", { exact: true }).click();
+  await first.getByLabel("Valor corrigido (R$)", { exact: true }).fill("140,50");
+  await first.getByLabel("Vencimento corrigido", { exact: true }).fill("2026-10-25");
+  await first.getByLabel("Motivo da correção", { exact: true }).fill("Valor confirmado na cobrança externa");
+  await first.getByRole("button", { name: "Salvar correção da cobrança", exact: true }).click();
+  await expect(first.getByRole("status")).toContainText("estimativa original");
+  await page.reload();
+  await expect(first).toContainText("100,00");
+  await first.getByRole("link", { name: "Consultar conta a pagar", exact: true }).click();
+  await expect(payable).toHaveCount(1);
+  await expect(payable).toContainText("140,50");
+  await page.goto("/app/financeiro/provisoes/ciclos");
   await page.getByLabel("Provisão", { exact: true }).selectOption({ label: name });
   await page.getByLabel("Competência", { exact: true }).fill("2026-11");
   await page.getByLabel("Valor previsto (R$)", { exact: true }).fill("100,00");

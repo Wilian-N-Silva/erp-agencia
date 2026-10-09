@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, type ReactNode } from "react";
-import { cancelProvisionCycleAction, planProvisionCycleAction, realizeProvisionCycleAction } from "./actions";
+import { cancelProvisionCycleAction, correctRealizedProvisionCycleAction, planProvisionCycleAction, realizeProvisionCycleAction } from "./actions";
 
 type Result = { ok: boolean; message: string } | null;
 function CycleForm({ action, children, label }: { action: (data: FormData) => Promise<NonNullable<Result>>; children: ReactNode; label: string }) {
@@ -42,5 +42,15 @@ export function CancelProvisionForm({ id }: { id: string }) {
     <input type="hidden" name="id" value={id} />
     <label className="grid gap-1">Motivo do cancelamento<textarea className="fg-input" name="reason" required minLength={5} maxLength={500} /></label>
     <p className="text-sm text-muted-foreground">Cancela somente esta competência. A recorrência dos próximos meses continua ativa.</p>
+  </CycleForm>;
+}
+
+export function CorrectRealizedProvisionForm({ id, amount, dueDate }: { id: string; amount: string; dueDate: string }) {
+  return <CycleForm action={correctRealizedProvisionCycleAction} label="Salvar correção da cobrança">
+    <input type="hidden" name="id" value={id} />
+    <label className="grid gap-1">Valor corrigido (R$)<input className="fg-input" name="amount" inputMode="decimal" required maxLength={14} defaultValue={amount.replace(".", ",")} /></label>
+    <label className="grid gap-1">Vencimento corrigido<input className="fg-input" name="dueDate" type="date" required defaultValue={dueDate} /></label>
+    <label className="grid gap-1">Motivo da correção<textarea className="fg-input" name="reason" required minLength={5} maxLength={500} /></label>
+    <p>Permitido somente sem liquidação. A estimativa e a competência são preservadas; não gera outra conta nem pagamento.</p>
   </CycleForm>;
 }

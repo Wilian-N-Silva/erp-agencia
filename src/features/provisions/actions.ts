@@ -6,22 +6,23 @@ import { getCurrentAccessContext, type AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCan } from "@/lib/rbac";
 import { enforceAuthenticatedRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 import { formDataToObject } from "@/lib/validation";
-import { cancelProvisionCycle, planProvisionCycle, realizeProvisionCycle } from "./dal";
-import { cancelCycleSchema, planCycleSchema, ProvisionCycleError, realizeCycleSchema } from "./rules";
+import { cancelProvisionCycle, correctRealizedProvisionCycle, planProvisionCycle, realizeProvisionCycle } from "./dal";
+import { cancelCycleSchema, correctRealizedCycleSchema, planCycleSchema, ProvisionCycleError, realizeCycleSchema } from "./rules";
 
 type CycleResult = { id: string; status: string };
 
-async function runCycleAction(data: FormData, operation: (context: AccessContext, input: Record<string, unknown>) => Promise<CycleResult>) {
+async function runCycleAction(data: FormData, operation: (context: AccessContext, input: Record<string, unknown>) => Promise<CycleResult>, correction = false) {
   try {
     const context = await getCurrentAccessContext();
     if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
     assertCan("finance.write", context);
     if (!context.organizationId) throw new AccessDeniedError();
-    await enforceAuthenticatedRateLimit("common_mutation", context);
+    if (correction) assertCan("finance.reverse", context);
+    await enforceAuthenticatedRateLimit(correction ? "reconciliation" : "common_mutation", context);
     const result = await operation(context, formDataToObject(data));
     // The DAL has committed both the financial operation and its audit before invalidation.
     revalidatePath("/app/financeiro", "layout");
-    const message = result.status === "realized"
+    const message = correction ? "Cobrança corrigida. A estimativa original e o vínculo com a conta a pagar foram preservados." : result.status === "realized"
       ? "Ocorrência realizada. A conta a pagar está disponível no Financeiro; o pagamento ainda deve ser registrado e conciliado."
       : result.status === "cancelled"
         ? "Ocorrência cancelada. O histórico foi preservado."
@@ -46,4 +47,8 @@ export async function realizeProvisionCycleAction(data: FormData) {
 
 export async function cancelProvisionCycleAction(data: FormData) {
   return runCycleAction(data, (context, input) => cancelProvisionCycle(context, cancelCycleSchema.parse(input)));
+}
+
+export async function correctRealizedProvisionCycleAction(data: FormData) {
+  return runCycleAction(data, (context, input) => correctRealizedProvisionCycle(context, correctRealizedCycleSchema.parse(input)), true);
 }

@@ -404,3 +404,30 @@ teste ajustado para essa fronteira real e confirma ausência dos dados/formulár
 Typecheck/lint e 462 unitários/75 arquivos verdes; repetição DB no commit aprovada
 com 236 testes/40 arquivos (`legacy-review-db-commit.log`). E2E completo ainda
 em execução; não há declaração de aprovação dos gates finais do candidato.
+
+### FIN-006 — correção de cobrança realizada de provisão
+
+Corrigido o encaminhamento sem saída entre ocorrência e Financeiro: a ocorrência
+realizada agora permite corrigir valor/vencimento da sua AP, com finance.write
+e finance.reverse, motivo obrigatório e rate limit de conciliação. Preserva a
+estimativa, competência, fornecedor e vínculo originais; nenhuma outra AP ou
+movimentação é criada. Locks ciclo→AP, saldo canônico (inclusive reserva revista),
+Zod strict, tenant/RLS e auditoria antes/depois na mesma transação.
+
+Recusa correção com liquidação parcial/integral ou reserva antiga, mesmo com cache
+zerado. É necessário estornar ou revisar a reserva primeiro. Reenvio com mesmos
+valores não duplica efeitos/auditoria. Cancelamento de ocorrência já realizada
+continua pendente e a mensagem informa essa limitação, sem encaminhar ao fluxo
+genérico que recusa a operação. Não há schema/migration/backfill novo.
+
+Typecheck/lint e 462 unitários aprovados. Foram acrescentados três testes DB de
+correção, RBAC/tenant/payload/liquidação com cache obsoleto e rollback de auditoria,
+além do E2E de correção pela ocorrência. A primeira suíte DB falhou porque os
+novos cenários antecediam o teste existente que exige dashboard inicial vazio;
+ordem corrigida sem relaxar as asserções. Reexecução/build/E2E em andamento.
+
+Reexecução DB aprovada: 239 testes/40 arquivos (`provision-correction-db-final.log`).
+Typecheck, lint e 462 unitários/75 arquivos aprovados. Build/E2E deste incremento
+aguardam finalizar a execução completa anterior no servidor isolado; isso não
+constitui aprovação final da V1. Correções de Gráfica/NF/SaaS/reembolso e
+cancelamento de provisão realizada permanecem em revisão, além dos demais aceites.

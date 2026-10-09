@@ -17,3 +17,7 @@ export const realizeCycleSchema = z.strictObject({
 export const cancelCycleSchema = z.strictObject({
   id: z.string().uuid(), reason: z.string().trim().min(5).max(500),
 });
+export const correctRealizedCycleSchema = z.strictObject({
+  id: z.string().uuid(), amount: cycleMoneySchema, dueDate: isoDateSchema,
+  reason: z.string().trim().min(5).max(500),
+});

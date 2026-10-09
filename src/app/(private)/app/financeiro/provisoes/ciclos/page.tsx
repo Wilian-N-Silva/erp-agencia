@@ -5,7 +5,7 @@ import { getFinanceDashboard } from "@/features/finance/dal";
 import { getFinanceMasterData } from "@/features/finance-master-data/dal";
 import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
 import { listProvisionCycles } from "@/features/provisions/dal";
-import { CancelProvisionForm, PlanProvisionForm, RealizeProvisionForm } from "@/features/provisions/forms";
+import { CancelProvisionForm, CorrectRealizedProvisionForm, PlanProvisionForm, RealizeProvisionForm } from "@/features/provisions/forms";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { can } from "@/lib/rbac";
 
@@ -36,6 +36,7 @@ export default async function ProvisionCyclesPage() {
           <p>Estimativa original: {formatMoney(cycle.estimatedAmount)} · Vencimento previsto: {formatDate(cycle.dueDate)}</p>
           {cycle.cancellationReason ? <p>Motivo: {cycle.cancellationReason}</p> : null}
           {cycle.financialExpenseId ? <p className="mt-3"><Link className="text-primary underline" href={`/app/financeiro/saidas?q=${encodeURIComponent(`Provisão ${cycle.competence} · ${names.get(cycle.provisionId) ?? ""}`)}`}>Consultar conta a pagar</Link>. Pagamento acompanhado pelas movimentações e conciliações.</p> : null}
+          {canWrite && can("finance.reverse", context) && cycle.status === "realized" && cycle.actualAmount && cycle.actualDueDate ? <details className="mt-4"><summary className="cursor-pointer font-medium">Corrigir cobrança realizada</summary><div className="mt-3"><CorrectRealizedProvisionForm id={cycle.id} amount={cycle.actualAmount} dueDate={cycle.actualDueDate} /></div></details> : null}
           {canWrite && cycle.status === "planned" ? <div className="mt-4 grid gap-4">
             <details><summary className="cursor-pointer font-medium">Realizar ocorrência</summary><div className="mt-3">{suppliers.length ? <RealizeProvisionForm id={cycle.id} amount={cycle.estimatedAmount} dueDate={cycle.dueDate} suppliers={suppliers} /> : <p>Cadastre um fornecedor ativo no Financeiro antes de realizar a ocorrência.</p>}</div></details>
             <details><summary className="cursor-pointer font-medium">Cancelar previsão</summary><div className="mt-3"><CancelProvisionForm id={cycle.id} /></div></details>
