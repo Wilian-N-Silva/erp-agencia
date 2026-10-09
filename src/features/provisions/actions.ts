@@ -11,18 +11,18 @@ import { cancelCycleSchema, correctRealizedCycleSchema, planCycleSchema, Provisi
 
 type CycleResult = { id: string; status: string };
 
-async function runCycleAction(data: FormData, operation: (context: AccessContext, input: Record<string, unknown>) => Promise<CycleResult>, correction = false) {
+async function runCycleAction(data: FormData, operation: (context: AccessContext, input: Record<string, unknown>) => Promise<CycleResult>, mode?: "correct" | "cancel-realized" | "cancel") {
   try {
     const context = await getCurrentAccessContext();
     if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
     assertCan("finance.write", context);
     if (!context.organizationId) throw new AccessDeniedError();
-    if (correction) assertCan("finance.reverse", context);
-    await enforceAuthenticatedRateLimit(correction ? "reconciliation" : "common_mutation", context);
+    if (mode === "correct" || mode === "cancel-realized") assertCan("finance.reverse", context);
+    await enforceAuthenticatedRateLimit(mode ? "reconciliation" : "common_mutation", context);
     const result = await operation(context, formDataToObject(data));
     // The DAL has committed both the financial operation and its audit before invalidation.
     revalidatePath("/app/financeiro", "layout");
-    const message = correction ? "Cobrança corrigida. A estimativa original e o vínculo com a conta a pagar foram preservados." : result.status === "realized"
+    const message = mode === "correct" ? "Cobrança corrigida. A estimativa original e o vínculo com a conta a pagar foram preservados." : result.status === "realized"
       ? "Ocorrência realizada. A conta a pagar está disponível no Financeiro; o pagamento ainda deve ser registrado e conciliado."
       : result.status === "cancelled"
         ? "Ocorrência cancelada. O histórico foi preservado."
@@ -46,9 +46,13 @@ export async function realizeProvisionCycleAction(data: FormData) {
 }
 
 export async function cancelProvisionCycleAction(data: FormData) {
-  return runCycleAction(data, (context, input) => cancelProvisionCycle(context, cancelCycleSchema.parse(input)));
+  return runCycleAction(data, (context, input) => cancelProvisionCycle(context, cancelCycleSchema.parse(input)), "cancel");
 }
 
 export async function correctRealizedProvisionCycleAction(data: FormData) {
-  return runCycleAction(data, (context, input) => correctRealizedProvisionCycle(context, correctRealizedCycleSchema.parse(input)), true);
+  return runCycleAction(data, (context, input) => correctRealizedProvisionCycle(context, correctRealizedCycleSchema.parse(input)), "correct");
+}
+
+export async function cancelRealizedProvisionCycleAction(data: FormData) {
+  return runCycleAction(data, (context, input) => cancelProvisionCycle(context, cancelCycleSchema.parse(input)), "cancel-realized");
 }

@@ -1265,7 +1265,7 @@ export const provisionCycles = pgTable("provision_cycles", {
   payableIdx: uniqueIndex("provision_cycles_payable_idx").on(table.financialExpenseId),
   amountCheck: check("provision_cycles_amount_check", sql`${table.estimatedAmount} > 0`),
   competenceCheck: check("provision_cycles_competence_check", sql`${table.competence} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
-  stateCheck: check("provision_cycles_state_check", sql`(${table.status} = 'planned' and ${table.financialExpenseId} is null and ${table.cancellationReason} is null) or (${table.status} = 'realized' and ${table.financialExpenseId} is not null and ${table.cancellationReason} is null) or (${table.status} = 'cancelled' and ${table.financialExpenseId} is null and length(trim(${table.cancellationReason})) >= 5 and ${table.cancellationReason} is not null)`),
+  stateCheck: check("provision_cycles_state_check", sql`(${table.status} = 'planned' and ${table.financialExpenseId} is null and ${table.cancellationReason} is null) or (${table.status} = 'realized' and ${table.financialExpenseId} is not null and ${table.cancellationReason} is null) or (${table.status} = 'cancelled' and length(trim(${table.cancellationReason})) >= 5 and ${table.cancellationReason} is not null)`),
 }));
 
 export const files = pgTable(

@@ -48,7 +48,7 @@ for (const item of cases) {
   });
   it(`${item.status}: reports committed state and refreshes financial routes`, async () => {
     expect(await item.action(form(item.input))).toMatchObject({ ok: true, id, status: item.status });
-    expect(mocks.rate).toHaveBeenCalledWith("common_mutation", context);
+    expect(mocks.rate).toHaveBeenCalledWith(item.status === "cancelled" ? "reconciliation" : "common_mutation", context);
     expect(item.operation).toHaveBeenCalledWith(context, expect.objectContaining(item.input));
     expect(mocks.refresh).toHaveBeenCalledWith("/app/financeiro", "layout");
   });

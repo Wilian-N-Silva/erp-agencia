@@ -55,6 +55,14 @@ test("planeja provisão, realiza uma única AP e cancela somente a próxima comp
   await expect(payable).toHaveCount(1);
   await expect(payable).toContainText("140,50");
   await page.goto("/app/financeiro/provisoes/ciclos");
+  await first.getByText("Cancelar cobrança realizada", { exact: true }).click();
+  await first.getByLabel("Motivo do cancelamento").fill("Cobrança cancelada pelo fornecedor");
+  await first.getByRole("button", { name: "Cancelar ocorrência", exact: true }).click();
+  await expect(first).toContainText("Cancelada");
+  await first.getByRole("link", { name: "Consultar conta a pagar", exact: true }).click();
+  await expect(payable).toHaveCount(1);
+  await expect(payable).toContainText("Cancelado");
+  await page.goto("/app/financeiro/provisoes/ciclos");
   await page.getByLabel("Provisão", { exact: true }).selectOption({ label: name });
   await page.getByLabel("Competência", { exact: true }).fill("2026-11");
   await page.getByLabel("Valor previsto (R$)", { exact: true }).fill("100,00");
@@ -68,6 +76,6 @@ test("planeja provisão, realiza uma única AP e cancela somente a próxima comp
   await expect(second).toContainText("Cancelada");
   await page.reload();
   await expect(second).toContainText("Fornecedor não cobrará neste mês");
-  await expect(first).toContainText("Realizada");
+  await expect(first).toContainText("Cancelada");
   await expect(second.getByText("Realizar ocorrência", { exact: true })).toHaveCount(0);
 });

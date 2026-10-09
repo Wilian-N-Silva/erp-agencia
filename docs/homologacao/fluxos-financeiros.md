@@ -121,4 +121,8 @@ com motivo. A estimativa original, competência, fornecedor e vínculo são mant
 não cria outra AP nem caixa. Antes de corrigir um título com liquidação, estorne
 as movimentações indevidas ou revise a reserva antiga com evidência. Não use a
 edição genérica de contas para contradizer a origem. Cancelar uma previsão ainda
-planejada permanece disponível; cancelar uma ocorrência realizada está pendente.
+planejada permanece disponível. Para uma ocorrência realizada, abra **Cancelar
+cobrança realizada** e informe o motivo. Com finance.write e finance.reverse,
+o sistema cancela ocorrência e AP atomicamente, sem excluir o vínculo, valores,
+estimativa ou documentos. Qualquer liquidação precisa ser estornada/revisada
+antes. A mesma ocorrência cancelada não pode gerar outra AP por reenvio.

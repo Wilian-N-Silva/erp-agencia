@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, type ReactNode } from "react";
-import { cancelProvisionCycleAction, correctRealizedProvisionCycleAction, planProvisionCycleAction, realizeProvisionCycleAction } from "./actions";
+import { cancelProvisionCycleAction, cancelRealizedProvisionCycleAction, correctRealizedProvisionCycleAction, planProvisionCycleAction, realizeProvisionCycleAction } from "./actions";
 
 type Result = { ok: boolean; message: string } | null;
 function CycleForm({ action, children, label }: { action: (data: FormData) => Promise<NonNullable<Result>>; children: ReactNode; label: string }) {
@@ -37,11 +37,11 @@ export function RealizeProvisionForm({ id, amount, dueDate, suppliers }: { id: s
   </CycleForm>;
 }
 
-export function CancelProvisionForm({ id }: { id: string }) {
-  return <CycleForm action={cancelProvisionCycleAction} label="Cancelar ocorrência">
+export function CancelProvisionForm({ id, realized = false }: { id: string; realized?: boolean }) {
+  return <CycleForm action={realized ? cancelRealizedProvisionCycleAction : cancelProvisionCycleAction} label="Cancelar ocorrência">
     <input type="hidden" name="id" value={id} />
     <label className="grid gap-1">Motivo do cancelamento<textarea className="fg-input" name="reason" required minLength={5} maxLength={500} /></label>
-    <p className="text-sm text-muted-foreground">Cancela somente esta competência. A recorrência dos próximos meses continua ativa.</p>
+    <p className="text-sm text-muted-foreground">Cancela somente esta competência. A recorrência dos próximos meses continua ativa. {realized ? "A conta a pagar também será cancelada, preservando o vínculo e o histórico. Estorne qualquer liquidação antes de cancelar." : ""}</p>
   </CycleForm>;
 }
 

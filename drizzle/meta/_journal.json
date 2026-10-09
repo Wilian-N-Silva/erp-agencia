@@ -414,6 +414,13 @@
       "when": 1791569188285,
       "tag": "0058_legacy-release-tenant-guard",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791570232451,
+      "tag": "0059_slimy_alex_power",
+      "breakpoints": true
     }
   ]
 }

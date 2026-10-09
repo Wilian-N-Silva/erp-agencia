@@ -449,3 +449,25 @@ Próximos P0: correção/cancelamento das origens Gráfica/NF/SaaS/reembolso e
 cancelamento de provisão realizada; depois relatórios de competência/obrigações/
 resultado, referências/perfis, dados fictícios consistentes, prova de restart e
 gates completos no candidato final. Não aceitar fluxo que exige SQL do gestor.
+
+### FIN-006 — cancelamento da provisão realizada
+
+Cancelamento agora ocorre pela origem e cancela a mesma AP, com motivo, permissão
+finance.write + finance.reverse, lock ciclo→AP e auditoria conjunta. O vínculo,
+estimativa, valores/documentos e histórico permanecem; reenvio é idempotente e
+não reabre ocorrência cancelada. Saldo canônico com alocações ou reserva legada
+recusa cancelamento até estorno/revisão. Cancelamento planejado preserva acesso
+finance.write; ambos endpoints usam o rate limit persistido de conciliação.
+
+Migration 0059 gerada pelo drizzle-kit amplia o estado cancelado para manter
+AP vinculada e acrescenta proteção de link e constraints diferidas dos estados.
+Escritas diretas que cancelam somente AP/ocorrência, reabrem só um lado ou removem
+o vínculo são recusadas. Sem tabela/backfill e sem mudanças em registros antigos.
+Upgrade isolado 0050→0059 e 241 DB/40 arquivos aprovados (`provision-cancel-db.log`).
+Inclui parcial com cache obsoleto, idempotência, guards de banco e rollback da
+auditoria. Gates unitários/typecheck/lint finais e build/E2E ainda em execução.
+
+Typecheck/lint e 465 unitários/76 arquivos aprovados. O teste existente de
+cancelamento esperava common_mutation; atualizado para a proteção mais restrita
+reconciliation. Três novos testes de Server Action cobrem acesso, tenant, payload,
+rate limit e erros seguros. Build/E2E focal seguem pendentes neste registro.

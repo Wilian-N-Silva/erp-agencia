@@ -63,7 +63,7 @@ it("serializes repeated planning and realization, preserving estimate and creati
   const provisionRow = csv.split("\r\n").find(row => row.startsWith("Provisao prevista;"));
   expect(provisionRow).toContain("10/2026");
   expect(provisionRow).toMatch(/0,00;Sim;;;$/);
-  await expect(cancelProvisionCycle(context, { id: cycles[0].id, reason: "Cancelamento tardio" })).rejects.toThrow("conta a pagar");
+  await expect(cancelProvisionCycle(context, { id: cycles[0].id, reason: "Cancelamento tardio" })).rejects.toThrow();
 });
 it("cancels a single occurrence without affecting the next cycle or deleting history", async () => {
   const provisionId = await provision();
@@ -136,6 +136,7 @@ it("rejects correction without reversal permission, tenant scope, strict fields 
   await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'out',1,now(),${user})`);
   await withTenantDb(context, tx => tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_expense_id,amount,created_by_user_id) values (${org},${movement},${cycle.financialExpenseId},1,${user})`));
   await expect(correctRealizedProvisionCycle(reviewer, request)).rejects.toThrow(/Estorne/);
+  await expect(cancelProvisionCycle(reviewer, { id: cycle.id, reason: "Cobrança indevida" })).rejects.toThrow(/Estorne/);
   expect((await admin.execute(sql`select amount,paid_amount from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0]).toEqual({ amount: "123.45", paid_amount: "0.00" });
 });
 
@@ -145,4 +146,26 @@ it("rolls back the source correction when audit is unavailable", async () => {
   try { await expect(correctRealizedProvisionCycle({ ...context, permissions: [...context.permissions, "finance.reverse"] }, { id: cycle.id, amount: "150", dueDate: "2026-12-10", reason: "Correção do documento externo" })).rejects.toThrow("audit failure"); }
   finally { auditFailure.enabled = false; }
   expect((await admin.execute(sql`select amount,due_date::text from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0]).toEqual({ amount: "123.45", due_date: "2026-11-02" });
+});
+
+it("cancels a realized cycle and its payable atomically, preserving the link and rejecting detached database writes", async () => {
+  const cycle = await realizeProvisionCycle(context, realize((await planProvisionCycle(context, plan(await provision()))).id));
+  const reviewer: AccessContext = { ...context, permissions: [...context.permissions, "finance.reverse"] };
+  await expect(withTenantDb(context, tx => tx.execute(sql`update financial_expenses set status='cancelled' where id=${cycle.financialExpenseId}`))).rejects.toMatchObject({ cause: { code: "23514" } });
+  await expect(withTenantDb(context, tx => tx.execute(sql`update provision_cycles set financial_expense_id=null,status='cancelled',cancellation_reason='Detached origin' where id=${cycle.id}`))).rejects.toMatchObject({ cause: { code: "55000" } });
+  const cancelled = await cancelProvisionCycle(reviewer, { id: cycle.id, reason: "Cobrança não será realizada" });
+  expect(cancelled).toMatchObject({ status: "cancelled", financialExpenseId: cycle.financialExpenseId, estimatedAmount: "100.00" });
+  expect((await admin.execute(sql`select status,amount from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0]).toEqual({ status: "cancelled", amount: "123.45" });
+  expect((await cancelProvisionCycle(reviewer, { id: cycle.id, reason: "Reenvio do cancelamento" })).id).toBe(cycle.id);
+  await expect(withTenantDb(context, tx => tx.execute(sql`update financial_expenses set status='planned' where id=${cycle.financialExpenseId}`))).rejects.toMatchObject({ cause: { code: "23514" } });
+  await expect(realizeProvisionCycle(context, realize(cycle.id))).rejects.toThrow(/cancelada/);
+});
+
+it("rolls back payable cancellation and origin together when audit fails", async () => {
+  const cycle = await realizeProvisionCycle(context, realize((await planProvisionCycle(context, plan(await provision()))).id));
+  auditFailure.enabled = true;
+  try { await expect(cancelProvisionCycle({ ...context, permissions: [...context.permissions, "finance.reverse"] }, { id: cycle.id, reason: "Cobrança indevida" })).rejects.toThrow("audit failure"); }
+  finally { auditFailure.enabled = false; }
+  expect((await admin.execute(sql`select status from financial_expenses where id=${cycle.financialExpenseId}`)).rows[0].status).toBe("planned");
+  expect((await listProvisionCycles(context)).find(row => row.id === cycle.id)?.status).toBe("realized");
 });
