@@ -42,10 +42,14 @@ export async function releaseFinancialLegacyReserve(context: AccessContext, raw:
   const org = context.organizationId;
   return withTenantDb(context, async tx => {
     const table = input.type === "receivable" ? financialEntries : financialExpenses;
-    const [before] = await tx.select({ ...getTableColumns(table), reserved: titleLegacyReserved(input.type),
-      confirmedAmount: activeTitleAllocations(input.type), allocationDate: titleLastAllocationDate(input.type) })
+    const [locked] = await tx.select(getTableColumns(table))
       .from(table).where(and(eq(table.id, input.id), eq(table.organizationId, org), isNull(table.deletedAt))).for("update").limit(1);
-    if (!before) throw new AccessDeniedError();
+    if (!locked) throw new AccessDeniedError();
+    // Recompute after waiting for the lock: another review/allocation may have committed.
+    const [balance] = await tx.select({ reserved: titleLegacyReserved(input.type), confirmedAmount: activeTitleAllocations(input.type), allocationDate: titleLastAllocationDate(input.type) })
+      .from(table).where(and(eq(table.id, input.id), eq(table.organizationId, org))).limit(1);
+    if (!balance) throw new AccessDeniedError();
+    const before = { ...locked, ...balance };
     const [previous] = await tx.select().from(financialLegacyReleases).where(and(eq(financialLegacyReleases.organizationId, org), eq(financialLegacyReleases.requestId, input.requestId))).limit(1);
     if (previous) {
       if ((input.type === "receivable" ? previous.financialEntryId : previous.financialExpenseId) !== input.id || previous.amount !== input.amount || previous.reason !== input.reason || previous.evidence !== input.evidence) {

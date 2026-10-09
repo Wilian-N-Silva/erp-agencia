@@ -21,6 +21,12 @@ Registre duas movimentações apenas se esses forem dois eventos efetivos. Cada
 conciliação atualiza o saldo da mesma obrigação em Financeiro, Cliente e Gráfica.
 Não use uma baixa direta: os endpoints antigos de AR/AP/Cliente são recusados.
 
+Se outra operação estiver conferindo o mesmo título, a confirmação pode aguardar
+essa operação. Depois da espera, o sistema confere o saldo efetivo atualizado.
+Uma reserva histórica liberada pela revisão pode ser usada na conciliação;
+estornar um pagamento preserva as revisões já concluídas. Não cadastre outra
+movimentação apenas porque a confirmação anterior demorou.
+
 ## Movimento registrado por engano
 
 No detalhe da movimentação, um usuário com `finance.reverse` informa o motivo

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { createDatabase, withTenantDb } from "@/lib/db";
+import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { financialEntries, financialExpenses } from "@/lib/db/schema";
 import { getFinancialLegacyReview, releaseFinancialLegacyReserve } from "@/features/finance/legacy-review";
@@ -40,6 +40,7 @@ afterAll(async () => {
     await tx.execute(sql`delete from organizations where id in (${org},${other})`);
   });
   await admin.$client.end();
+  await getDb().$client.end();
 });
 async function title(type: "receivable" | "payable") {
   const id = randomUUID();
@@ -93,4 +94,66 @@ it("rolls back release and cached title state when audit fails", async () => {
   const review = await getFinancialLegacyReview(context, { type: "receivable", id });
   expect(review.title.reserved).toBe("40.00");
   expect(review.history).toHaveLength(0);
+});
+
+async function afterLockedCommit<Result>(hold: () => Promise<unknown>, follow: () => Promise<Result>) {
+  const tag = `reserve_race_${randomUUID()}`;
+  let ready!: () => void, failed!: (error: unknown) => void, unlock!: () => void;
+  const started = new Promise<void>((resolve,reject) => { ready=resolve; failed=reject; });
+  const released = new Promise<void>(resolve => { unlock=resolve; });
+  const holder = Promise.allSettled([withTenantDb(context, async () => {
+    try { await hold(); ready(); await released; } catch (error) { failed(error); throw error; }
+  })]);
+  await started;
+  const follower = Promise.allSettled([withTenantDb(context, async tx => {
+    await tx.execute(sql`select set_config('application_name',${tag},true)`);
+    return follow();
+  })]);
+  let waiting = false;
+  try {
+    for (let n=0;n<100;n++) {
+      // Same runtime role observes its own sessions; no pg_monitor grant is needed.
+      waiting = (await getDb().execute(sql`select exists(select 1 from pg_stat_activity where application_name=${tag} and wait_event_type='Lock') as waiting`)).rows[0].waiting as boolean;
+      if (waiting) break; await new Promise(resolve => setTimeout(resolve,20));
+    }
+  } finally { unlock(); }
+  const held = (await holder)[0], followed = (await follower)[0];
+  expect(waiting).toBe(true);
+  if (held.status === "rejected") throw held.reason;
+  if (followed.status === "rejected") throw followed.reason;
+  return followed.value;
+}
+async function expectCanonicalCache(type: "receivable" | "payable", id: string, amount: string) {
+  const review = await getFinancialLegacyReview(context, { type,id });
+  const table = type === "receivable" ? financialEntries : financialExpenses;
+  const [row] = await withTenantDb(context, tx => tx.select({ settled: titleSettledAmount(type), cached: type === "receivable" ? financialEntries.receivedAmount : financialExpenses.paidAmount, baseline: table.legacySettledAmount }).from(table).where(eq(table.id,id)));
+  expect(row).toEqual({ settled: amount, cached: amount, baseline: "40.00" });
+  return review;
+}
+it.each(["receivable", "payable"] as const)("recomputes %s reserve/cache after a second legitimate review waits for a committed first review", async type => {
+  const id = await title(type), first=input(type,id,"10"), second=input(type,id,"10");
+  await afterLockedCommit(() => releaseFinancialLegacyReserve(context,first), () => releaseFinancialLegacyReserve(context,second));
+  const review = await expectCanonicalCache(type,id,"20.00");
+  expect(review.title).toMatchObject({ reserved: "20.00", confirmedAmount: "0.00" });
+  expect(review.history).toHaveLength(2);
+  const auditRow = (await admin.execute(sql`select after from audit_logs where entity_id=${id} and metadata->>'legacyReleaseId'=${review.history.find(row=>row.requestId===second.requestId)!.id}`)).rows[0].after as Record<string, unknown>;
+  expect(auditRow[type === "receivable" ? "receivedAmount" : "paidAmount"]).toBe("20.00");
+});
+it.each(["receivable", "payable"] as const)("uses released %s capacity when a reconciliation waits for the legacy review", async type => {
+  const id = await title(type), movement = randomUUID();
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},${type === "receivable" ? "in" : "out"},100,now(),${user})`);
+  await afterLockedCommit(() => releaseFinancialLegacyReserve(context,input(type,id)), () => createFinancialAllocations(context,{ transactionId: movement, allocations: [{ targetId:id,targetType:type,amount:"100" }] }));
+  const review = await expectCanonicalCache(type,id,"100.00");
+  expect(review.title).toMatchObject({ reserved: "0.00", confirmedAmount: "100.00" });
+});
+it.each(["receivable", "payable"] as const)("preserves reviewed %s reserve when reversal waits for a partial historical release", async type => {
+  const id = await title(type), movement = randomUUID();
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},${type === "receivable" ? "in" : "out"},60,now(),${user})`);
+  await createFinancialAllocations(context,{ transactionId:movement, allocations:[{targetId:id,targetType:type,amount:"60"}] });
+  await afterLockedCommit(() => releaseFinancialLegacyReserve(context,input(type,id,"20")), () => reverseFinancialTransaction(context,{transactionId:movement,reason:"Movimento indevido após revisão concorrente"}));
+  const review = await expectCanonicalCache(type,id,"20.00");
+  expect(review.title).toMatchObject({ reserved: "20.00", confirmedAmount: "0.00" });
+  expect(review.history).toHaveLength(1);
+  expect((await admin.execute(sql`select count(*)::int n from financial_transaction_reversals where transaction_id=${movement}`)).rows[0].n).toBe(1);
+  expect((await admin.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${movement}`)).rows[0].n).toBe(1);
 });

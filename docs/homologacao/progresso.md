@@ -615,3 +615,30 @@ mesmo SHA do build/E2E focal. Typecheck/lint/475 unitários/254 DB/build aprovad
 Sem migration/backfill. Diff-check limpo; base de uso, main/development e
 worktrees anteriores preservadas. Prontidão V1 continua incompleta pelos itens
 explicitados acima; não há candidato final ou aceite empresarial declarado.
+
+### FIN-006/010 — reserva atualizada após espera pelo lock
+
+Conciliação (`lockTarget`), estorno e revisão histórica agora adquirem o lock do
+título antes de ler sua reserva efetiva. Revisão também relê alocações/datas
+após o lock. Mantidos tipos, IDs, baseline imutável, rate limit nas actions,
+permissões, RLS, tenant no DAL, ordem de locks e auditoria transacional. Não
+há schema/migration/backfill, nova automação, alteração de sessão ou upload.
+
+Seis testes concorrentes reais cobrem AR/AP: revisão após revisão, conciliação
+após liberação e estorno após revisão parcial. Espera pelo lock observada nas
+sessões da própria role runtime, sem grants novos. Conferem ledger, cache,
+baseline, auditoria, revisões/alocações/estornos preservados e capacidade válida.
+
+Prova negativa temporária usou o código anterior dos três arquivos, restaurado
+imediatamente: os seis casos falharam, enquanto quatro casos anteriores passaram
+(`locked-reserve-negative-probe.log`). Reprodução: revisões/cache divergentes
+do ledger e recusa indevida de capacidade já liberada. Código corrigido passou
+os dez DB focais (`locked-reserve-db-focus.log`). Não é falha do gate atual.
+
+Typecheck/lint e 475 unitários/80 arquivos aprovados (`locked-reserve-*`). DB
+completo em execução; build/E2E ainda pendentes. V1 permanece incompleta:
+venda/cancelamentos gráficos, NF/reembolso, relatórios, referências/perfis,
+persistência após restart e revisão dos entregáveis finais continuam no escopo.
+
+DB completo aprovado: 260 testes/41 arquivos (`locked-reserve-db.log`), exit 0.
+`git diff --check` limpo. Build e E2E aguardam checkpoint Git isolado.

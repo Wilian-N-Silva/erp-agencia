@@ -292,7 +292,6 @@ async function lockTarget(
     const rows = await transaction
       .select({
         amount: financialEntries.amount,
-        legacyBaseline: titleLegacyReserved("receivable"),
         date: financialEntries.receivedDate,
         id: financialEntries.id,
         status: financialEntries.status,
@@ -309,10 +308,12 @@ async function lockTarget(
       .for("update");
     const row = rows[0];
     if (!row) throw new AccessDeniedError();
+    const [balance] = await transaction.select({ legacyBaseline: titleLegacyReserved("receivable") }).from(financialEntries)
+      .where(and(eq(financialEntries.id, targetId), eq(financialEntries.organizationId, organizationId))).limit(1);
+    if (!balance) throw new AccessDeniedError();
     return {
       ...row,
-      legacyBaseline:
-        row.legacyBaseline,
+      ...balance,
       targetType,
     };
   }
@@ -320,7 +321,6 @@ async function lockTarget(
   const rows = await transaction
     .select({
       amount: financialExpenses.amount,
-      legacyBaseline: titleLegacyReserved("payable"),
       date: financialExpenses.paidDate,
       id: financialExpenses.id,
       status: financialExpenses.status,
@@ -337,7 +337,10 @@ async function lockTarget(
     .for("update");
   const row = rows[0];
   if (!row) throw new AccessDeniedError();
-  return { ...row, targetType };
+  const [balance] = await transaction.select({ legacyBaseline: titleLegacyReserved("payable") }).from(financialExpenses)
+    .where(and(eq(financialExpenses.id, targetId), eq(financialExpenses.organizationId, organizationId))).limit(1);
+  if (!balance) throw new AccessDeniedError();
+  return { ...row, ...balance, targetType };
 }
 
 async function sumTransactionAllocations(

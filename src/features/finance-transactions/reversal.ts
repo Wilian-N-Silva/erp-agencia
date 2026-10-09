@@ -40,8 +40,11 @@ export async function reverseFinancialTransaction(context: AccessContext, raw: u
     for (const key of targets) {
       const [type, id] = key.split(":");
       const table = type === "receivable" ? financialEntries : financialExpenses;
-      const [title] = await tx.select({ ...getTableColumns(table), effectiveLegacy: titleLegacyReserved(type === "receivable" ? "receivable" : "payable") }).from(table).where(and(eq(table.id, id), eq(table.organizationId, org))).for("update").limit(1);
-      if (!title) throw new AccessDeniedError();
+      const [lockedTitle] = await tx.select(getTableColumns(table)).from(table).where(and(eq(table.id, id), eq(table.organizationId, org))).for("update").limit(1);
+      if (!lockedTitle) throw new AccessDeniedError();
+      const [balance] = await tx.select({ effectiveLegacy: titleLegacyReserved(type === "receivable" ? "receivable" : "payable") }).from(table).where(and(eq(table.id, id), eq(table.organizationId, org))).limit(1);
+      if (!balance) throw new AccessDeniedError();
+      const title = { ...lockedTitle, ...balance };
       const removed = allocations.filter(a => type === "receivable" ? a.financialEntryId === id : a.financialExpenseId === id).reduce((total, a) => total + moneyToCents(a.amount), 0);
       const [active] = await tx.execute(sql`select coalesce(sum(a.amount),0)::text as amount from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=${org} and t.status <> 'reversed' and ${type === "receivable" ? sql`a.financial_entry_id=${id}::uuid` : sql`a.financial_expense_id=${id}::uuid`}`).then(result => result.rows as Array<{ amount: string }>);
       const remaining = moneyToCents(title.effectiveLegacy) + moneyToCents(active.amount) - removed;
