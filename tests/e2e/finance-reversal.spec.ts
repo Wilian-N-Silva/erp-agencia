@@ -8,6 +8,9 @@ test("reverses a reconciled receipt and reopens the same client title", async ({
   const now = new Date();
   const competence = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const label = `${competence.slice(5)}/${competence.slice(0, 4)}`;
+  await page.goto(`/app/financeiro/relatorios?month=${competence}`);
+  const cashRow = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "Conta Gráfica QA", exact: true }) });
+  const previousReversedIncome = Number((await cashRow.getByRole("cell").nth(3).innerText()).replace(/\D/g, ""));
   await page.goto("/app/clientes/novo");
   await page.locator('[name="name"]').fill(marker);
   await page.locator(".fg-input-wrap").filter({ has: page.locator('[name="monthlyFee"]') }).locator('input[type="text"]').fill("100,00");
@@ -44,4 +47,9 @@ test("reverses a reconciled receipt and reopens the same client title", async ({
   await expect(payment.getByRole("cell").nth(2)).toHaveText("R$ 100,00");
   await expect(payment.getByRole("cell").nth(3)).toHaveText("R$ 0,00");
   await expect(payment).not.toContainText("Recebido");
+  await page.goto(`/app/financeiro/relatorios?month=${competence}`);
+  const reversedIncome = Number((await cashRow.getByRole("cell").nth(3).innerText()).replace(/\D/g, ""));
+  expect(reversedIncome - previousReversedIncome).toBe(10000);
+  await page.reload();
+  await expect(cashRow.getByRole("cell").nth(3)).toHaveText(new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(reversedIncome / 100));
 });

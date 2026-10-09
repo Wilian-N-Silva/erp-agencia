@@ -37,3 +37,8 @@ No modo orquestrado, `feature/codex-integration` é apenas uma candidata tempor�
 
 - `archive/` — documentação antiga preservada, quando existente.
 - `runbooks/` — backup/restore, staging e produção. Não substituir por versões resumidas.
+## Acompanhamento da homologação V1
+
+O escopo controlado de Gráfica e Financeiro, a matriz de prontidão e as evidências
+atuais estão em [docs/homologacao](homologacao/README.md). Esse acompanhamento
+distingue validação técnica de aceite humano e não conclui o restante do ERP.

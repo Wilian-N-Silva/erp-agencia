@@ -47,6 +47,7 @@ export default async function FinancialTransactionsPage() {
         title="Movimentações financeiras"
         description="Entradas e saídas de dinheiro efetivamente ocorridas. O vínculo com contas a receber ou pagar será feito na conciliação."
       />
+      <Link href="/app/financeiro/relatorios">Consultar relatório de caixa</Link>
 
       {canWrite ? (
         <Card

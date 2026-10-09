@@ -5,6 +5,7 @@ import { createDatabase, getDb, withTenantDb } from "@/lib/db";
 import type { AccessContext } from "@/lib/dal";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 import { reverseFinancialTransaction } from "@/features/finance-transactions/reversal";
+import { getCashReport } from "@/features/finance/cash-report";
 
 const audit = vi.hoisted(() => ({ fail: false }));
 vi.mock("@/lib/audit", async original => {
@@ -66,6 +67,8 @@ it("reopens a payable after reversal without deleting the original payment", asy
   await createFinancialAllocations(context, { transactionId, allocations: [{ targetType: "payable", targetId: id, amount: "100.00" }] });
   await reverseFinancialTransaction(context, { transactionId, reason: "Pagamento duplicado" });
   expect((await admin.execute(sql`select paid_amount,paid_date,status from financial_expenses where id=${id}`)).rows[0]).toMatchObject({ paid_amount: "0.00", paid_date: null, status: "planned" });
+  const month = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).slice(0,7);
+  expect((await getCashReport(context, { month })).accounts.find(a => a.id === account)).toMatchObject({ reversedExpense: "100.00" });
 });
 it("rejects cross-tenant, permissions, tampered payload and short reason", async () => {
   const transactionId = await movement();
@@ -84,4 +87,25 @@ it("rolls back reversal and balances on audit failure", async () => {
   expect((await admin.execute(sql`select status from financial_transactions where id=${transactionId}`)).rows[0].status).toBe("reconciled");
   expect((await admin.execute(sql`select received_amount from financial_entries where id=${id}`)).rows[0].received_amount).toBe("100.00");
   expect((await admin.execute(sql`select id from financial_transaction_reversals where transaction_id=${transactionId}`)).rows).toHaveLength(0);
+});
+
+it("keeps prior-period cash, compensates at the reversal date and isolates account balances", async () => {
+  const cashAccount = randomUUID(), receipt = randomUUID();
+  await admin.execute(sql`insert into financial_accounts (id,organization_id,name,type,opening_balance) values (${cashAccount},${org},'Cash period test','bank',10)`);
+  const localMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).slice(0,7);
+  await admin.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values
+    (${receipt},${org},${cashAccount},'in',100,(${localMonth} || '-01T12:00:00Z')::timestamptz - interval '1 day',${user}),
+    (${randomUUID()},${org},${cashAccount},'in',1,(${localMonth} || '-01T01:30:00Z')::timestamptz,${user}),
+    (${randomUUID()},${org},${cashAccount},'out',40,(${localMonth} || '-01T12:00:00Z')::timestamptz,${user})`);
+  const current = () => getCashReport(context, { month: localMonth });
+  expect((await current()).accounts.find(a => a.id === cashAccount)).toMatchObject({ opening: "111.00", income: "0.00", expense: "40.00", closing: "71.00" });
+  await reverseFinancialTransaction(context, { transactionId: receipt, reason: "Receipt entered in error" });
+  expect((await current()).accounts.find(a => a.id === cashAccount)).toMatchObject({ opening: "111.00", reversedIncome: "100.00", reversedExpense: "0.00", net: "-140.00", closing: "-29.00", untracedReversals: 0 });
+  const [previous] = (await admin.execute(sql`select to_char((${localMonth} || '-01')::date - interval '1 month','YYYY-MM') as month`)).rows as Array<{ month: string }>;
+  expect((await getCashReport(context, previous)).accounts.find(a => a.id === cashAccount)).toMatchObject({ opening: "10.00", income: "101.00", reversedIncome: "0.00", closing: "111.00" });
+  expect((await getCashReport({ ...context, organizationId: other }, { month: localMonth })).accounts).toHaveLength(0);
+  await expect(getCashReport({ ...context, permissions: [] }, { month: localMonth })).rejects.toThrow();
+  await expect(getCashReport(context, { month: localMonth, organizationId: other })).rejects.toThrow();
+  await admin.execute(sql`insert into financial_transactions (organization_id,account_id,direction,amount,occurred_at,created_by_user_id,status) values (${org},${cashAccount},'in',3,now(),${user},'reversed')`);
+  expect((await current()).accounts.find(a => a.id === cashAccount)).toMatchObject({ untracedReversals: 1 });
 });

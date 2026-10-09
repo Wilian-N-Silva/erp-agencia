@@ -116,4 +116,23 @@ Agora o indicador usa a data de vencimento e soma somente o saldo em aberto,
 excluindo cancelados e liquidados. Vencimento no próprio dia ainda não é atraso.
 Dois testes cobrem AR/AP parcial, estados, competência e reabertura após estorno.
 446 unitários/69 arquivos aprovados; sem migration, backfill ou alteração de caixa.
-Caixa por eventos/datadas, legado explícito e relatórios completos continuam pendentes.
+Caixa por eventos datados, legado explícito e relatórios completos continuam pendentes.
+
+## HML-04 — caixa por eventos
+
+Relatório em `/app/financeiro/relatorios`, acessível pela lista de movimentações.
+Cada conta mostra saldo anterior, entradas, saídas, estornos de cada direção,
+resultado do mês e saldo registrado. Uma query tenant/RLS agrega valores numeric
+sem float e sem usar AP, AR, provisões ou alocações como dinheiro. Movimentações
+pendentes de conciliação participam; conciliar múltiplos títulos não duplica caixa.
+
+O evento original permanece no seu mês. Estorno compensa somente na sua data,
+com corte de mês em `America/Sao_Paulo`. Saldo inicial informado na conta é a
+referência anterior às movimentações; o relatório não afirma equivalência a
+extrato bancário. Estorno legado sem evento confiável sinaliza saldo não validado,
+sem inventar data de estorno. Contas inativas continuam presentes no histórico.
+
+Teste de banco comprovou passagem de mês, horário próximo da meia-noite UTC,
+saldo inicial, compensação posterior sem reescrever setembro, RLS/organização,
+permissão, payload e aviso de legado inconsistente. Sem migration/backfill.
+Revisão do legado das obrigações, demais relatórios e E2E completo seguem pendentes.
