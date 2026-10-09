@@ -265,3 +265,17 @@ Gates confirmados neste checkpoint: typecheck/lint; 452 unitários/71 arquivos;
 completo anterior teve 16/21 aprovados e segue sem aprovação final. Próximos
 incrementos incluem comprovantes financeiros, correções de origens/revisão
 legada, relatórios restantes e perfis/referências antes do candidato final.
+### Gate completo aprovado neste checkpoint
+
+Runtime `4725051`, testes `5df0553`: **21/21 E2E aprovados**, exit 0, 5,2 min,
+com `npm run test:e2e -- --workers=1` em `erp_hml_e2e`. Evidência:
+`homologacao-full-e2e-recheck.log`. As cinco falhas anteriores foram corrigidas
+nas pré-condições dos testes, sem enfraquecer segurança ou retirar asserções.
+`87d8794` também passou no teste focal de OS em 11,3 s.
+
+`f8ca269` amplia o cenário de Gráfica com cliente sem fee próprio, duas versões
+de arte no mesmo trabalho, pagamento de AP em R$300 + R$900 e conferência das
+AR no Cliente. Typecheck/lint aprovados; E2E focal desse incremento em validação.
+O resultado verde do checkpoint anterior não cobre automaticamente esse teste
+ampliado nem encerra o backlog V1. Prova de restart, documentos financeiros,
+perfis/referências e correções/revisão histórica ainda precisam ser concluídos.
