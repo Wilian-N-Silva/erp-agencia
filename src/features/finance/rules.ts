@@ -26,6 +26,7 @@ export type FinanceEntryRecord = {
   competence: string;
   dueDate: string | Date;
   receivedAmount?: string | null;
+  confirmedAmount?: string;
   receivedDate?: string | Date | null;
   status: LegacyFinancialEntryStatus;
 };
@@ -35,6 +36,7 @@ export type FinanceExpenseRecord = {
   competence: string;
   dueDate: string | Date;
   paidAmount?: string | null;
+  confirmedAmount?: string;
   paidDate?: string | Date | null;
   status: LegacyFinancialExpenseStatus;
 };
@@ -493,7 +495,7 @@ export function computeFinanceDashboard(input: {
   const incomeReceived = sumMoney(
     entriesInCompetence
       .filter((entry) => entry.status !== "cancelled")
-      .map(getFinancialEntrySettledAmount),
+      .map(entry => entry.confirmedAmount ?? getFinancialEntrySettledAmount(entry)),
   );
   const incomeOverdue = sumMoney(
     entriesInCompetence
@@ -510,7 +512,7 @@ export function computeFinanceDashboard(input: {
   const expensesPaid = sumMoney(
     expensesInCompetence
       .filter((expense) => expense.status !== "cancelled")
-      .map(getFinancialExpenseSettledAmount),
+      .map(expense => expense.confirmedAmount ?? getFinancialExpenseSettledAmount(expense)),
   );
   const expensesOverdue = sumMoney(
     expensesInCompetence

@@ -1,3 +1,4 @@
+import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
 import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
@@ -34,6 +35,8 @@ export type FinanceEntryListItem = {
   description: string;
   amount: string;
   settledAmount: string;
+  confirmedAmount: string;
+  legacySettledAmount: string;
   receivedAmount: string | null;
   dueDate: string;
   settlementDate: string | null;
@@ -56,6 +59,8 @@ export type FinanceExpenseListItem = {
   description: string;
   amount: string;
   settledAmount: string;
+  confirmedAmount: string;
+  legacySettledAmount: string;
   dueDate: string;
   settlementDate: string | null;
   paidDate: string | null;
@@ -103,9 +108,11 @@ async function getFinanceDashboard(
         clientName: clients.name,
         description: financialEntries.description,
         amount: financialEntries.amount,
-        receivedAmount: financialEntries.receivedAmount,
+        receivedAmount: titleSettledAmount("receivable"),
+      confirmedAmount: activeTitleAllocations("receivable"),
+      legacySettledAmount: financialEntries.legacySettledAmount,
         dueDate: financialEntries.dueDate,
-        receivedDate: financialEntries.receivedDate,
+        receivedDate: titleLastAllocationDate("receivable"),
         paymentMethod: financialEntries.paymentMethod,
         competence: financialEntries.competence,
         status: financialEntries.status,
@@ -132,9 +139,11 @@ async function getFinanceDashboard(
         subcategory: financialExpenses.subcategory,
         description: financialExpenses.description,
         amount: financialExpenses.amount,
-        paidAmount: financialExpenses.paidAmount,
+        paidAmount: titleSettledAmount("payable"),
+      confirmedAmount: activeTitleAllocations("payable"),
+      legacySettledAmount: financialExpenses.legacySettledAmount,
         dueDate: financialExpenses.dueDate,
-        paidDate: financialExpenses.paidDate,
+        paidDate: titleLastAllocationDate("payable"),
         competence: financialExpenses.competence,
         status: financialExpenses.status,
         costCenter: financialExpenses.costCenter,
@@ -192,6 +201,8 @@ async function getFinanceDashboard(
       description: entry.description,
       amount: entry.amount,
       settledAmount: getFinancialEntrySettledAmount(entry),
+      confirmedAmount: entry.confirmedAmount,
+      legacySettledAmount: entry.legacySettledAmount,
       receivedAmount: entry.receivedAmount,
       dueDate: entry.dueDate,
       settlementDate: entry.receivedDate,
@@ -213,6 +224,8 @@ async function getFinanceDashboard(
       description: expense.description,
       amount: expense.amount,
       settledAmount: getFinancialExpenseSettledAmount(expense),
+      confirmedAmount: expense.confirmedAmount,
+      legacySettledAmount: expense.legacySettledAmount,
       dueDate: expense.dueDate,
       settlementDate: expense.paidDate,
       paidDate: expense.paidDate,

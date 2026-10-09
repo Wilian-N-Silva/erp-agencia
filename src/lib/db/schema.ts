@@ -1006,6 +1006,7 @@ export const financialEntries = pgTable(
     description: text("description").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     receivedAmount: numeric("received_amount", { precision: 12, scale: 2 }),
+    legacySettledAmount: numeric("legacy_settled_amount", { precision: 12, scale: 2 }).notNull().default("0"),
     dueDate: date("due_date").notNull(),
     receivedDate: date("received_date"),
     paymentMethod: text("payment_method"),
@@ -1088,6 +1089,7 @@ export const financialExpenses = pgTable(
     paidAmount: numeric("paid_amount", { precision: 12, scale: 2 })
       .notNull()
       .default("0"),
+    legacySettledAmount: numeric("legacy_settled_amount", { precision: 12, scale: 2 }).notNull().default("0"),
     dueDate: date("due_date").notNull(),
     paidDate: date("paid_date"),
     competence: text("competence").notNull(),

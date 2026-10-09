@@ -66,3 +66,16 @@ sem vínculo preservado. 0053 expansiva aplicada somente em testes, sem backfill
 Upgrade 0050→0053, 450 unitários, 227 DB e build verdes. E2E focal em `c9bf573`
 aprovou solicitação/aprovações/cadastro financeiro/AP/parcial/quitação/estorno.
 FIN-010 ainda exige leitura explícita do legado das demais obrigações.
+## Incremento de leitura financeira canônica
+
+FIN-010: alocações ativas são a fonte do valor conciliado em AR/AP, Cliente,
+Gráfica e alertas. Reserva legada explícita nas migrations 0054/0055 evita
+duplicar pagamentos e é sinalizada nas telas/exports. Cache deixa de alterar
+totais confiáveis. Testes de upgrade, reserva, estorno e isolamento adicionados.
+Gates e evidências finais deste incremento em `progresso.md`.
+
+Pendência P0 para bases históricas: procedimento de revisão auditável das
+reservas e levantamento de inconsistências antes da migração. Não resolver
+alterando caches nem criando movimentos sem evidência. Correções de títulos
+originados na Gráfica/NF/SaaS/provisão ainda exigem conclusão no domínio de
+origem. Esses pontos impedem declarar a V1 pronta neste checkpoint.

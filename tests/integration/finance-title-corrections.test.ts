@@ -39,7 +39,7 @@ afterAll(async () => {
 });
 async function entry(settled = "0.00") {
   const id = randomUUID();
-  await admin.execute(sql`insert into financial_entries (id,organization_id,description,amount,received_amount,due_date,competence,responsible_user_id) values (${id},${org},'Manual AR',100,${settled},'2026-10-10','2026-10',${user})`);
+  await admin.execute(sql`insert into financial_entries (id,organization_id,description,amount,received_amount,legacy_settled_amount,due_date,competence,responsible_user_id) values (${id},${org},'Manual AR',100,${settled},${settled},'2026-10-10','2026-10',${user})`);
   return id;
 }
 it("requires a reason, audits cancellation and forbids reopening", async () => {

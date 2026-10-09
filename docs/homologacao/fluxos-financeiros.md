@@ -77,3 +77,23 @@ liquidados. Vencimento no dia da consulta ainda não é atraso.
 Leitura explícita de baixas legadas das demais obrigações,
 correções das origens integradas e anexos financeiros ainda estão em execução.
 A validação humana deve aguardar o candidato final e o roteiro integrado completo.
+## Baixas históricas e conciliações
+
+As migrations 0054/0055 preservam `received_amount`, `paid_amount`, status e
+datas antigos. Capturam separadamente o valor histórico que excede as alocações
+ativas em `legacy_settled_amount`; nenhum movimento de caixa é inventado.
+Esse saldo é imutável e reserva capacidade do título para impedir pagamento
+duplicado. Não é um recebimento/pagamento confirmado nem entra no relatório
+de caixa ou no total conciliado.
+
+Financeiro, Cliente e Gráfica consultam alocações de movimentos não estornados.
+O saldo aberto desconta essas alocações e a reserva histórica. Telas e exports
+identificam a reserva como histórico a conferir. Um estorno remove o efeito
+da alocação e preserva a reserva; não apaga movimentos ou documentos.
+
+Antes de migrar uma base existente, revisar as baixas históricas e eventuais
+valores acima da obrigação. 0054 exige janela de manutenção, pois bloqueia
+temporariamente as quatro tabelas financeiras enquanto captura o legado.
+Validar backup/restauração e aplicar primeiro em cópia isolada conforme o
+runbook de migrations. Não liberar ou converter reservas por SQL em operação:
+um procedimento de revisão auditável do legado ainda é pendência da V1.

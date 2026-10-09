@@ -6,6 +6,9 @@ import type { AccessContext } from "@/lib/dal";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 import { reverseFinancialTransaction } from "@/features/finance-transactions/reversal";
 import { getCashReport } from "@/features/finance/cash-report";
+import { financialEntries, financialExpenses } from "@/lib/db/schema";
+import { activeTitleAllocations, titleSettledAmount } from "@/features/finance/ledger";
+import { eq } from "drizzle-orm";
 
 const audit = vi.hoisted(() => ({ fail: false }));
 vi.mock("@/lib/audit", async original => {
@@ -69,6 +72,27 @@ it("reopens a payable after reversal without deleting the original payment", asy
   expect((await admin.execute(sql`select paid_amount,paid_date,status from financial_expenses where id=${id}`)).rows[0]).toMatchObject({ paid_amount: "0.00", paid_date: null, status: "planned" });
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).slice(0,7);
   expect((await getCashReport(context, { month })).accounts.find(a => a.id === account)).toMatchObject({ reversedExpense: "100.00" });
+});
+
+it("reserves historical settlements independently of caches and preserves them on reversal", async () => {
+  for (const payable of [false, true]) {
+    const id = randomUUID(), transactionId = await movement(payable ? 'out' : 'in', '60.00');
+    const table = payable ? financialExpenses : financialEntries;
+    await admin.execute(payable
+      ? sql`insert into financial_expenses (id,organization_id,supplier,category,description,amount,paid_amount,legacy_settled_amount,due_date,competence,responsible_user_id) values (${id},${org},'QA','QA','Legacy AP',100,99,40,'2026-10-10','2026-10',${user})`
+      : sql`insert into financial_entries (id,organization_id,description,amount,received_amount,legacy_settled_amount,due_date,competence,responsible_user_id) values (${id},${org},'Legacy AR',100,99,40,'2026-10-10','2026-10',${user})`);
+    const targetType = payable ? 'payable' : 'receivable';
+    const read = () => withTenantDb(context, tx => tx.select({ settled: titleSettledAmount(targetType), confirmed: activeTitleAllocations(targetType) }).from(table).where(eq(table.id,id)));
+    expect(await read()).toEqual([{ settled: '40.00', confirmed: '0.00' }]);
+    await expect(createFinancialAllocations(context, { transactionId, allocations: [{ targetType, targetId: id, amount: '60.01' }] })).rejects.toThrow();
+    await createFinancialAllocations(context, { transactionId, allocations: [{ targetType, targetId: id, amount: '60.00' }] });
+    expect(await read()).toEqual([{ settled: '100.00', confirmed: '60.00' }]);
+    await reverseFinancialTransaction(context, { transactionId, reason: 'Incorrect receipt or payment' });
+    expect(await read()).toEqual([{ settled: '40.00', confirmed: '0.00' }]);
+    await expect(withTenantDb(context, tx => tx.execute(sql`update ${table} set legacy_settled_amount=0 where id=${id}`))).rejects.toMatchObject({ cause: { code: '55000' } });
+    await expect(withTenantDb(context, tx => tx.execute(sql`update ${table} set status='cancelled' where id=${id}`))).rejects.toMatchObject({ cause: { code: '23514' } });
+    expect(await withTenantDb({ ...context, organizationId: other }, tx => tx.select({ settled: titleSettledAmount(targetType) }).from(table).where(eq(table.id,id)))).toHaveLength(0);
+  }
 });
 it("rejects cross-tenant, permissions, tampered payload and short reason", async () => {
   const transactionId = await movement();

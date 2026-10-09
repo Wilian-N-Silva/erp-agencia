@@ -42,8 +42,8 @@ export async function reverseFinancialTransaction(context: AccessContext, raw: u
       const [title] = await tx.select().from(table).where(and(eq(table.id, id), eq(table.organizationId, org))).for("update").limit(1);
       if (!title) throw new AccessDeniedError();
       const removed = allocations.filter(a => type === "receivable" ? a.financialEntryId === id : a.financialExpenseId === id).reduce((total, a) => total + moneyToCents(a.amount), 0);
-      const cached = "receivedAmount" in title ? title.receivedAmount ?? (title.status === "received" ? title.amount : "0.00") : title.paidAmount;
-      const remaining = moneyToCents(cached) - removed;
+      const [active] = await tx.execute(sql`select coalesce(sum(a.amount),0)::text as amount from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=${org} and t.status <> 'reversed' and ${type === "receivable" ? sql`a.financial_entry_id=${id}::uuid` : sql`a.financial_expense_id=${id}::uuid`}`).then(result => result.rows as Array<{ amount: string }>);
+      const remaining = moneyToCents(title.legacySettledAmount) + moneyToCents(active.amount) - removed;
       if (remaining < 0 || remaining > moneyToCents(title.amount)) throw new FinancialReversalError("Saldo inconsistente. Revise o título antes de estornar.");
       locked.push({ type, id, title, remaining });
     }
@@ -51,7 +51,7 @@ export async function reverseFinancialTransaction(context: AccessContext, raw: u
     const [afterMovement] = await tx.update(financialTransactions).set({ status: "reversed", updatedAt: new Date() }).where(and(eq(financialTransactions.id, movement.id), eq(financialTransactions.organizationId, org))).returning();
     for (const target of locked) {
       const settled = target.remaining === moneyToCents(target.title.amount);
-      const [dates] = await tx.execute(sql`select max(t.occurred_at)::date::text as date from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=${org} and t.status <> 'reversed' and ${target.type === "receivable" ? sql`a.financial_entry_id=${target.id}::uuid` : sql`a.financial_expense_id=${target.id}::uuid`}`).then(result => result.rows as Array<{ date: string | null }>);
+      const [dates] = await tx.execute(sql`select max(t.occurred_at at time zone 'America/Sao_Paulo')::date::text as date from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=${org} and t.status <> 'reversed' and ${target.type === "receivable" ? sql`a.financial_entry_id=${target.id}::uuid` : sql`a.financial_expense_id=${target.id}::uuid`}`).then(result => result.rows as Array<{ date: string | null }>);
       const values = { updatedAt: new Date() };
       const after = target.type === "receivable"
         ? (await tx.update(financialEntries).set({ ...values, status: target.title.status === "cancelled" ? "cancelled" : settled ? "received" : "planned", receivedAmount: centsToMoney(target.remaining), receivedDate: settled ? dates.date : null }).where(and(eq(financialEntries.id, target.id), eq(financialEntries.organizationId, org))).returning())[0]

@@ -32,7 +32,7 @@ type LockedTransaction = {
 
 type LockedTarget = {
   amount: string;
-  cachedSettled: string;
+  legacyBaseline: string;
   date: string | null;
   id: string;
   status: string;
@@ -136,7 +136,7 @@ export async function createFinancialAllocations(
       targetResults.set(
         key,
         calculateAllocationTotal({
-          cachedSettled: target.cachedSettled,
+          legacyBaseline: target.legacyBaseline,
           capacity: target.amount,
           existingAllocated,
           requested: allocation.amount,
@@ -291,7 +291,7 @@ async function lockTarget(
     const rows = await transaction
       .select({
         amount: financialEntries.amount,
-        cachedSettled: financialEntries.receivedAmount,
+        legacyBaseline: financialEntries.legacySettledAmount,
         date: financialEntries.receivedDate,
         id: financialEntries.id,
         status: financialEntries.status,
@@ -310,8 +310,8 @@ async function lockTarget(
     if (!row) throw new AccessDeniedError();
     return {
       ...row,
-      cachedSettled:
-        row.cachedSettled ?? (row.status === "received" ? row.amount : "0.00"),
+      legacyBaseline:
+        row.legacyBaseline,
       targetType,
     };
   }
@@ -319,7 +319,7 @@ async function lockTarget(
   const rows = await transaction
     .select({
       amount: financialExpenses.amount,
-      cachedSettled: financialExpenses.paidAmount,
+      legacyBaseline: financialExpenses.legacySettledAmount,
       date: financialExpenses.paidDate,
       id: financialExpenses.id,
       status: financialExpenses.status,

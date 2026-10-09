@@ -1,5 +1,7 @@
 "use server";
 
+import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
+
 import { and, count, eq, isNull } from "drizzle-orm";
 import type { Route } from "next";
 import { revalidatePath } from "next/cache";
@@ -606,9 +608,11 @@ async function syncClientPaymentReminders(
     .select({
       id: financialEntries.id,
       amount: financialEntries.amount,
-      receivedAmount: financialEntries.receivedAmount,
+      receivedAmount: titleSettledAmount("receivable"),
+      confirmedAmount: activeTitleAllocations("receivable"),
+      legacySettledAmount: financialEntries.legacySettledAmount,
       dueDate: financialEntries.dueDate,
-      receivedDate: financialEntries.receivedDate,
+      receivedDate: titleLastAllocationDate("receivable"),
       status: financialEntries.status,
     })
     .from(financialEntries)

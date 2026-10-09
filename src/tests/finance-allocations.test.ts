@@ -56,7 +56,7 @@ describe("FIN-004 allocation validation", () => {
   it("derives partial and settled totals while preserving a legacy baseline", () => {
     expect(
       calculateAllocationTotal({
-        cachedSettled: "300.00",
+        legacyBaseline: "200.00",
         capacity: "1000.00",
         existingAllocated: "100.00",
         requested: "200.00",
@@ -86,7 +86,7 @@ describe("FIN-004 allocation validation", () => {
         scope: "transaction" as const,
       },
       {
-        cachedSettled: "90.00",
+        legacyBaseline: "40.00",
         capacity: "100.00",
         existingAllocated: "50.00",
         requested: "10.01",

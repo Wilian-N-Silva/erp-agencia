@@ -8,6 +8,8 @@ import {
   formatDate,
   formatMoney,
   provisionExpectedAmount,
+  deriveFinancialObligation,
+  moneyToCents,
 } from "./rules";
 
 const headers = [
@@ -21,6 +23,9 @@ const headers = [
   "Status",
   "Valor",
   "Recorrente",
+  "Conciliado",
+  "Historico reservado",
+  "Saldo aberto",
 ] as const;
 
 export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uint8Array> {
@@ -41,9 +46,12 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
       formatCompetence(entry.competence),
       formatDate(entry.dueDate),
       formatDate(entry.settlementDate),
-      financialEntryStatusLabels[entry.status],
+      moneyToCents(entry.legacySettledAmount) > 0 ? "Historico a conferir" : financialEntryStatusLabels[entry.status],
       formatMoney(entry.amount),
       entry.recurring ? "Sim" : "Nao",
+      formatMoney(entry.confirmedAmount),
+      formatMoney(entry.legacySettledAmount),
+      formatMoney(entry.status === "cancelled" ? "0.00" : deriveFinancialObligation({ amount: entry.amount, settledAmount: entry.receivedAmount, dueDate: entry.dueDate }).outstandingAmount),
     ]);
   }
 
@@ -56,9 +64,12 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
       formatCompetence(expense.competence),
       formatDate(expense.dueDate),
       formatDate(expense.settlementDate),
-      financialExpenseStatusLabels[expense.status],
+      moneyToCents(expense.legacySettledAmount) > 0 ? "Historico a conferir" : financialExpenseStatusLabels[expense.status],
       formatMoney(expense.amount),
       expense.recurring ? "Sim" : "Nao",
+      formatMoney(expense.confirmedAmount),
+      formatMoney(expense.legacySettledAmount),
+      formatMoney(expense.status === "cancelled" ? "0.00" : deriveFinancialObligation({ amount: expense.amount, settledAmount: expense.settledAmount, dueDate: expense.dueDate }).outstandingAmount),
     ]);
   }
 
@@ -74,6 +85,7 @@ export async function buildFinanceXlsx(dashboard: FinanceDashboard): Promise<Uin
       provision.status,
       formatMoney(provisionExpectedAmount(provision, dashboard.competence)),
       provision.recurring ? "Sim" : "Nao",
+      "", "", "",
     ]);
   }
 

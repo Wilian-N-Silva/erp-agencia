@@ -231,9 +231,9 @@ export function FinanceView({
       icon: <ArrowDownRight size={16} />,
     },
     {
-      label: "Recebimentos liquidados",
+      label: "Recebimentos conciliados",
       value: formatMoney(dashboard.totals.incomeReceived),
-      secondary: "Realizado",
+      secondary: "Títulos da competência",
       icon: <Wallet size={16} />,
     },
     {
@@ -483,7 +483,7 @@ function EntriesTab({
   const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
   const selectedRows = sorted.filter((entry) => selected.includes(entry.id));
   const selectedTotal = selectedRows.reduce(
-    (total, entry) => total + moneyToCents(entry.amount),
+    (total, entry) => total + (entry.status === "cancelled" ? 0 : moneyToCents(entry.amount)),
     0,
   );
 
@@ -528,8 +528,8 @@ function EntriesTab({
       render: (row) => <span className="fg-tabular">{formatMoney(row.amount)}</span>,
     },
     {
-      key: "settledAmount",
-      label: "Liquidado",
+      key: "confirmedAmount",
+      label: "Conciliado",
       sortable: true,
       align: "right",
       render: (row) => (
@@ -538,7 +538,8 @@ function EntriesTab({
             row.status === "settled" ? "fg-good" : "fg-muted"
           }`.trim()}
         >
-          {moneyToCents(row.settledAmount) > 0 ? formatMoney(row.settledAmount) : "-"}
+          {moneyToCents(row.confirmedAmount) > 0 ? formatMoney(row.confirmedAmount) : "-"}
+          {moneyToCents(row.legacySettledAmount) > 0 ? <span className="fg-muted">Histórico reservado: {formatMoney(row.legacySettledAmount)}</span> : null}
         </span>
       ),
     },
@@ -555,8 +556,8 @@ function EntriesTab({
       label: "Status",
       render: (row) => (
         <StatusBadge
-          status={mapEntryStatus(row.status)}
-          label={financialEntryStatusLabels[row.status]}
+          status={mapEntryStatus(moneyToCents(row.legacySettledAmount) > 0 ? "open" : row.status)}
+          label={moneyToCents(row.legacySettledAmount) > 0 ? "Histórico a conferir" : financialEntryStatusLabels[row.status]}
         />
       ),
     },
@@ -682,7 +683,7 @@ function ExpensesTab({
   const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
   const selectedRows = sorted.filter((expense) => selected.includes(expense.id));
   const selectedTotal = selectedRows.reduce(
-    (total, expense) => total + moneyToCents(expense.amount),
+    (total, expense) => total + (expense.status === "cancelled" ? 0 : moneyToCents(expense.amount)),
     0,
   );
 
@@ -737,13 +738,14 @@ function ExpensesTab({
       ),
     },
     {
-      key: "settledAmount",
-      label: "Liquidado",
+      key: "confirmedAmount",
+      label: "Conciliado",
       sortable: true,
       align: "right",
       render: (row) => (
         <span className={row.status === "settled" ? "fg-tabular fg-good" : "fg-tabular fg-muted"}>
-          {moneyToCents(row.settledAmount) > 0 ? formatMoney(row.settledAmount) : "-"}
+          {moneyToCents(row.confirmedAmount) > 0 ? formatMoney(row.confirmedAmount) : "-"}
+          {moneyToCents(row.legacySettledAmount) > 0 ? <span className="fg-muted">Histórico reservado: {formatMoney(row.legacySettledAmount)}</span> : null}
         </span>
       ),
     },
@@ -760,8 +762,8 @@ function ExpensesTab({
       label: "Status",
       render: (row) => (
         <StatusBadge
-          status={mapExpenseStatus(row.status)}
-          label={financialExpenseStatusLabels[row.status]}
+          status={mapExpenseStatus(moneyToCents(row.legacySettledAmount) > 0 ? "open" : row.status)}
+          label={moneyToCents(row.legacySettledAmount) > 0 ? "Histórico a conferir" : financialExpenseStatusLabels[row.status]}
         />
       ),
     },
@@ -1030,32 +1032,32 @@ function getHeaderSummary({
 }) {
   if (tab === "entradas") {
     const totalExpected = entries.reduce(
-      (total, entry) => total + moneyToCents(entry.amount),
+      (total, entry) => total + (entry.status === "cancelled" ? 0 : moneyToCents(entry.amount)),
       0,
     );
     const totalReceived = entries.reduce(
-      (total, entry) => total + moneyToCents(entry.settledAmount),
+      (total, entry) => total + moneyToCents(entry.confirmedAmount),
       0,
     );
 
     return `${entries.length} contas a receber - Total ${formatCents(
       totalExpected,
-    )} - Liquidado ${formatCents(totalReceived)}`;
+    )} - Conciliado ${formatCents(totalReceived)}`;
   }
 
   if (tab === "saidas") {
     const totalExpected = expenses.reduce(
-      (total, expense) => total + moneyToCents(expense.amount),
+      (total, expense) => total + (expense.status === "cancelled" ? 0 : moneyToCents(expense.amount)),
       0,
     );
     const totalPaid = expenses.reduce(
-      (total, expense) => total + moneyToCents(expense.settledAmount),
+      (total, expense) => total + moneyToCents(expense.confirmedAmount),
       0,
     );
 
     return `${expenses.length} contas a pagar - Total ${formatCents(
       totalExpected,
-    )} - Liquidado ${formatCents(totalPaid)}`;
+    )} - Conciliado ${formatCents(totalPaid)}`;
   }
 
   const activeProvisions = provisions.filter((provision) => provision.status === "active");
@@ -1171,6 +1173,7 @@ function financeSortValue(row: Record<string, unknown>, key: string): string | n
   if (
     key === "amount" ||
     key === "settledAmount" ||
+    key === "confirmedAmount" ||
     key === "estimatedMonthlyAmount"
   ) {
     return moneyToCents(typeof value === "string" ? value : null);

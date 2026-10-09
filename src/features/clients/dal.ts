@@ -1,3 +1,4 @@
+import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { canReadAuditLogs } from "@/lib/audit";
@@ -35,6 +36,7 @@ import {
 import {
   centsToMoney,
   moneyToCents,
+  toDateKey,
   type LegacyFinancialEntryStatus,
 } from "@/features/finance/rules";
 
@@ -75,6 +77,8 @@ export type ClientPaymentListItem = {
   dueDate: string;
   amount: string | null;
   receivedAmount: string | null;
+  confirmedAmount: string;
+  legacySettledAmount: string;
   paymentMethod: string | null;
   status: ClientFinancialStatus;
   entryStatus: LegacyFinancialEntryStatus;
@@ -86,6 +90,7 @@ export type ClientPaymentListItem = {
 
 export type ClientBillingSummary = {
   financialStatus: ClientFinancialStatus;
+  requiresHistoricalReview?: boolean;
   nextDueDate: string | null;
   defaultPaymentMethod: string | null;
   lastPaymentDate: string | null;
@@ -303,9 +308,11 @@ async function listClientPayments(
       id: financialEntries.id,
       description: financialEntries.description,
       amount: financialEntries.amount,
-      receivedAmount: financialEntries.receivedAmount,
+      receivedAmount: titleSettledAmount("receivable"),
+      confirmedAmount: activeTitleAllocations("receivable"),
+      legacySettledAmount: financialEntries.legacySettledAmount,
       dueDate: financialEntries.dueDate,
-      receivedDate: financialEntries.receivedDate,
+      receivedDate: titleLastAllocationDate("receivable"),
       paymentMethod: financialEntries.paymentMethod,
       competence: financialEntries.competence,
       status: financialEntries.status,
@@ -359,6 +366,7 @@ async function getClientBillingSummary(
   if (valueHidden) {
     return {
       financialStatus: "restricted",
+      requiresHistoricalReview: false,
       nextDueDate,
       defaultPaymentMethod: profile.paymentMethod,
       lastPaymentDate: null,
@@ -371,7 +379,7 @@ async function getClientBillingSummary(
 
   const payments = await listClientPayments(context, clientId, options);
   const totalOverdueCents = payments
-    .filter((payment) => payment.status === "overdue" && payment.amount)
+    .filter((payment) => payment.entryStatus !== "cancelled" && payment.dueDate && toDateKey(payment.dueDate) < toDateKey(options.asOf ?? new Date()) && payment.amount)
     .reduce((total, payment) => {
       if (!payment.amount) {
         return total;
@@ -403,6 +411,7 @@ async function getClientBillingSummary(
       })),
       options.asOf ?? new Date(),
     ),
+    requiresHistoricalReview: payments.some(p => moneyToCents(p.legacySettledAmount) > 0),
     nextDueDate,
     defaultPaymentMethod: profile.paymentMethod,
     lastPaymentDate,
@@ -522,9 +531,11 @@ async function listClientPaymentAlerts(
       reminderBeforeDays: clientBillingProfiles.reminderBeforeDays,
       entryId: financialEntries.id,
       amount: financialEntries.amount,
-      receivedAmount: financialEntries.receivedAmount,
+      receivedAmount: titleSettledAmount("receivable"),
+      confirmedAmount: activeTitleAllocations("receivable"),
+      legacySettledAmount: financialEntries.legacySettledAmount,
       dueDate: financialEntries.dueDate,
-      receivedDate: financialEntries.receivedDate,
+      receivedDate: titleLastAllocationDate("receivable"),
       status: financialEntries.status,
     })
     .from(financialEntries)

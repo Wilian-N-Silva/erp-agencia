@@ -1,3 +1,4 @@
+import { titleSettledAmount, activeTitleAllocations, titleLastAllocationDate } from "@/features/finance/ledger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { bindTenantContext, db } from "@/lib/db";
@@ -327,9 +328,11 @@ async function buildClientPaymentAlertCandidates(
       reminderBeforeDays: clientBillingProfiles.reminderBeforeDays,
       entryId: financialEntries.id,
       amount: financialEntries.amount,
-      receivedAmount: financialEntries.receivedAmount,
+      receivedAmount: titleSettledAmount("receivable"),
+      confirmedAmount: activeTitleAllocations("receivable"),
+      legacySettledAmount: financialEntries.legacySettledAmount,
       dueDate: financialEntries.dueDate,
-      receivedDate: financialEntries.receivedDate,
+      receivedDate: titleLastAllocationDate("receivable"),
       status: financialEntries.status,
     })
     .from(financialEntries)
@@ -409,9 +412,11 @@ async function buildFinancialExpenseAlertCandidates(
       supplier: financialExpenses.supplier,
       description: financialExpenses.description,
       amount: financialExpenses.amount,
-      paidAmount: financialExpenses.paidAmount,
+      paidAmount: titleSettledAmount("payable"),
+      confirmedAmount: activeTitleAllocations("payable"),
+      legacySettledAmount: financialExpenses.legacySettledAmount,
       dueDate: financialExpenses.dueDate,
-      paidDate: financialExpenses.paidDate,
+      paidDate: titleLastAllocationDate("payable"),
       status: financialExpenses.status,
     })
     .from(financialExpenses)

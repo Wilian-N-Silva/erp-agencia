@@ -272,7 +272,7 @@ it("creates signal and balance receivables once, without cash, with rollback and
   await expect(admin.execute(sql`insert into graphic_sale_installments (organization_id,sale_id,entry_id,ordinal,label) values (${orgs[1]},${first.id},${result!.installments[0].entryId},3,'Tampered')`)).rejects.toThrow();
 });
 
-it("derives finance totals from linked titles, hides unreliable margins and protects financial access", async () => {
+it("derives finance totals from active allocations, ignores obsolete caches and protects financial access", async () => {
   const context: AccessContext = { ...contexts[0], permissions: ["graphics.finance_read"] };
   await expect(getGraphicFinanceSummary(contexts[0], jobs[2])).rejects.toThrow();
   expect(await getGraphicFinanceSummary({ ...context, organizationId: orgs[1], userId: userIds[1] }, jobs[2])).toBeNull();
@@ -281,7 +281,7 @@ it("derives finance totals from linked titles, hides unreliable margins and prot
   const entryId = sale!.installments[0].entryId;
   await admin.execute(sql`update financial_entries set received_amount=100 where id=${entryId}`);
   try {
-    expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ receivableOpen: "1400.00", received: "0.00", reliable: false, contractedMargin: null });
+    expect(await getGraphicFinanceSummary(context, jobs[2])).toMatchObject({ receivableOpen: "1500.00", received: "0.00", reliable: true, contractedMargin: "1400.00" });
   } finally { await admin.execute(sql`update financial_entries set received_amount=0 where id=${entryId}`); }
   expect(await getGraphicFinanceSummary(context, jobs[0])).toMatchObject({ contracted: null, reliable: false, contractedMargin: null });
 });

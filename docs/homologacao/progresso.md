@@ -201,3 +201,23 @@ aprovadas de colaborador arquivado continuam geráveis e pagamentos históricos
 não podem ganhar uma nova AP por engano. Manuais de gestão/portal atualizados.
 Próxima etapa: explicitar saldo legado e usar alocações/eventos nas leituras de
 AR/AP, Cliente, Gráfica e alertas; sem apagar histórico nem inventar caixa.
+### FIN-010 — leitura canônica e reserva histórica
+
+Incremento na branch `feature/homologacao-v1-grafica-financeiro`: AR/AP,
+Cliente, alertas, conciliação e resumo da Gráfica passaram a consultar
+alocações ativas. Cache não comprova pagamento. Dashboard/CSV/XLSX distinguem
+conciliado, reserva histórica e saldo aberto. Cliente inclui o saldo restante
+de títulos parcialmente recebidos que já venceram.
+
+0054 captura o legado sem fabricar movimentos nem alterar caches históricos;
+0055 amplia o trigger de imutabilidade para a nova coluna. Ambas foram
+geradas com drizzle-kit e aplicadas somente em `erp_hml_dbtests`. A segunda
+migration corrige uma lacuna detectada pelo novo teste de proteção, sem editar
+a migration já aplicada. Upgrade real 0050→0055 preserva histórico, captura
+AR parcialmente alocada e AP antiga quitada, sem criar caixa artificial.
+
+Typecheck/lint, 451 unitários e 228 testes DB/38 arquivos aprovados
+(`ledger-*.log`). Build e E2E do incremento seguem em validação. Testes novos verificam cache
+obsoleto, reserva imutável, capacidade, AR/AP parcial/estorno e isolamento.
+O procedimento auditável para revisão/liberação de reservas históricas e as
+correções nas origens continuam pendentes; não há candidata final aprovada.

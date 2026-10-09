@@ -238,6 +238,19 @@ describe("finance status rules", () => {
     expect(dashboard.totals.forecast30Days).toBe("700.00");
   });
 
+  it("counts confirmed allocations only while reserving historical balances in forecasts", () => {
+    const dashboard = computeFinanceDashboard({
+      asOf: "2026-05-12",
+      entries: [{ amount: "100.00", receivedAmount: "70.00", confirmedAmount: "20.00", competence: "2026-05", dueDate: "2026-05-20", status: "planned" }],
+      expenses: [{ amount: "80.00", paidAmount: "40.00", confirmedAmount: "10.00", competence: "2026-05", dueDate: "2026-05-20", status: "planned" }],
+      provisions: [],
+    });
+    expect(dashboard.totals.incomeReceived).toBe("20.00");
+    expect(dashboard.totals.expensesPaid).toBe("10.00");
+    expect(dashboard.totals.resultRealized).toBe("10.00");
+    expect(dashboard.totals.forecast30Days).toBe("-10.00");
+  });
+
   it("normalizes and applies finance filters", () => {
     const filters = normalizeFinanceFilters({
       competence: "2026-05",
@@ -339,6 +352,8 @@ describe("finance status rules", () => {
           receivedAmount: "100.00",
           receivedDate: "2026-05-12",
           settledAmount: "100.00",
+          confirmedAmount: "100.00",
+          legacySettledAmount: "0.00",
           settlementDate: "2026-05-12",
           recurring: true,
           status: "settled",

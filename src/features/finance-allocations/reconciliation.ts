@@ -1,3 +1,4 @@
+import { titleSettledAmount } from "@/features/finance/ledger";
 import { and, asc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { centsToMoney, moneyToCents } from "@/features/finance/rules";
@@ -48,7 +49,7 @@ export async function getReconciliation(context: AccessContext, raw: unknown) {
     const search = `%${input.query}%`;
     if (movement.status !== "reversed" && moneyToCents(remaining) > 0) {
       if (movement.direction === "in") {
-        const balance = sql<string>`${financialEntries.amount} - coalesce(${financialEntries.receivedAmount}, case when ${financialEntries.status} = 'received' then ${financialEntries.amount} else 0 end)`;
+        const balance = sql<string>`${financialEntries.amount} - (${titleSettledAmount("receivable")})::numeric`;
         const match = sql<boolean>`${financialEntries.clientId} = ${movement.clientId}::uuid`;
         const rows = await tx.select({ id: financialEntries.id, description: financialEntries.description, counterparty: clients.name, dueDate: financialEntries.dueDate, remaining: balance, suggested: match })
           .from(financialEntries).leftJoin(clients, and(eq(clients.id, financialEntries.clientId), eq(clients.organizationId, organizationId)))
@@ -57,7 +58,7 @@ export async function getReconciliation(context: AccessContext, raw: unknown) {
           .orderBy(sql`${match} desc nulls last`, asc(financialEntries.dueDate), asc(financialEntries.id)).limit(201);
         candidates.push(...rows.map(row => ({ ...row, suggested: Boolean(row.suggested), targetType: "receivable" as const })));
       } else {
-        const balance = sql<string>`${financialExpenses.amount} - ${financialExpenses.paidAmount}`;
+        const balance = sql<string>`${financialExpenses.amount} - (${titleSettledAmount("payable")})::numeric`;
         const match = sql<boolean>`${financialExpenses.supplierId} = ${movement.supplierId}::uuid`;
         const rows = await tx.select({ id: financialExpenses.id, description: financialExpenses.description, counterparty: financialExpenses.supplier, dueDate: financialExpenses.dueDate, remaining: balance, suggested: match })
           .from(financialExpenses).where(and(eq(financialExpenses.organizationId, organizationId), isNull(financialExpenses.deletedAt), ne(financialExpenses.status, "cancelled"), sql`${balance} > 0`,

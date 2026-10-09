@@ -1,6 +1,8 @@
 "use server";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { titleSettledAmount } from "./ledger";
+
+import { and, eq, isNull, sql, getTableColumns } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -159,7 +161,7 @@ async function updateFinancialEntryAction(formData: FormData) {
   const clientId = await resolveClientId(input.clientId, organizationId);
   assertTitleCorrectionAllowed({
     cancelled: before.status === "cancelled", amount: before.amount,
-    settledAmount: before.receivedAmount ?? (before.status === "received" ? before.amount : "0.00"),
+    settledAmount: before.ledgerSettled,
     generated: await hasLinkedOrigin("receivable", before.id, organizationId),
     economicFieldsChanged: before.amount !== input.amount || before.clientId !== clientId || before.competence !== input.competence || before.recurring !== input.recurring,
     counterpartyChanged: before.clientId !== clientId, nextAmount: input.amount,
@@ -213,7 +215,7 @@ async function cancelFinancialEntryAction(formData: FormData) {
   const input = cancellationSchema.parse(formDataToObject(formData));
   const before = await getEntryForWrite(input.id, organizationId);
   assertTitleCorrectionAllowed({ cancelled: before.status === "cancelled", amount: before.amount,
-    settledAmount: before.receivedAmount ?? (before.status === "received" ? before.amount : "0.00"), generated: await hasLinkedOrigin("receivable", before.id, organizationId),
+    settledAmount: before.ledgerSettled, generated: await hasLinkedOrigin("receivable", before.id, organizationId),
     economicFieldsChanged: false, counterpartyChanged: false, cancellation: true });
 
   const [after] = await db
@@ -291,7 +293,7 @@ async function updateFinancialExpenseAction(formData: FormData) {
   const masterData = await resolveExpenseMasterData(input, organizationId, before);
   assertTitleCorrectionAllowed({
     cancelled: before.status === "cancelled", amount: before.amount,
-    settledAmount: before.status === "paid" && before.paidAmount === "0.00" ? before.amount : before.paidAmount,
+    settledAmount: before.ledgerSettled,
     generated: await hasLinkedOrigin("payable", before.id, organizationId),
     economicFieldsChanged: before.amount !== input.amount || before.supplierId !== masterData.supplierId || before.competence !== input.competence || before.recurring !== input.recurring,
     counterpartyChanged: before.supplierId !== masterData.supplierId, nextAmount: input.amount,
@@ -335,7 +337,7 @@ async function cancelFinancialExpenseAction(formData: FormData) {
   const input = cancellationSchema.parse(formDataToObject(formData));
   const before = await getExpenseForWrite(input.id, organizationId);
   assertTitleCorrectionAllowed({ cancelled: before.status === "cancelled", amount: before.amount,
-    settledAmount: before.status === "paid" && before.paidAmount === "0.00" ? before.amount : before.paidAmount, generated: await hasLinkedOrigin("payable", before.id, organizationId),
+    settledAmount: before.ledgerSettled, generated: await hasLinkedOrigin("payable", before.id, organizationId),
     economicFieldsChanged: false, counterpartyChanged: false, cancellation: true });
 
   const [after] = await db
@@ -469,7 +471,7 @@ async function resolveClientId(clientId: string | null, organizationId: string) 
 
 async function getEntryForWrite(id: string, organizationId: string) {
   const [entry] = await db
-    .select()
+    .select({ ...getTableColumns(financialEntries), ledgerSettled: titleSettledAmount("receivable") })
     .from(financialEntries)
     .where(
       and(
@@ -490,7 +492,7 @@ async function getEntryForWrite(id: string, organizationId: string) {
 
 async function getExpenseForWrite(id: string, organizationId: string) {
   const [expense] = await db
-    .select()
+    .select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") })
     .from(financialExpenses)
     .where(
       and(

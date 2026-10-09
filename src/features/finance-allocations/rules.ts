@@ -70,7 +70,7 @@ export class FinancialAllocationError extends Error {
 
 export function calculateAllocationTotal(input: {
   capacity: string;
-  cachedSettled?: string | null;
+  legacyBaseline?: string | null;
   existingAllocated: string;
   requested: string;
   scope: "target" | "transaction";
@@ -78,8 +78,7 @@ export function calculateAllocationTotal(input: {
   const capacity = moneyToCents(input.capacity);
   const existing = moneyToCents(input.existingAllocated);
   const requested = moneyToCents(input.requested);
-  const cached = moneyToCents(input.cachedSettled);
-  const baseline = input.scope === "target" ? cached - existing : 0;
+  const baseline = input.scope === "target" ? moneyToCents(input.legacyBaseline) : 0;
 
   if (baseline < 0) {
     throw new FinancialAllocationError(

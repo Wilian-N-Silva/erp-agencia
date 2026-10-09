@@ -25,17 +25,17 @@ export async function getGraphicFinanceSummaries(context: AccessContext, rawJobI
     const result = await tx.execute(sql`
       select job.id, summary.* from graphic_jobs job cross join lateral (
       with ar as (
-        select e.id, e.amount, coalesce(e.received_amount, case when e.status = 'received' then e.amount else 0 end) as settled,
+        select e.id, e.amount, (e.legacy_settled_amount + coalesce((select sum(a.amount) from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=e.organization_id and a.financial_entry_id=e.id and t.status <> 'reversed' and t.direction='in'),0)) as settled,
           e.due_date, e.status = 'cancelled' as cancelled, e.deleted_at is not null as archived,
           coalesce((select sum(a.amount) from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id
-            where a.organization_id=${organizationId} and a.financial_entry_id=e.id and t.status <> 'reversed'), 0) as allocated
+            where a.organization_id=${organizationId} and a.financial_entry_id=e.id and t.status <> 'reversed' and t.direction='in'), 0) as allocated
         from graphic_sales s join graphic_sale_installments i on i.sale_id=s.id and i.organization_id=s.organization_id
         join financial_entries e on e.id=i.entry_id and e.organization_id=i.organization_id
         where s.organization_id=${organizationId} and s.job_id=job.id
       ), ap as (
-        select e.id, e.amount, e.paid_amount as settled, e.due_date, e.status = 'cancelled' as cancelled, e.deleted_at is not null as archived,
+        select e.id, e.amount, (e.legacy_settled_amount + coalesce((select sum(a.amount) from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id where a.organization_id=e.organization_id and a.financial_expense_id=e.id and t.status <> 'reversed' and t.direction='out'),0)) as settled, e.due_date, e.status = 'cancelled' as cancelled, e.deleted_at is not null as archived,
           coalesce((select sum(a.amount) from financial_allocations a join financial_transactions t on t.id=a.transaction_id and t.organization_id=a.organization_id
-            where a.organization_id=${organizationId} and a.financial_expense_id=e.id and t.status <> 'reversed'), 0) as allocated
+            where a.organization_id=${organizationId} and a.financial_expense_id=e.id and t.status <> 'reversed' and t.direction='out'), 0) as allocated
         from graphic_supplier_commitments c join financial_expenses e on e.id=c.expense_id and e.organization_id=c.organization_id
         where c.organization_id=${organizationId} and c.job_id=job.id
       )

@@ -54,7 +54,7 @@ it("serializes repeated planning and realization, preserving estimate and creati
   const csv = buildFinanceCsv(dashboard);
   const provisionRow = csv.split("\r\n").find(row => row.startsWith("Provisao prevista;"));
   expect(provisionRow).toContain("10/2026");
-  expect(provisionRow).toMatch(/0,00;Sim$/);
+  expect(provisionRow).toMatch(/0,00;Sim;;;$/);
   await expect(cancelProvisionCycle(context, { id: cycles[0].id, reason: "Cancelamento tardio" })).rejects.toThrow("conta a pagar");
 });
 it("cancels a single occurrence without affecting the next cycle or deleting history", async () => {

@@ -379,6 +379,20 @@
       "when": 1791563026250,
       "tag": "0053_nappy_triton",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791564604788,
+      "tag": "0054_tiresome_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1791565775581,
+      "tag": "0055_legacy-baseline-immutability",
+      "breakpoints": true
     }
   ]
 }

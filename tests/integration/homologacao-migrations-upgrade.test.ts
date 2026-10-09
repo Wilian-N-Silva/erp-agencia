@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { createDatabase } from "@/lib/db";
 
-it("upgrades 0050 through 0053 preserving historical obligations and installs tenant/reversal guards", async () => {
+it("upgrades 0050 through 0055 preserving historical obligations and captures unverified settlement separately", async () => {
   const admin = createDatabase(process.env.DATABASE_TEST_ADMIN_URL!, { allowExitOnIdle: true, max: 1 });
   const schema = `hml_upgrade_${randomUUID().replaceAll("-", "")}`;
   const org = randomUUID(), employee = randomUUID(), user = randomUUID(), invoice = randomUUID();
@@ -31,10 +31,19 @@ it("upgrades 0050 through 0053 preserving historical obligations and installs te
         (${org},${employee},'Historical paid','QA',100,'2026-10-01','paid','2026-10-02T12:00:00Z',null),
         (${org},${employee},'Historical NF','QA',50,'2026-10-01','included_in_invoice',null,${invoice})`);
       const before = await tx.execute(sql`select title,amount,status,paid_at,included_invoice_request_id from reimbursement_requests order by title`);
-      for (const idx of [51, 52, 53]) await apply(idx);
+      const ar = randomUUID(), ap = randomUUID(), account = randomUUID(), movement = randomUUID();
+      await tx.execute(sql`insert into financial_entries (id,organization_id,description,amount,received_amount,status,due_date,competence,responsible_user_id) values (${ar},${org},'Historical AR',100,70,'received','2026-10-10','2026-10',${user})`);
+      await tx.execute(sql`insert into financial_expenses (id,organization_id,supplier,category,description,amount,paid_amount,status,due_date,competence,responsible_user_id) values (${ap},${org},'Supplier','QA','Historical AP',80,0,'paid','2026-10-10','2026-10',${user})`);
+      await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${org},'Upgrade account','bank')`);
+      await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${org},${account},'in',20,now(),${user})`);
+      await tx.execute(sql`insert into financial_allocations (organization_id,transaction_id,financial_entry_id,amount,created_by_user_id) values (${org},${movement},${ar},20,${user})`);
+      for (const idx of [51, 52, 53, 54, 55]) await apply(idx);
+      expect((await tx.execute(sql`select received_amount,legacy_settled_amount,status from financial_entries where id=${ar}`)).rows[0]).toEqual({ received_amount: '70.00', legacy_settled_amount: '50.00', status: 'received' });
+      expect((await tx.execute(sql`select paid_amount,legacy_settled_amount,status from financial_expenses where id=${ap}`)).rows[0]).toEqual({ paid_amount: '0.00', legacy_settled_amount: '80.00', status: 'paid' });
+      expect((await tx.execute(sql`select count(*)::int n from financial_transactions`)).rows[0].n).toBe(1);
       expect((await tx.execute(sql`select title,amount,status,paid_at,included_invoice_request_id from reimbursement_requests order by title`)).rows).toEqual(before.rows);
       expect((await tx.execute(sql`select count(*)::int n from reimbursement_requests where financial_expense_id is not null`)).rows[0].n).toBe(0);
-      expect((await tx.execute(sql`select count(*)::int n from financial_expenses`)).rows[0].n).toBe(0);
+      expect((await tx.execute(sql`select count(*)::int n from financial_expenses`)).rows[0].n).toBe(1);
       expect((await tx.execute(sql`select count(*)::int n from financial_transaction_reversals`)).rows[0].n).toBe(0);
       expect((await tx.execute(sql`select count(*)::int n from pg_policies where schemaname=${schema} and tablename='financial_transaction_reversals' and qual like '%app.organization_id%' and with_check like '%app.organization_id%'`)).rows[0].n).toBe(1);
       expect((await tx.execute(sql`select count(*)::int n from pg_constraint where conname in ('reimbursements_payable_tenant_fk','reimbursements_payment_origin_check') and connamespace=${schema}::regnamespace`)).rows[0].n).toBe(2);

@@ -48,7 +48,7 @@ import {
   type ClientFinancialStatus,
   type ClientStatus,
 } from "@/features/clients/rules";
-import { formatCompetence, formatDate, formatMoney } from "@/features/finance/rules";
+import { formatCompetence, formatDate, formatMoney, moneyToCents } from "@/features/finance/rules";
 import { getCurrentAccessContext } from "@/lib/dal";
 import { can } from "@/lib/rbac";
 
@@ -316,7 +316,7 @@ function SummaryTab({
         />
         <KpiCard
           label="Status do mês"
-          value={clientFinancialStatusLabels[summary.financialStatus]}
+          value={summary.requiresHistoricalReview ? "Histórico a conferir" : clientFinancialStatusLabels[summary.financialStatus]}
           secondary={
             summary.nextDueDate
               ? `próx. vencimento ${formatDate(summary.nextDueDate)}`
@@ -343,7 +343,7 @@ function SummaryTab({
           label="Último pagamento"
           value={formatDate(lastPayment?.receivedDate ?? summary.lastPaymentDate)}
           secondary={
-            lastPayment ? formatMoney(lastPayment.receivedAmount) : "sem registros"
+            lastPayment ? formatMoney(lastPayment.confirmedAmount) : "sem registros"
           }
         />
       </div>
@@ -412,8 +412,8 @@ function SummaryTab({
                     </td>
                     <td className="right">
                       <StatusBadge
-                        tone={PAYMENT_STATUS_TONE[p.status]}
-                        label={clientFinancialStatusLabels[p.status]}
+                        tone={moneyToCents(p.legacySettledAmount) > 0 ? "warning" : PAYMENT_STATUS_TONE[p.status]}
+                        label={moneyToCents(p.legacySettledAmount) > 0 ? "Histórico a conferir" : clientFinancialStatusLabels[p.status]}
                         withDot={false}
                       />
                       <div className="fg-cell-sub fg-tabular">
@@ -491,15 +491,16 @@ function PaymentsTab({
                   <td className="fg-tabular">{formatDate(p.dueDate)}</td>
                   <td className="right fg-tabular">{formatMoney(p.amount)}</td>
                   <td className="right fg-tabular fg-muted">
-                    {formatMoney(p.receivedAmount)}
+                    {formatMoney(p.confirmedAmount)}
+                    {moneyToCents(p.legacySettledAmount) > 0 ? <p>Histórico reservado: {formatMoney(p.legacySettledAmount)}</p> : null}
                   </td>
                   <td className="fg-muted">
                     {p.paymentMethod ?? profile.paymentMethod ?? "—"}
                   </td>
                   <td>
                     <StatusBadge
-                      tone={PAYMENT_STATUS_TONE[p.status]}
-                      label={clientFinancialStatusLabels[p.status]}
+                      tone={moneyToCents(p.legacySettledAmount) > 0 ? "warning" : PAYMENT_STATUS_TONE[p.status]}
+                      label={moneyToCents(p.legacySettledAmount) > 0 ? "Histórico a conferir" : clientFinancialStatusLabels[p.status]}
                     />
                   </td>
                   <td className="fg-tabular fg-muted">
