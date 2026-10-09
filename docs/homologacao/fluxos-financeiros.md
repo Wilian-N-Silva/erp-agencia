@@ -198,3 +198,8 @@ a operação: estorne ou revise antes de corrigir. Se outra pessoa corrigiu,
 atualize a página. Encerramento operacional não impede a conferência financeira.
 Cancelamento da venda ou alteração da quantidade de parcelas continua pendente;
 não contorne essa restrição cancelando ARs isoladas no Financeiro.
+
+Na sugestão de conciliação da Gráfica, o limite do título também considera o
+ledger: reservas históricas efetivas e alocações de movimentações não estornadas.
+Campo legado de recebido/status não comprova liquidação. A sugestão é pendente,
+sem caixa ou reserva de saldo; o Financeiro confere novamente antes de aceitar.

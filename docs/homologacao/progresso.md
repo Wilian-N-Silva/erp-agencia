@@ -677,3 +677,25 @@ Typecheck/lint e 478 unitários/81 arquivos aprovados (`graphic-sale-*`). Banco
 completo: 263 testes/41 arquivos, exit 0 (`graphic-sale-db.log`), incluindo
 upgrade e matriz RLS. `git diff --check` limpo. Build/E2E aguardam checkpoint
 Git e aplicação da 0061 somente na base isolada de navegador.
+
+### GRF/FIN-010 — saldo canônico na sugestão de conciliação
+
+A sugestão gráfica consultava received_amount/status legado para validar a
+capacidade do título. Dois testes reproduziram recusa de sugestão válida com
+cache inflado e aceitação acima do saldo real com cache zerado: 2 falhas e 26
+casos anteriores aprovados (`graphic-suggestion-negative.log`). Esta prova
+negativa é anterior à correção, não resultado do gate atual.
+
+A leitura passa a usar a mesma reserva efetiva + alocações ativas do ledger.
+Mantém autenticação/RBAC, organização/RLS/IDOR, Zod, rate limit da action,
+transação, audit e pendência. Sugestão não reserva capacidade nem confirma
+caixa: aceitação pelo Financeiro revalida o saldo sob os locks já existentes.
+Sem migration/backfill, sessão, upload ou nova integração. Os dois casos
+corrigidos e os 26 anteriores passaram (`graphic-suggestion-db-focus.log`).
+Typecheck/lint e unitários aprovados; banco completo em andamento. A correção
+não antecipa cancelamentos de origem, relatórios, referências/perfis ou restart.
+
+Banco completo aprovado: 265 testes/41 arquivos (`graphic-suggestion-db.log`),
+478 unitários/81 arquivos, typecheck/lint e `git diff --check` aprovados. Build
+e E2E desta leitura aguardam checkpoint isolado. Migration 0061 já aplicada
+nas duas bases exclusivas de teste, sem tocar a base de uso ou produção.

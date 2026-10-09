@@ -564,3 +564,35 @@ it("commits only one competing sale revision and enforces immutable tenant-scope
   await expect(withTenantDb(financialReviewer, tx => tx.insert(graphicSaleRevisions).values({ organizationId: orgs[0], saleId: before.sale.id, version: 2, beforeAmount: after.effectiveAmount, amount: "1.00", beforeCompetence: after.effectiveCompetence, competence: after.effectiveCompetence, beforeInstallments: after.installments.map(({ entryId, amount, dueDate, competence }) => ({ entryId, amount, dueDate, competence })), installments: after.corrections[0].installments, reason: "Invalid installment total", createdByUserId: userIds[0] }))).rejects.toMatchObject({ cause: { code: "23514" } });
   expect((await getGraphicSale(financialReviewer, jobs[2]))!.revision).toBe(after.revision);
 });
+
+it("allows a graphic suggestion against the ledger even when a legacy cache falsely says fully received", async () => {
+  const rollback = new Error("Rollback suggestion inflated cache");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    const sale = (await getGraphicSale(financialReviewer, jobs[2]))!;
+    const account = randomUUID(), movement = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${orgs[0]},'Suggestion cache QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${orgs[0]},${account},'in',1000,now(),${userIds[0]})`);
+    await tx.execute(sql`update financial_entries set received_amount=amount,status='received' where id=${sale.installments[0].entryId}`);
+    const department: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "graphics.reconcile_suggest"] };
+    expect(await suggestGraphicReconciliation(department, { jobId: jobs[2], transactionId: movement, entryId: sale.installments[0].entryId, amount: "10", reason: "Conferência da movimentação com saldo canônico" })).toMatchObject({ amount: "10.00", status: "pending" });
+    expect((await tx.execute(sql`select count(*)::int n from financial_allocations where transaction_id=${movement}`)).rows[0].n).toBe(0);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});
+
+it("rejects a graphic suggestion exceeding the real remainder despite a zero legacy cache", async () => {
+  const rollback = new Error("Rollback suggestion suppressed cache");
+  await expect(withTenantDb(financialReviewer, async tx => {
+    const sale = (await getGraphicSale(financialReviewer, jobs[2]))!;
+    const account = randomUUID(), movement = randomUUID();
+    await tx.execute(sql`insert into financial_accounts (id,organization_id,name,type) values (${account},${orgs[0]},'Suggestion remainder QA','bank')`);
+    await tx.execute(sql`insert into financial_transactions (id,organization_id,account_id,direction,amount,occurred_at,created_by_user_id) values (${movement},${orgs[0]},${account},'in',1000,now(),${userIds[0]})`);
+    await createFinancialAllocations(financialReviewer, { transactionId: movement, allocations: [{ targetType: "receivable", targetId: sale.installments[0].entryId, amount: "500" }] });
+    await tx.execute(sql`update financial_entries set received_amount=0,status='planned' where id=${sale.installments[0].entryId}`);
+    const department: AccessContext = { ...contexts[0], permissions: [...contexts[0].permissions, "graphics.reconcile_suggest"] };
+    const excess = String(Number(sale.installments[0].amount) - 500 + 1);
+    await expect(suggestGraphicReconciliation(department, { jobId: jobs[2], transactionId: movement, entryId: sale.installments[0].entryId, amount: excess, reason: "Conferência de saldo após recebimento parcial" })).rejects.toThrow(/excede/);
+    expect((await tx.execute(sql`select count(*)::int n from graphic_reconciliation_suggestions where transaction_id=${movement}`)).rows[0].n).toBe(0);
+    throw rollback;
+  })).rejects.toBe(rollback);
+});

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { moneyToCents } from "@/features/finance/rules";
+import { titleSettledAmount } from "@/features/finance/ledger";
 import { createFinancialAllocations } from "@/features/finance-allocations/dal";
 import { generateWorkItem, resolveWorkItem } from "@/features/work-items/dal";
 import { writeAuditLog } from "@/lib/audit";
@@ -21,13 +22,13 @@ export async function suggestGraphicReconciliation(context: AccessContext, raw: 
     const [job] = await tx.select().from(graphicJobs).where(and(eq(graphicJobs.organizationId, organizationId), eq(graphicJobs.id, input.jobId), isNull(graphicJobs.deletedAt))).limit(1);
     if (!movement || !job || (movement.clientId && movement.clientId !== job.clientId)) throw new AccessDeniedError();
     if (movement.direction !== "in" || !["pending_reconciliation", "partially_reconciled"].includes(movement.status)) throw new GraphicFlowError("Selecione um recebimento com saldo a conciliar.");
-    const [entry] = await tx.select({ amount: financialEntries.amount, received: financialEntries.receivedAmount, status: financialEntries.status })
+    const [entry] = await tx.select({ amount: financialEntries.amount, received: titleSettledAmount("receivable"), status: financialEntries.status })
       .from(graphicSales).innerJoin(graphicSaleInstallments, and(eq(graphicSaleInstallments.saleId, graphicSales.id), eq(graphicSaleInstallments.organizationId, organizationId)))
       .innerJoin(financialEntries, and(eq(financialEntries.id, graphicSaleInstallments.entryId), eq(financialEntries.organizationId, organizationId)))
       .where(and(eq(graphicSales.organizationId, organizationId), eq(graphicSales.jobId, job.id), eq(financialEntries.id, input.entryId), isNull(financialEntries.deletedAt))).limit(1);
     if (!entry) throw new AccessDeniedError();
     const [allocated] = await tx.select({ total: sql<string>`coalesce(sum(${financialAllocations.amount}), 0)` }).from(financialAllocations).where(and(eq(financialAllocations.organizationId, organizationId), eq(financialAllocations.transactionId, movement.id)));
-    const received = entry.received ?? (entry.status === "received" ? entry.amount : "0.00");
+    const received = entry.received;
     if (entry.status === "cancelled" || moneyToCents(input.amount) > moneyToCents(entry.amount) - moneyToCents(received) || moneyToCents(input.amount) > moneyToCents(movement.amount) - moneyToCents(allocated.total)) throw new GraphicFlowError("O valor sugerido excede o saldo do título ou da movimentação. Atualize os valores.");
     const [existing] = await tx.select().from(graphicReconciliationSuggestions).where(and(eq(graphicReconciliationSuggestions.organizationId, organizationId), eq(graphicReconciliationSuggestions.transactionId, movement.id), eq(graphicReconciliationSuggestions.entryId, input.entryId), eq(graphicReconciliationSuggestions.status, "pending"))).limit(1);
     if (existing) {
