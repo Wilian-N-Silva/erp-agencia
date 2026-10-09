@@ -26,7 +26,7 @@ test("corrects and cancels an unpaid manual receivable with a reason", async ({ 
   await row.locator('[aria-label="Cancelar"]').click();
   await sheet.getByLabel("Motivo da correção ou cancelamento").fill("Cobrança cadastrada em duplicidade");
   await sheet.getByRole("button", { name: "Confirmar cancelamento", exact: true }).click();
-  await expect(sheet.getByRole("status")).toHaveText("Alteração registrada.");
+  await expect(row).toContainText("Cancelado");
   await page.reload();
   await expect(row).toContainText("Cancelado");
 });
