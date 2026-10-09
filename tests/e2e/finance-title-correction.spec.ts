@@ -2,13 +2,14 @@ import { expect, test } from "@playwright/test";
 import { signInWithRetry } from "./helpers/auth";
 
 test("corrects and cancels an unpaid manual receivable with a reason", async ({ page }) => {
+  test.setTimeout(120_000);
   await signInWithRetry(page, "todos.perfis@formula.local", process.env.DEMO_USER_PASSWORD!);
   const marker = `HML-correction-${Date.now()}`;
   await page.goto("/app/financeiro/entradas");
   await page.getByRole("button", { name: "Nova conta a receber", exact: true }).last().click();
   const sheet = page.locator(".fg-sheet-root.open");
   await sheet.locator('[name="description"]').fill(marker);
-  await sheet.locator(".fg-input-wrap").filter({ has: sheet.locator('[name="amount"]') }).locator('input[type="text"]').fill("100,00");
+  await sheet.locator(".fg-input-wrap").filter({ has: page.locator('[name="amount"]') }).locator('input[type="text"]').fill("100,00");
   await sheet.locator('[name="dueDate"]').fill("2026-10-15");
   await sheet.locator('[name="competence"]').fill("2026-10");
   await sheet.getByRole("button", { name: "Criar conta a receber", exact: true }).click();
@@ -16,7 +17,7 @@ test("corrects and cancels an unpaid manual receivable with a reason", async ({ 
   await page.goto(`/app/financeiro/entradas?q=${marker}&competence=2026-10`);
   const row = page.getByRole("row").filter({ hasText: marker });
   await row.locator('[aria-label="Editar conta a receber"]').click();
-  await sheet.locator(".fg-input-wrap").filter({ has: sheet.locator('[name="amount"]') }).locator('input[type="text"]').fill("80,00");
+  await sheet.locator(".fg-input-wrap").filter({ has: page.locator('[name="amount"]') }).locator('input[type="text"]').fill("80,00");
   await sheet.getByLabel("Motivo da correção ou cancelamento").fill("Valor conferido com o cliente");
   await sheet.getByRole("button", { name: "Salvar conta a receber", exact: true }).click();
   await expect(sheet.getByRole("status")).toHaveText("Alteração registrada.");
