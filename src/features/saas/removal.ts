@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { db, withTenantDb } from "@/lib/db";
-import { documents, saasSubscriptions, saasSubscriptionUsers, workItems } from "@/lib/db/schema";
+import { documents, saasSubscriptionCharges, saasSubscriptions, saasSubscriptionUsers, workItems } from "@/lib/db/schema";
 import type { AccessContext } from "@/lib/dal";
 import { AccessDeniedError, assertCanAny } from "@/lib/rbac";
 
@@ -25,6 +25,9 @@ export async function removeMistakenSaasSubscription(context: AccessContext, raw
       isNull(saasSubscriptions.deletedAt),
     )).for("update").limit(1);
     if (!before) throw new AccessDeniedError();
+    const [charge] = await db.select({ id: saasSubscriptionCharges.id }).from(saasSubscriptionCharges)
+      .where(and(eq(saasSubscriptionCharges.organizationId, organizationId), eq(saasSubscriptionCharges.subscriptionId, input.id))).limit(1);
+    if (charge) throw new SaasRemovalError("Esta assinatura possui cobranças registradas. Use o cancelamento da assinatura para preservar o histórico financeiro.");
     const [link] = await db.select().from(saasSubscriptionUsers)
       .where(eq(saasSubscriptionUsers.subscriptionId, input.id)).limit(1);
     if (link) throw new SaasRemovalError("Esta assinatura possui histórico de colaboradores vinculados. Use o cancelamento para preservar esse histórico.");

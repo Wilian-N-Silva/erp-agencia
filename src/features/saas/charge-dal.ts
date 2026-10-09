@@ -34,6 +34,8 @@ export type SaasChargeRecord = {
   corrections: Array<{ id: string; occurredAt: string; amountBefore: string; amountAfter: string; rateBefore: string; rateAfter: string; actorName: string | null; reason: string | null }>;
   notes: string | null;
   createdAt: Date;
+  cancelledAt: Date | null;
+  cancellationReason: string | null;
 };
 
 function authorize(context: AccessContext, permission: "finance.read" | "finance.write") {
@@ -69,8 +71,10 @@ export async function listSaasCharges(context: AccessContext, subscriptionId: st
         reservedAmount: titleLegacyReserved("payable"),
         notes: saasSubscriptionCharges.notes,
         createdAt: saasSubscriptionCharges.createdAt,
+        cancelledAt: saasSubscriptionCharges.cancelledAt,
+        cancellationReason: saasSubscriptionCharges.cancellationReason,
         corrections: sql<SaasChargeRecord["corrections"]>`coalesce((select jsonb_agg(jsonb_build_object('id',h.id,'occurredAt',h.created_at,'amountBefore',h.before->>'totalAmountBrl','amountAfter',h.after->>'totalAmountBrl','rateBefore',h.before->>'effectiveExchangeRate','rateAfter',h.after->>'effectiveExchangeRate','actorName',h.actor_name,'reason',h.metadata->>'reason') order by h.created_at desc,h.id desc)
-          from (select id,created_at,before,after,metadata,(select name from "user" u where u.id=audit_logs.actor_user_id and u.organization_id=audit_logs.organization_id) as actor_name from audit_logs where organization_id=${organizationId} and entity_type='saas_subscription_charge' and entity_id=saas_subscription_charges.id::text and action='update' and before->>'totalAmountBrl' is not null) h),'[]'::jsonb)`,
+          from (select id,created_at,before,after,metadata,(select name from "user" u where u.id=audit_logs.actor_user_id and u.organization_id=audit_logs.organization_id) as actor_name from audit_logs where organization_id=${organizationId} and entity_type='saas_subscription_charge' and entity_id=saas_subscription_charges.id::text and action='update' and metadata->>'operation' is distinct from 'cancel_charge' and before->>'totalAmountBrl' is not null) h),'[]'::jsonb)`,
       })
       .from(saasSubscriptionCharges)
       .leftJoin(financialExpenses, and(eq(financialExpenses.id, saasSubscriptionCharges.financialExpenseId), eq(financialExpenses.organizationId, organizationId), isNull(financialExpenses.deletedAt)))
@@ -99,7 +103,7 @@ export async function recordSaasCharge(context: AccessContext, raw: unknown) {
     const [existing] = await tx
       .select()
       .from(saasSubscriptionCharges)
-      .where(and(eq(saasSubscriptionCharges.organizationId, organizationId), eq(saasSubscriptionCharges.subscriptionId, input.subscriptionId), eq(saasSubscriptionCharges.competence, input.competence)))
+      .where(and(eq(saasSubscriptionCharges.organizationId, organizationId), eq(saasSubscriptionCharges.subscriptionId, input.subscriptionId), eq(saasSubscriptionCharges.competence, input.competence), isNull(saasSubscriptionCharges.cancelledAt)))
       .limit(1);
     if (existing) return existing;
 

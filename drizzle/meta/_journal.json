@@ -421,6 +421,13 @@
       "when": 1791570232451,
       "tag": "0059_slimy_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791572266908,
+      "tag": "0060_spotty_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

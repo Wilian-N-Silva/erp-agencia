@@ -140,3 +140,19 @@ ou revisão. Se outra pessoa já corrigiu, atualize a página antes de prossegui
 Os valores anteriores, cotação, responsável e motivo ficam consultáveis no
 **Histórico de correções**, além da auditoria completa. O status de pagamento e
 o valor conciliado na assinatura usam as mesmas alocações ativas do Financeiro.
+
+### Cancelamento de cobrança de assinatura
+
+Em **Assinatura → Cobranças → Cancelar cobrança**, informe o motivo e confirme
+explicitamente. Exige finance.write e finance.reverse. A cobrança e sua AP são
+canceladas na mesma transação, com auditoria; valores, vínculo e documentos são
+preservados. Uma liquidação parcial/integral ou reserva histórica exige estorno
+ou revisão antes. Não cancela o contrato nem gera estorno de caixa por si só.
+
+A cobrança cancelada não é editável ou reaberta. Para corrigir a competência,
+cancele a cobrança indevida e registre outra na competência correta. Também é
+possível registrar uma substituta na mesma competência: só uma cobrança ativa
+é permitida e reenvios não geram outra AP. O histórico mantém a AP cancelada e
+a substituta, com estados distintos. Assinaturas com qualquer cobrança, mesmo
+cancelada, não podem ser removidas como cadastro incorreto; cancele o contrato
+para preservar sua consulta. Cancelar o contrato não cancela automaticamente APs.

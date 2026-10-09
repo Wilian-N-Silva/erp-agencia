@@ -61,4 +61,41 @@ test("registra cobrança SaaS efetiva com câmbio/IOF e cria AP uma única vez",
   const payable = page.getByRole("row").filter({ hasText: marker });
   await expect(payable).toHaveCount(1);
   await expect(payable).toContainText("R$ 332,00");
+
+  await page.goto(`${href}?tab=cobrancas`);
+  await page.getByText("Cancelar cobrança de 2026-12", { exact: true }).click();
+  const cancellation = page.locator("form").filter({ has: page.getByRole("button", { name: "Confirmar cancelamento da cobrança", exact: true }) });
+  await cancellation.getByLabel("Motivo do cancelamento", { exact: true }).fill("Fatura duplicada cancelada pelo fornecedor");
+  await cancellation.getByRole("checkbox").check();
+  await cancellation.getByRole("button", { name: "Confirmar cancelamento da cobrança", exact: true }).click();
+  // Revalidation may replace the submitted form immediately; persisted state is the acceptance.
+  await expect(page.getByRole("link", { name: "Cancelado", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Motivo: Fatura duplicada cancelada pelo fornecedor/)).toBeVisible();
+  await expect(page.getByText("Corrigir cobrança de 2026-12", { exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Cancelado", exact: true }).click();
+  await expect(payable).toHaveCount(1);
+  await expect(payable).toContainText("Cancelado");
+  await expect(payable).toContainText("R$ 332,00");
+
+  // Replacement is a new obligation; the cancelled AP/history remain visible.
+  await page.goto(`${href}?tab=cobrancas`);
+  await chargeForm.locator('[name="competence"]').fill("2026-12");
+  await chargeForm.locator('[name="chargedAt"]').fill("2026-12-03");
+  await chargeForm.locator('[name="dueDate"]').fill("2026-12-15");
+  await chargeForm.locator('[name="originalAmount"]').fill("50,00");
+  await chargeForm.locator('[name="effectiveExchangeRate"]').fill("6,50");
+  await chargeForm.locator('[name="iofAmountBrl"]').fill("0");
+  await chargeForm.locator('[name="feeAmountBrl"]').fill("0");
+  await chargeForm.locator('[name="totalAmountBrl"]').fill("325,00");
+  await chargeForm.getByRole("button", { name: "Registrar cobrança", exact: true }).click();
+  await expect(chargeForm.getByRole("status")).toContainText("conta a pagar criada");
+  await page.reload();
+  await expect(chargeRow).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "Cancelado", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Em aberto", exact: true })).toHaveCount(1);
+  await page.getByRole("link", { name: "Em aberto", exact: true }).click();
+  await expect(payable).toHaveCount(2);
+  await expect(payable.filter({ hasText: "R$ 325,00" })).toHaveCount(1);
+  await expect(payable.filter({ hasText: "R$ 332,00" })).toContainText("Cancelado");
 });

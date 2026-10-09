@@ -28,6 +28,7 @@ export async function correctSaasCharge(context: AccessContext, raw: unknown) {
     if (!subscription) throw new AccessDeniedError();
     const [before] = await tx.select().from(saasSubscriptionCharges).where(and(eq(saasSubscriptionCharges.id, input.chargeId), eq(saasSubscriptionCharges.organizationId, org), eq(saasSubscriptionCharges.subscriptionId, subscription.id))).for("update").limit(1);
     if (!before || !before.financialExpenseId) throw new AccessDeniedError();
+    if (before.cancelledAt) throw new SaasChargeCorrectionError("Uma cobrança cancelada preserva seus dados. Registre uma nova cobrança, se necessário.");
     if (input.competence !== before.competence) throw new SaasChargeCorrectionError("A competência da cobrança é preservada. Confira a origem antes de corrigir.");
     const [payable] = await tx.select({ ...getTableColumns(financialExpenses), ledgerSettled: titleSettledAmount("payable") }).from(financialExpenses)
       .where(and(eq(financialExpenses.id, before.financialExpenseId), eq(financialExpenses.organizationId, org), isNull(financialExpenses.deletedAt))).for("update").limit(1);

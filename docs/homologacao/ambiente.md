@@ -80,3 +80,17 @@ cópia isolada e revisar reservas/inconsistências antes da janela de manutenç�
 0054 bloqueia tabelas enquanto captura o legado; 0055 protege sua imutabilidade.
 Não converter reservas em movimentos nem liberar saldo sem revisão auditável.
 Não existe autorização para aplicar estas migrations em produção nesta execução.
+
+0060 adiciona cancelamento documentado de cobranças SaaS e uma única ocorrência
+ativa por assinatura/competência. O backfill observa APs já canceladas, mantendo
+IDs/valores/reservas: a data registrada é a observação da migration, não a data
+original, e o motivo indica autor original desconhecido. Não cria caixa nem
+associa novos títulos. Foi aplicado somente nas bases isoladas de testes.
+
+Antes de atualizar uma base existente, contabilizar cobranças com AP cancelada,
+AP ausente/arquivada e assinatura já arquivada. Conferir os mesmos IDs/valores
+após a migration na cópia isolada. AP ausente ou cadastro historicamente removido
+precisa de revisão explícita, sem inventar vínculo ou restaurar por suposição.
+Não remover colunas/guards ou voltar ao índice antigo depois de registrar uma
+substituta: ele rejeitaria o histórico da mesma competência. Rollback operacional
+usa backup validado/janela de manutenção ou correção expansiva, preservando fatos.

@@ -514,3 +514,28 @@ Checkpoint `2e76442`: build e E2E focal novamente aprovados no mesmo runtime
 testes DB focais aprovados, incluindo leitura cruzada com ID real de cobrança
 e auditoria. Atualização de updatedAt verificada. O cancelamento da cobrança e
 o E2E completo no candidato final continuam pendentes; não há aceite humano.
+
+### FIN-006/010 — cancelamento de cobrança SaaS e preservação da origem
+
+Implementado cancelamento com motivo/confirmação/revisão esperada, finance.write
++ finance.reverse e rate limit persistido. Locks assinatura→cobrança→AP e audit
+transacional dos dois registros; saldo canônico não zero bloqueia até estorno/
+revisão. Reenvio não cancela a substituta nem repete efeitos. Uma substituta pode
+ser cadastrada na mesma competência mantendo a anterior cancelada, com uma única
+ativa. Correção não reabre cobrança cancelada. Estimativa/contrato e caixa intactos.
+
+Identificado e corrigido caminho de remoção de assinatura com histórico de
+cobranças: bloqueio no servidor e no banco para manter a origem consultável.
+0060 gerada por drizzle-kit adiciona campos/índice parcial/check e guards de
+vínculo imutável, registro cancelado imutável e estados fonte/AP concordantes.
+Backfill conserva APs já canceladas e registra explicitamente observação da
+migration/autor desconhecido; nenhum vínculo/caixa inventado. Aplicação só DB
+isolado, com teste da migration real em schema temporário exclusivo.
+
+14 testes DB focais e 472 unitários/79 arquivos aprovados; lint aprovado.
+Typecheck identificou inferência ampla de array no teste, corrigida com tipo
+AccessContext explícito. Typecheck final, DB completo, build e E2E em execução.
+
+Typecheck final aprovado (`saas-cancel-typecheck-final.log`). DB completo
+aprovado: 251 testes/41 arquivos (`saas-cancel-db.log`), incluindo RLS, migration
+e regressões das demais origens. Build e navegador aguardam o checkpoint Git.
