@@ -2,6 +2,7 @@
 
 Manuais por público: [Gestão, Gráfica e Portal](manuais/README.md), acompanhados
 da [validação e limitações dos fluxos](runbooks/user-workflows-validation.md).
+[validação manual dos fluxos críticos](runbooks/manual-flow-validation-2026-10-09.md).
 
 Esta pasta é a fonte de verdade atual para evolução do ERP da agência.
 
