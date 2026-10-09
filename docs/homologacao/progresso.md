@@ -431,3 +431,21 @@ Typecheck, lint e 462 unitários/75 arquivos aprovados. Build/E2E deste incremen
 aguardam finalizar a execução completa anterior no servidor isolado; isso não
 constitui aprovação final da V1. Correções de Gráfica/NF/SaaS/reembolso e
 cancelamento de provisão realizada permanecem em revisão, além dos demais aceites.
+
+### Checkpoint de gates — 09/10/2026
+
+- Runtime `d895330` e testes `cd00f93`: `npm run test:e2e -- --workers=1`
+  aprovado, 23/23 em 6,3 min (`e2e-legacy-review-full.log` na worktree isolada).
+- `8daf360`: typecheck/lint/462 unitários/239 DB aprovados; build aprovado
+  (`build-provision-correction.log`) e E2E focal da provisão aprovado
+  (`provision-correction-e2e.log`). Corrige valor/vencimento pela UI e consulta a
+  mesma AP com o novo valor, preservando estimativa e quantidade de títulos.
+- `git diff --check` aprovado. Branch dedicada mantida. Worktrees externas e
+  stash preexistentes preservados; nenhuma mudança em main/development, base
+  habitual, runtime de localhost:3000 ou produção.
+
+Esse é um checkpoint técnico, não o SHA final candidato nem a homologação humana.
+Próximos P0: correção/cancelamento das origens Gráfica/NF/SaaS/reembolso e
+cancelamento de provisão realizada; depois relatórios de competência/obrigações/
+resultado, referências/perfis, dados fictícios consistentes, prova de restart e
+gates completos no candidato final. Não aceitar fluxo que exige SQL do gestor.

@@ -107,3 +107,10 @@ Problema concreto na próxima origem: provisão realizada direciona a correção
 Financeiro, que corretamente recusa alteração econômica de título gerado. É
 necessário corrigir pela ocorrência, preservando estimativa/link/AP/auditoria e
 recusando saldo liquidado até estorno/revisão. Não recriar provisões/ciclos.
+
+`8daf360` entrega essa correção pela ocorrência: valor/vencimento da mesma AP,
+estimativa/competência/fornecedor preservados, motivo e auditoria transacional,
+finance.write + finance.reverse e recusa de liquidação real mesmo com cache zero.
+239 DB, 462 unitários, typecheck/lint/build e E2E focal aprovados. Cancelamento
+de ocorrência realizada ainda pendente. O checkpoint anterior aprovou 23/23
+E2E completos (runtime d895330/testes cd00f93); repetir no candidato final.
